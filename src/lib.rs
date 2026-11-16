@@ -14,6 +14,7 @@ pub mod fingerprint;
 pub mod intel;
 pub mod interactive;
 pub mod limits;
+pub mod marketplace;
 pub mod merge;
 pub mod model;
 pub mod output;

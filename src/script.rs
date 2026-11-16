@@ -100,6 +100,7 @@ use tokio::process::Command;
 
 use crate::cli::{ScriptsAction, ScriptsArgs, ScriptsListArgs};
 use crate::error::AppError;
+use crate::marketplace::{self, REGISTRY_ENV};
 use crate::model::{PortResult, PortState};
 use crate::plugin::{Assessment, merge_assessment};
 use crate::service::ServiceInfo;
@@ -611,14 +612,72 @@ pub fn library_dir(explicit: Option<&Path>) -> Result<PathBuf, AppError> {
 pub fn run_cli(args: ScriptsArgs, scripts_dir: Option<&Path>) -> Result<(), AppError> {
     match args.action {
         ScriptsAction::List(list) => list_cli(list, scripts_dir),
+        ScriptsAction::Search(search) => marketplace::search_cli(search),
         ScriptsAction::Install(install) => {
             let library = library_dir(scripts_dir)?;
-            let installed = install_pack(&install.source, &library, install.force)?;
-            println!(
-                "installed {} -> {}",
-                install.source.display(),
-                installed.display()
-            );
+            let local_path =
+                !marketplace::is_remote_url(&install.source) && Path::new(&install.source).exists();
+            // An explicit --registry always wins. The environment fallback is
+            // only consulted for bare pack names, so a sticky registry URL
+            // can never hijack a local directory install.
+            let registry = install.registry.or_else(|| {
+                if local_path || marketplace::is_remote_url(&install.source) {
+                    return None;
+                }
+                std::env::var(REGISTRY_ENV)
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            });
+            if let Some(registry) = registry {
+                if marketplace::is_remote_url(&install.source) {
+                    return Err(AppError::usage(
+                        "--registry installs take a pack name; archive URLs install with --sha256 and no --registry",
+                    ));
+                }
+                if install.sha256.is_some() {
+                    return Err(AppError::usage(
+                        "--sha256 applies to direct archive URLs; registry installs use the index digest",
+                    ));
+                }
+                let installed = marketplace::install_named(
+                    &registry,
+                    &install.source,
+                    &library,
+                    install.force,
+                )?;
+                println!(
+                    "installed {} from {} -> {}",
+                    install.source,
+                    registry,
+                    installed.display()
+                );
+                return Ok(());
+            }
+            if marketplace::is_remote_url(&install.source) {
+                let sha256 = install.sha256.ok_or_else(|| {
+                    AppError::usage(
+                        "installing an archive URL requires --sha256 HEX so the download can be verified",
+                    )
+                })?;
+                let installed =
+                    marketplace::install_url(&install.source, &sha256, &library, install.force)?;
+                let name = installed
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(&install.source);
+                println!(
+                    "installed {name} (sha256 verified) -> {}",
+                    installed.display()
+                );
+                return Ok(());
+            }
+            if install.sha256.is_some() {
+                return Err(AppError::usage(
+                    "--sha256 requires an http(s) archive URL or --registry",
+                ));
+            }
+            let installed = install_pack(Path::new(&install.source), &library, install.force)?;
+            println!("installed {} -> {}", install.source, installed.display());
             Ok(())
         }
         ScriptsAction::Uninstall(uninstall) => {
@@ -1459,7 +1518,7 @@ fn validate_identifier(kind: &str, value: &str) -> Result<(), AppError> {
     }
 }
 
-fn valid_identifier(value: &str) -> bool {
+pub(crate) fn valid_identifier(value: &str) -> bool {
     !value.is_empty()
         && value.chars().count() <= MAX_IDENTIFIER_CHARS
         && value.chars().all(|character| {

@@ -6,6 +6,20 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Remote script marketplace**: `rayscan scripts search [QUERY] --registry
+  URL` lists packs from a JSON registry index, and `rayscan scripts install
+  NAME --registry URL` resolves the highest version, verifies the entry's
+  mandatory SHA-256 digest, and safely extracts the gzip tarball (single
+  top-level directory; absolute paths, `..` traversal, links, and device
+  nodes rejected; 64 MiB archive / 512 MiB expanded / 4096-entry caps) before
+  the normal manifest validation and library install (`--force` to replace).
+  Direct archive URLs install with `install URL --sha256 HEX`.
+  `RAYSCAN_SCRIPT_REGISTRY` supplies the registry URL, relative archive URLs
+  resolve against the index location, versions sort with numeric-aware
+  ordering (`1.10` > `1.9`), and index entries are validated up front
+  (schema 1, identifier/version/tag/description/digest/URL shape, 256-pack
+  cap). Plain HTTP registries print a warning; the digest still pins
+  integrity.
 - **Script pack library**: install packs once and reuse them across scans.
   `rayscan scripts install DIR` validates (compiles) every manifest before
   copying a pack directory into the library, `rayscan scripts uninstall NAME`

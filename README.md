@@ -79,14 +79,14 @@ UDP probes and cannot perform raw IPv6 scans.
 | Area | Current capability |
 | :--- | :--- |
 | Toolchain | `rust-toolchain.toml`, pinned Rust 1.99.1, `rustfmt`, `clippy` |
-| CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list`, guided `rayscan interactive`, global `--theme` |
+| CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list/search/install`, guided `rayscan interactive`, global `--theme` |
 | Discovery | Async TCP connect scanner plus Linux raw SYN for IPv4 and IPv6 (`--syn`); optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
 | Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`) |
 | Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 45 embedded probes (12 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
-| Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`) |
+| Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353) via `--udp` flag, including IPv6 (`src/udp.rs`) |
 | OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` (`src/fingerprint.rs`); Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
@@ -1018,6 +1018,46 @@ and re-installing an existing name requires `--force`. `--scripts` stays
 available for ad-hoc paths and is repeatable; every path (plus the library
 when `--scripts-library` is set) contributes packs to one registry and
 duplicate plugin names are rejected.
+
+#### Remote marketplace
+
+A registry is a JSON index (schema 1) published over HTTP(S), so any static
+host, object store, or internal mirror can serve packs without a service:
+
+```json
+{
+  "schema": 1,
+  "packs": [
+    {
+      "name": "web-audit",
+      "version": "1.2.0",
+      "description": "Checks for exposed admin surfaces",
+      "tags": ["http", "discovery"],
+      "url": "packs/web-audit-1.2.0.tar.gz",
+      "sha256": "…64 hex characters…"
+    }
+  ]
+}
+```
+
+```bash
+rayscan scripts search http --registry https://mirror.example/registry/index.json
+rayscan scripts search --json --registry https://mirror.example/registry/index.json
+rayscan scripts install web-audit --registry https://mirror.example/registry/index.json
+rayscan scripts install https://mirror.example/web-audit-1.2.0.tar.gz --sha256 HEX
+```
+
+`search` filters case-insensitively on name, description, and tags; `--json`
+returns resolved URLs and digests. `install NAME` picks the highest version
+(numeric-aware, so `1.10` > `1.9`), downloads the archive, verifies the index
+digest, extracts it, re-validates every manifest, and only then copies it into
+the library — a corrupt or mismatched archive never lands on disk. Archives
+are gzip tarballs with one top-level directory named after the pack;
+extraction refuses absolute paths, `..` traversal, links, device nodes, more
+than 4096 entries, archives over 64 MiB, and expanded trees over 512 MiB.
+Direct URLs require `--sha256`; `RAYSCAN_SCRIPT_REGISTRY` supplies the
+registry URL for both commands. Prefer HTTPS: plain HTTP works but prints a
+warning, with integrity guaranteed only by the digest.
 
 Limits: 128 scripts and 32 packs per run, 64 KiB manifest and stdout caps,
 4 MiB WASM module source, 16 findings per script run, 100 ms-30 s per-script

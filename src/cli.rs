@@ -102,7 +102,9 @@ pub struct ScriptsArgs {
 pub enum ScriptsAction {
     /// List and validate script plugin manifests.
     List(ScriptsListArgs),
-    /// Install a pack directory into the local script library.
+    /// Search a remote script pack registry index.
+    Search(ScriptsSearchArgs),
+    /// Install a pack directory, archive URL, or registry pack into the local library.
     Install(ScriptsInstallArgs),
     /// Remove an installed pack from the local script library.
     Uninstall(ScriptsUninstallArgs),
@@ -123,10 +125,34 @@ pub struct ScriptsListArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct ScriptsSearchArgs {
+    /// Case-insensitive filter matched against pack name, description, and tags.
+    #[arg(value_name = "QUERY")]
+    pub query: Option<String>,
+
+    /// JSON registry index URL (or set RAYSCAN_SCRIPT_REGISTRY).
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct ScriptsInstallArgs {
-    /// Pack directory to validate and copy into the library.
-    #[arg(value_name = "DIR")]
-    pub source: PathBuf,
+    /// Pack directory, http(s) archive URL, or pack name with --registry.
+    #[arg(value_name = "SOURCE")]
+    pub source: String,
+
+    /// Resolve SOURCE as a pack name from this registry index
+    /// (or set RAYSCAN_SCRIPT_REGISTRY).
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+
+    /// Expected SHA-256 digest of a direct archive URL (required for URLs).
+    #[arg(long, value_name = "HEX")]
+    pub sha256: Option<String>,
 
     /// Replace an existing installed pack of the same name.
     #[arg(long)]

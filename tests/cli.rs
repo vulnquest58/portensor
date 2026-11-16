@@ -1050,6 +1050,66 @@ fn script_library_install_list_scan_uninstall() {
     server.stop();
 }
 
+#[test]
+fn scripts_marketplace_rejects_incomplete_requests() {
+    let base = std::env::temp_dir().join(format!("rayscan-market-cli-{}", std::process::id()));
+    let library = base.join("library");
+    let library = library.to_str().expect("library path");
+
+    let search = rayscan()
+        .args(["--scripts-dir", library, "scripts", "search"])
+        .env_remove("RAYSCAN_SCRIPT_REGISTRY")
+        .output()
+        .expect("run scripts search");
+    assert_eq!(search.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&search.stderr).contains("RAYSCAN_SCRIPT_REGISTRY"),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&search.stderr)
+    );
+
+    let missing_digest = rayscan()
+        .args([
+            "--scripts-dir",
+            library,
+            "scripts",
+            "install",
+            "https://registry.example/pack.tar.gz",
+        ])
+        .output()
+        .expect("run scripts install");
+    assert_eq!(missing_digest.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&missing_digest.stderr).contains("--sha256"),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&missing_digest.stderr)
+    );
+
+    let digest = "00".repeat(32);
+    let conflicting = rayscan()
+        .args([
+            "--scripts-dir",
+            library,
+            "scripts",
+            "install",
+            "demo",
+            "--registry",
+            "https://registry.example/index.json",
+            "--sha256",
+            digest.as_str(),
+        ])
+        .output()
+        .expect("run scripts install with registry");
+    assert_eq!(conflicting.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&conflicting.stderr).contains("--sha256"),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&conflicting.stderr)
+    );
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 #[cfg(unix)]
 fn write_script_plugin(dir: &std::path::Path, danger: &str) -> std::path::PathBuf {
     std::fs::write(
