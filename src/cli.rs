@@ -59,7 +59,7 @@ pub enum Command {
     Db(DbArgs),
     /// List built-in and custom probe packs.
     Probes(ProbesArgs),
-    /// List and validate sidecar script plugin manifests.
+    /// List and validate script plugin manifests (sidecar or WASM).
     Scripts(ScriptsArgs),
     /// Set up and run a scan with guided prompts.
     Interactive,
@@ -487,11 +487,11 @@ pub struct ScanArgs {
     #[arg(long, value_name = "PATH")]
     pub plugins: Option<PathBuf>,
 
-    /// TOML manifest or directory of sidecar script plugin manifests.
+    /// TOML manifest or directory of script plugin manifests (sidecar or WASM).
     #[arg(long, value_name = "PATH")]
     pub scripts: Option<PathBuf>,
 
-    /// Allow sidecar scripts whose manifest sets danger = "intrusive".
+    /// Allow script plugins whose manifest sets danger = "intrusive".
     #[arg(long)]
     pub allow_intrusive: bool,
 
@@ -578,7 +578,7 @@ pub struct ResolvedConfig {
     pub diff_file: Option<PathBuf>,
     /// Optional probe pack file or directory.
     pub plugins: Option<PathBuf>,
-    /// Optional sidecar script manifest file or directory.
+    /// Optional script plugin manifest file or directory.
     pub scripts: Option<PathBuf>,
     /// Run script plugins marked danger = "intrusive".
     pub allow_intrusive: bool,

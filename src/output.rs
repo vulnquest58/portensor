@@ -776,7 +776,7 @@ fn render_script_findings(results: &[&PortResult]) -> String {
         ));
     }
     output.push_str(&format!(
-        "\n  {total} script finding(s) across {} open service(s); sidecar scripts run with your privileges - verify results.\n",
+        "\n  {total} script finding(s) across {} open service(s); script plugins are third-party code - verify results.\n",
         hits.len()
     ));
     output

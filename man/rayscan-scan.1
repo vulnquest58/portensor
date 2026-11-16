@@ -280,10 +280,10 @@ NDP discovery timeout in milliseconds (50\-5000). Requires \-\-ndp
 Directory or TOML file with declarative probe packs
 .TP
 \fB\-\-scripts\fR \fI<PATH>\fR
-TOML manifest or directory of sidecar script plugin manifests
+TOML manifest or directory of script plugin manifests (sidecar or WASM)
 .TP
 \fB\-\-allow\-intrusive\fR
-Allow sidecar scripts whose manifest sets danger = "intrusive"
+Allow script plugins whose manifest sets danger = "intrusive"
 .TP
 \fB\-\-min\-severity\fR \fI<SEVERITY>\fR
 Drop script findings below this severity (info < low < medium < high < critical)

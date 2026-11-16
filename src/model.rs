@@ -160,7 +160,7 @@ pub struct PortResult {
     pub tls: Option<crate::tls::TlsInfo>,
     /// RDP NLA identity captured for Remote Desktop endpoints.
     pub rdp: Option<crate::rdp::RdpInfo>,
-    /// Findings reported by sidecar script plugins after service detection.
+    /// Findings reported by script plugins after service detection.
     pub script_findings: Vec<crate::script::PluginFinding>,
 }
 

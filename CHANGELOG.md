@@ -6,6 +6,17 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **WASM script plugins**: manifests can now reference a sandboxed WebAssembly
+  module (`wasm = "check.wasm"`, mutually exclusive with `command`). Modules
+  run in-process on wasmtime without WASI — no file system, network, clock, or
+  environment access — and share the sidecar JSON contract (context in,
+  `findings`/`service` out). Modules export `memory`, `alloc(i32) -> i32`, and
+  `run(i32, i32) -> i64` (packed `(ptr << 32) | len`). Execution is bounded by
+  a fuel budget, a 16 MiB memory/10k table-element limiter, and the manifest
+  timeout; source is capped at 4 MiB and compiled at manifest load, so invalid
+  modules fail fast in `rayscan scripts list` (which now reports `kind` and
+  `wasm_path` in JSON and a `wasm:` line in table output). Sidecar `command`
+  manifests are unchanged.
 - **Sidecar script plugin engine (Q2 start)**: cross-language script plugins
   described by TOML manifests (`--scripts FILE_OR_DIR`). Rayscan sends one
   JSON context document on stdin (target, port, state, confidence, banner,

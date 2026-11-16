@@ -206,12 +206,14 @@ rayscan probes list --plugins probes.toml --json
 
 Because user packs load before built-ins, a custom probe for a built-in port
 takes precedence. Keep probes non-destructive: no writes, no authentication
-attempts, no configuration changes. The planned scripting engine will cover
-cases that need conditional logic; this engine intentionally stays declarative.
+attempts, no configuration changes. Cases that need conditional logic belong in
+script plugins (`--scripts`: sandboxed WASM or sidecar programs sharing one
+JSON contract); this engine intentionally stays declarative.
 
 ## Differences from nmap-service-probes
 
-- No embedded scripting language; probes cannot execute code.
+- No embedded scripting language; probes cannot execute code (use `--scripts`
+  script plugins for compute-heavy checks).
 - TOML instead of the nmap text format, with multi-step sessions first-class.
 - Hex payloads and hex expectations are native, so binary protocols do not
   need escapes.

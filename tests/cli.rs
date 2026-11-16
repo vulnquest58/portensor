@@ -825,6 +825,103 @@ timeout_ms = 2500
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A WASM module that returns `output` from `run` via the script ABI
+/// (`alloc` + packed pointer/length).
+fn wasm_module_emitting(output: &str) -> String {
+    let escaped = output.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        r#"(module
+  (memory (export "memory") 1)
+  (data (i32.const 0) "{escaped}")
+  (global $bump (mut i32) (i32.const 1024))
+  (func (export "alloc") (param $len i32) (result i32)
+    (local $ptr i32)
+    (local.set $ptr (global.get $bump))
+    (global.set $bump (i32.add (global.get $bump) (local.get $len)))
+    (local.get $ptr))
+  (func (export "run") (param $in i32) (param $len i32) (result i64)
+    (i64.or
+      (i64.shl (i64.extend_i32_u (i32.const 0)) (i64.const 32))
+      (i64.extend_i32_u (i32.const {len}))))
+)"#,
+        len = output.len()
+    )
+}
+
+#[test]
+fn wasm_scripts_run_end_to_end() {
+    let server = banner_server();
+    let port = server.port().to_string();
+    let dir = std::env::temp_dir().join(format!("rayscan-scripts-wasm-{}", server.port()));
+    std::fs::create_dir_all(&dir).expect("create script temp dir");
+    let output = r#"{"findings":[{"id":"wasm-lab","title":"Wasm finding","severity":"medium","confidence":0.8}],"service":{"name":"http","product":"Wasm Lab","version":"1.0"}}"#;
+    std::fs::write(dir.join("check.wat"), wasm_module_emitting(output)).expect("write wasm module");
+    let manifest = dir.join("pack.toml");
+    std::fs::write(
+        &manifest,
+        r#"
+name = "wasm-scripts"
+[[script]]
+name = "lab-check"
+wasm = "check.wat"
+services = ["http"]
+timeout_ms = 3000
+"#,
+    )
+    .expect("write wasm manifest");
+
+    let listed = rayscan()
+        .args([
+            "scripts",
+            "list",
+            manifest.to_str().expect("manifest path"),
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scripts list");
+    assert!(
+        listed.status.success(),
+        "scripts list failed: {}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    let scripts: Value = serde_json::from_slice(&listed.stdout).expect("script JSON");
+    assert_eq!(scripts[0]["kind"], "wasm");
+    assert!(
+        scripts[0]["wasm_path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("check.wat"))
+    );
+
+    let scanned = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts",
+            manifest.to_str().expect("manifest path"),
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("run scan with wasm scripts");
+    assert!(
+        scanned.status.success(),
+        "scan failed: {}",
+        String::from_utf8_lossy(&scanned.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&scanned.stdout).expect("valid JSON output");
+    let finding = &payload["open"][0]["findings"][0];
+    assert_eq!(finding["title"], "Wasm finding");
+    assert_eq!(finding["severity"], "medium");
+    assert_eq!(finding["plugin"], "wasm-scripts/lab-check");
+    assert_eq!(payload["open"][0]["service"]["product"], "Wasm Lab");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    server.stop();
+}
+
 #[cfg(unix)]
 fn write_script_plugin(dir: &std::path::Path, danger: &str) -> std::path::PathBuf {
     std::fs::write(

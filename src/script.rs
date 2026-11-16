@@ -1,9 +1,16 @@
-//! Sidecar script plugins (Q2).
+//! Script plugins (Q2): sidecar processes and sandboxed WASM modules.
 //!
-//! Scripts are external programs described by TOML manifests.  Rayscan sends
-//! one JSON document on stdin and reads one JSON document from stdout.  This
-//! keeps the protocol language-neutral: Python, Go, Rust, or a shell script
-//! can provide discovery and vulnerability checks without linking to rayscan.
+//! Scripts are described by TOML manifests and communicate over one JSON
+//! document in, one JSON document out. Two runtimes are supported:
+//!
+//! * **Sidecar** (`command = ["python3", "check.py"]`): an external program
+//!   with the manifest directory as working directory. The protocol stays
+//!   language-neutral: Python, Go, Rust, or a shell script can provide
+//!   discovery and vulnerability checks without linking to rayscan.
+//! * **WASM** (`wasm = "check.wasm"`): a WebAssembly module executed in-process
+//!   by wasmtime. Modules run without WASI, so they cannot touch the file
+//!   system, network, or environment; execution is bounded by fuel metering,
+//!   a memory/table limiter, and the manifest timeout.
 //!
 //! ```toml
 //! name = "example"
@@ -14,15 +21,18 @@
 //! category = "vulnerability"
 //! danger = "safe"
 //! command = ["python3", "weak_tls.py"]
+//! # - or, instead of command -
+//! # wasm = "weak_tls.wasm"
 //! ports = [443, 8443]
 //! services = ["https"]
 //! timeout_ms = 5000
 //! ```
 //!
-//! The command runs with the manifest directory as its working directory.
-//! Scripts marked `danger = "intrusive"` only run with `--allow-intrusive`.
+//! Sidecar commands run with the manifest directory as their working
+//! directory. Scripts marked `danger = "intrusive"` only run with
+//! `--allow-intrusive`.
 //!
-//! Input (stdin):
+//! Input (stdin / module memory):
 //!
 //! ```json
 //! {
@@ -39,7 +49,7 @@
 //! }
 //! ```
 //!
-//! Output (stdout):
+//! Output (stdout / module memory):
 //!
 //! ```json
 //! {
@@ -65,6 +75,10 @@
 //!   }
 //! }
 //! ```
+//!
+//! WASM modules must export `memory`, `alloc(len: i32) -> i32` (bump-allocator
+//! pointer for the input JSON) and `run(input_ptr: i32, input_len: i32) -> i64`
+//! returning the packed output pointer/length: `(ptr as u64) << 32 | len`.
 //!
 //! Severity is one of `info`, `low`, `medium`, `high`, or `critical`.
 //! Findings are advisory metadata: they never raise or lower the port's
@@ -106,6 +120,14 @@ const MAX_CVES: usize = 16;
 const MAX_IDENTIFIER_CHARS: usize = 64;
 const MAX_COMMAND_ARGS: usize = 16;
 const MAX_COMMAND_ARG_CHARS: usize = 512;
+const MAX_WASM_BYTES: usize = 4 * 1024 * 1024;
+/// Fuel budget per WASM run (roughly wasm instructions). The wall-clock
+/// timeout remains the hard backstop; fuel keeps a runaway loop bounded even
+/// beyond the kill window.
+const WASM_FUEL: u64 = 200_000_000;
+/// Memory and table ceilings applied to WASM script stores.
+const WASM_MEMORY_BYTES: usize = 16 * 1024 * 1024;
+const WASM_TABLE_ELEMENTS: usize = 10_000;
 const MAX_IDENTITY_CHARS: usize = 200;
 const MAX_INFO_ENTRIES: usize = 16;
 const MAX_INFO_KEY_CHARS: usize = 48;
@@ -239,13 +261,31 @@ struct RawScript {
     category: Category,
     #[serde(default)]
     danger: Danger,
-    command: Vec<String>,
+    #[serde(default)]
+    command: Option<Vec<String>>,
+    #[serde(default)]
+    wasm: Option<String>,
     #[serde(default)]
     ports: Vec<u16>,
     #[serde(default)]
     services: Vec<String>,
     #[serde(default)]
     timeout_ms: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScriptKind {
+    Sidecar,
+    Wasm,
+}
+
+impl ScriptKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            ScriptKind::Sidecar => "sidecar",
+            ScriptKind::Wasm => "wasm",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -256,7 +296,13 @@ struct CompiledScript {
     description: Option<String>,
     category: Category,
     danger: Danger,
+    /// Sidecar argv (kind Sidecar) or empty (kind Wasm).
     command: Vec<String>,
+    kind: ScriptKind,
+    /// Resolved WASM module path (kind Wasm only).
+    wasm_path: Option<PathBuf>,
+    /// WASM source (binary or WAT text) compiled at load time.
+    module: Option<wasmtime::Module>,
     dir: PathBuf,
     ports: Vec<u16>,
     services: Vec<String>,
@@ -271,7 +317,11 @@ pub struct ScriptSummary {
     pub description: Option<String>,
     pub category: Category,
     pub danger: Danger,
+    /// Sidecar argv; empty for WASM scripts, which carry `wasm_path` instead.
     pub command: Vec<String>,
+    /// Path of the WASM module for wasm scripts; `None` for sidecar scripts.
+    pub wasm_path: Option<String>,
+    pub kind: &'static str,
     pub ports: Vec<u16>,
     pub services: Vec<String>,
     pub timeout_ms: u64,
@@ -422,6 +472,11 @@ impl Registry {
                 category: script.category,
                 danger: script.danger,
                 command: script.command.clone(),
+                wasm_path: script
+                    .wasm_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
+                kind: script.kind.as_str(),
                 ports: script.ports.clone(),
                 services: script.services.clone(),
                 timeout_ms: script.timeout.as_millis() as u64,
@@ -549,7 +604,14 @@ pub fn run_cli(args: ScriptsListArgs) -> Result<(), AppError> {
             ports,
             services
         );
-        println!("    command: {}", summary.command.join(" "));
+        if summary.kind == "wasm" {
+            println!(
+                "    wasm: {}",
+                summary.wasm_path.as_deref().unwrap_or("<unknown>")
+            );
+        } else {
+            println!("    command: {}", summary.command.join(" "));
+        }
         if let Some(description) = &summary.description {
             println!("    {description}");
         }
@@ -569,33 +631,108 @@ fn compile_script(pack: &str, dir: &Path, raw: RawScript) -> Result<CompiledScri
         None => None,
     };
 
-    if raw.command.is_empty() || raw.command.len() > MAX_COMMAND_ARGS {
-        return Err(AppError::usage(format!(
-            "script '{plugin}' command must contain 1-{MAX_COMMAND_ARGS} arguments"
-        )));
+    let (kind, command, wasm_path, module) = match (raw.command, raw.wasm) {
+        (Some(_), Some(_)) => {
+            return Err(AppError::usage(format!(
+                "script '{plugin}' cannot set both command and wasm"
+            )));
+        }
+        (Some(command), None) => (
+            ScriptKind::Sidecar,
+            compile_sidecar_command(&plugin, dir, command)?,
+            None,
+            None,
+        ),
+        (None, Some(wasm)) => {
+            let (path, module) = compile_wasm_module(&plugin, dir, &wasm)?;
+            (ScriptKind::Wasm, Vec::new(), Some(path), Some(module))
+        }
+        (None, None) => {
+            return Err(AppError::usage(format!(
+                "script '{plugin}' must set command or wasm"
+            )));
+        }
+    };
+
+    /// Resolves and validates a sidecar command argv.
+    fn compile_sidecar_command(
+        plugin: &str,
+        dir: &Path,
+        command: Vec<String>,
+    ) -> Result<Vec<String>, AppError> {
+        if command.is_empty() || command.len() > MAX_COMMAND_ARGS {
+            return Err(AppError::usage(format!(
+                "script '{plugin}' command must contain 1-{MAX_COMMAND_ARGS} arguments"
+            )));
+        }
+        let mut command = command;
+        for argument in &command {
+            if argument.is_empty() || argument.chars().count() > MAX_COMMAND_ARG_CHARS {
+                return Err(AppError::usage(format!(
+                    "script '{plugin}' has an empty or oversized command argument"
+                )));
+            }
+            if argument.contains('\0') {
+                return Err(AppError::usage(format!(
+                    "script '{plugin}' command contains a NUL byte"
+                )));
+            }
+        }
+        if command[0].contains(['/', '\\']) {
+            let executable = dir.join(&command[0]);
+            if !executable.is_file() {
+                return Err(AppError::usage(format!(
+                    "script '{plugin}' executable {} does not exist",
+                    executable.display()
+                )));
+            }
+            command[0] = executable.display().to_string();
+        }
+        Ok(command)
     }
-    let mut command = raw.command;
-    for argument in &command {
-        if argument.is_empty() || argument.chars().count() > MAX_COMMAND_ARG_CHARS {
+
+    /// Reads, size-checks, and compiles a WASM module at manifest load time.
+    fn compile_wasm_module(
+        plugin: &str,
+        dir: &Path,
+        wasm: &str,
+    ) -> Result<(PathBuf, wasmtime::Module), AppError> {
+        if wasm.is_empty() {
             return Err(AppError::usage(format!(
-                "script '{plugin}' has an empty or oversized command argument"
+                "script '{plugin}' has an empty wasm path"
             )));
         }
-        if argument.contains('\0') {
+        let path = dir.join(wasm);
+        let size = std::fs::metadata(&path).map_err(|error| {
+            AppError::usage(format!(
+                "script '{plugin}' wasm module {} cannot be read: {error}",
+                path.display()
+            ))
+        })?;
+        if !size.is_file() {
             return Err(AppError::usage(format!(
-                "script '{plugin}' command contains a NUL byte"
+                "script '{plugin}' wasm module {} is not a file",
+                path.display()
             )));
         }
-    }
-    if command[0].contains(['/', '\\']) {
-        let executable = dir.join(&command[0]);
-        if !executable.is_file() {
+        if size.len() > MAX_WASM_BYTES as u64 {
             return Err(AppError::usage(format!(
-                "script '{plugin}' executable {} does not exist",
-                executable.display()
+                "script '{plugin}' wasm module exceeds the {MAX_WASM_BYTES}-byte limit"
             )));
         }
-        command[0] = executable.display().to_string();
+        let bytes = std::fs::read(&path).map_err(|error| {
+            AppError::usage(format!(
+                "script '{plugin}' wasm module {} cannot be read: {error}",
+                path.display()
+            ))
+        })?;
+        let module = wasmtime::Module::new(wasm_engine(), &bytes).map_err(|error| {
+            AppError::usage(format!(
+                "script '{plugin}' failed to compile wasm module {}: {error}",
+                path.display()
+            ))
+        })?;
+        Ok((path, module))
     }
 
     let mut services = Vec::new();
@@ -625,7 +762,10 @@ fn compile_script(pack: &str, dir: &Path, raw: RawScript) -> Result<CompiledScri
         description,
         category: raw.category,
         danger: raw.danger,
+        kind,
         command,
+        wasm_path,
+        module,
         dir: dir.to_path_buf(),
         ports: raw.ports,
         services,
@@ -689,11 +829,20 @@ struct RawFinding {
     references: Vec<String>,
 }
 
+/// Executes a script against one open port, dispatching on its runtime kind.
 async fn run_script(
     script: &CompiledScript,
     result: &PortResult,
 ) -> Result<(Vec<PluginFinding>, Option<Assessment>), String> {
-    let payload = serde_json::to_vec(&ScriptInput {
+    match script.kind {
+        ScriptKind::Sidecar => run_sidecar_script(script, result).await,
+        ScriptKind::Wasm => run_wasm_script(script, result).await,
+    }
+}
+
+/// Shared input document for sidecar and WASM scripts.
+fn script_input(result: &PortResult) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&ScriptInput {
         api: 1,
         target: result.host.to_string(),
         port: result.port,
@@ -705,7 +854,144 @@ async fn run_script(
         service: result.service.as_ref(),
         tls: result.tls.as_ref(),
     })
-    .map_err(|error| format!("cannot encode input: {error}"))?;
+    .map_err(|error| format!("cannot encode input: {error}"))
+}
+
+/// Validates and converts a script's JSON output document.
+fn parse_script_output(
+    plugin: &str,
+    name: &str,
+    stdout: &[u8],
+) -> Result<(Vec<PluginFinding>, Option<Assessment>), String> {
+    let output: ScriptOutput =
+        serde_json::from_slice(stdout).map_err(|error| format!("invalid JSON output: {error}"))?;
+    if output.findings.len() > MAX_FINDINGS {
+        return Err(format!(
+            "returned {} findings (maximum {MAX_FINDINGS})",
+            output.findings.len()
+        ));
+    }
+    let findings = output
+        .findings
+        .into_iter()
+        .map(|raw| validate_finding(plugin, name, raw))
+        .collect::<Result<Vec<_>, String>>()?;
+    let assessment = match output.service {
+        Some(raw) => Some(service_assessment(raw)?),
+        None => None,
+    };
+    Ok((findings, assessment))
+}
+
+/// Lazily-created process-wide wasmtime engine (fuel metering enabled).
+fn wasm_engine() -> &'static wasmtime::Engine {
+    static ENGINE: std::sync::OnceLock<wasmtime::Engine> = std::sync::OnceLock::new();
+    ENGINE.get_or_init(|| {
+        let mut config = wasmtime::Config::new();
+        config.consume_fuel(true);
+        wasmtime::Engine::new(&config).expect("wasmtime engine initialization")
+    })
+}
+
+/// WASM module execution on a blocking thread. Fuel metering plus the store
+/// limiter bound any runaway work; the wall-clock timeout is enforced by the
+/// async wrapper.
+fn wasm_execute(module: &wasmtime::Module, input: &[u8]) -> Result<Vec<u8>, String> {
+    struct StoreData {
+        limits: wasmtime::StoreLimits,
+    }
+
+    let engine = wasm_engine();
+    let mut store = wasmtime::Store::new(
+        engine,
+        StoreData {
+            limits: wasmtime::StoreLimitsBuilder::new()
+                .memory_size(WASM_MEMORY_BYTES)
+                .memories(1)
+                .tables(1)
+                .table_elements(WASM_TABLE_ELEMENTS)
+                .build(),
+        },
+    );
+    store.limiter(|data| &mut data.limits);
+    store
+        .set_fuel(WASM_FUEL)
+        .map_err(|error| format!("cannot set fuel budget: {error}"))?;
+
+    let instance = wasmtime::Instance::new(&mut store, module, &[])
+        .map_err(|error| format!("cannot instantiate module: {error}"))?;
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .ok_or_else(|| "module does not export memory".to_string())?;
+    let alloc = instance
+        .get_typed_func::<i32, i32>(&mut store, "alloc")
+        .map_err(|_| "module does not export alloc(i32) -> i32".to_string())?;
+    let run = instance
+        .get_typed_func::<(i32, i32), i64>(&mut store, "run")
+        .map_err(|_| "module does not export run(i32, i32) -> i64".to_string())?;
+
+    let ptr = alloc
+        .call(&mut store, input.len() as i32)
+        .map_err(|error| format!("alloc failed: {error}"))?;
+    if ptr < 0 {
+        return Err("alloc returned a negative pointer".to_string());
+    }
+    memory
+        .write(&mut store, ptr as usize, input)
+        .map_err(|_| "alloc returned an out-of-bounds pointer".to_string())?;
+
+    let packed = run
+        .call(&mut store, (ptr, input.len() as i32))
+        .map_err(|error| {
+            let message = error.to_string();
+            if message.contains("fuel") {
+                "run exhausted its fuel budget (possible runaway loop)".to_string()
+            } else {
+                format!("run failed: {message}")
+            }
+        })?;
+
+    let out_ptr = ((packed as u64) >> 32) as usize;
+    let out_len = (packed as u64 & 0xFFFF_FFFF) as usize;
+    if out_len > MAX_STDOUT {
+        return Err(format!("output exceeds the {MAX_STDOUT}-byte limit"));
+    }
+    let mut output = vec![0u8; out_len];
+    memory
+        .read(&store, out_ptr, &mut output)
+        .map_err(|_| "run returned an out-of-bounds pointer".to_string())?;
+    Ok(output)
+}
+
+async fn run_wasm_script(
+    script: &CompiledScript,
+    result: &PortResult,
+) -> Result<(Vec<PluginFinding>, Option<Assessment>), String> {
+    let module = script
+        .module
+        .as_ref()
+        .ok_or_else(|| "missing wasm module".to_string())?;
+    let input = script_input(result)?;
+
+    let task = tokio::task::spawn_blocking({
+        let module = module.clone();
+        move || wasm_execute(&module, &input)
+    });
+    let output = match tokio::time::timeout(script.timeout, task).await {
+        Ok(joined) => joined.map_err(|error| format!("wasm worker failed: {error}"))?,
+        Err(_) => {
+            return Err(format!("timed out after {} ms", script.timeout.as_millis()));
+        }
+    }?;
+
+    parse_script_output(&script.plugin, &script.name, &output)
+}
+
+async fn run_sidecar_script(
+    script: &CompiledScript,
+    result: &PortResult,
+) -> Result<(Vec<PluginFinding>, Option<Assessment>), String> {
+    let payload = script_input(result)?;
 
     let mut command = Command::new(&script.command[0]);
     command
@@ -780,24 +1066,7 @@ async fn run_script(
         });
     }
 
-    let output: ScriptOutput =
-        serde_json::from_slice(&stdout).map_err(|error| format!("invalid JSON output: {error}"))?;
-    if output.findings.len() > MAX_FINDINGS {
-        return Err(format!(
-            "returned {} findings (maximum {MAX_FINDINGS})",
-            output.findings.len()
-        ));
-    }
-    let findings = output
-        .findings
-        .into_iter()
-        .map(|raw| validate_finding(&script.plugin, &script.name, raw))
-        .collect::<Result<Vec<_>, String>>()?;
-    let assessment = match output.service {
-        Some(raw) => Some(service_assessment(raw)?),
-        None => None,
-    };
-    Ok((findings, assessment))
+    parse_script_output(&script.plugin, &script.name, &stdout)
 }
 
 /// Validate a script-declared service identity and turn it into a mergeable
@@ -1317,6 +1586,291 @@ command = ["sh", "emit.sh"]
         assert_eq!(findings[0].title, "Test finding");
         assert_eq!(findings[0].severity, FindingSeverity::High);
         assert_eq!(findings[0].cve, ["CVE-2024-1234"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Builds a WAT module that writes `output` at address 0 and returns the
+    /// packed pointer/length for `run` (and echoes nothing from the input).
+    fn wasm_echo_wat(output: &str) -> String {
+        let escaped = output.replace('\\', "\\\\").replace('"', "\\\"");
+        format!(
+            r#"(module
+  (memory (export "memory") 1)
+  (data (i32.const 0) "{escaped}")
+  (global $bump (mut i32) (i32.const 1024))
+  (func (export "alloc") (param $len i32) (result i32)
+    (local $ptr i32)
+    (local.set $ptr (global.get $bump))
+    (global.set $bump (i32.add (global.get $bump) (local.get $len)))
+    (local.get $ptr))
+  (func (export "run") (param $in i32) (param $len i32) (result i64)
+    (i64.or
+      (i64.shl (i64.extend_i32_u (i32.const 0)) (i64.const 32))
+      (i64.extend_i32_u (i32.const {len}))))
+)"#,
+            len = output.len()
+        )
+    }
+
+    fn write_wasm_script(dir: &Path, name: &str, wat: &str) {
+        std::fs::write(dir.join(name), wat).expect("write wasm module");
+    }
+
+    #[tokio::test]
+    async fn wasm_script_runs_and_identifies_service() {
+        let dir = std::env::temp_dir().join(format!("rayscan-script-wasm-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let output = r#"{"findings":[{"title":"Wasm finding","severity":"medium","confidence":0.8,"cve":["cve-2025-9999"]}],"service":{"name":"wasmhttp","product":"Wasm Engine","version":"3.1","confidence":0.9}}"#;
+        write_wasm_script(&dir, "check.wat", &wasm_echo_wat(output));
+        let registry = {
+            let mut registry = Registry::default();
+            registry
+                .parse(
+                    r#"
+name = "wasmunit"
+[[script]]
+name = "check"
+wasm = "check.wat"
+"#,
+                    &dir,
+                )
+                .expect("parse manifest");
+            registry
+        };
+        assert_eq!(registry.script_count(), 1);
+        let summary = &registry.summaries()[0];
+        assert_eq!(summary.kind, "wasm");
+        assert!(summary.command.is_empty());
+        assert!(summary.wasm_path.is_some());
+
+        let mut results = [PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            8080,
+            PortState::Open,
+            Duration::from_millis(1),
+        )];
+        let findings = registry.apply(&mut results, false, true).await;
+        assert_eq!(findings, 1);
+        assert_eq!(results[0].script_findings.len(), 1);
+        assert_eq!(results[0].script_findings[0].title, "Wasm finding");
+        assert_eq!(results[0].script_findings[0].cve, ["CVE-2025-9999"]);
+        let service = results[0].service.as_ref().expect("wasm service");
+        assert_eq!(service.name, "wasmhttp");
+        assert_eq!(service.product.as_deref(), Some("Wasm Engine"));
+        assert_eq!(results[0].detail.as_deref(), Some("script:wasmunit/check"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wasm_manifest_validation() {
+        let dir =
+            std::env::temp_dir().join(format!("rayscan-script-wasm-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(&dir, "ok.wat", &wasm_echo_wat("{}"));
+
+        let mut registry = Registry::default();
+        let error = registry
+            .parse(
+                r#"
+name = "bad"
+[[script]]
+name = "both"
+wasm = "ok.wat"
+command = ["sh", "x.sh"]
+"#,
+                &dir,
+            )
+            .expect_err("both runtimes must be rejected");
+        assert!(error.to_string().contains("cannot set both"));
+
+        let mut registry = Registry::default();
+        let error = registry
+            .parse(
+                r#"
+name = "bad"
+[[script]]
+name = "neither"
+"#,
+                &dir,
+            )
+            .expect_err("missing runtimes must be rejected");
+        assert!(error.to_string().contains("must set command or wasm"));
+
+        let mut registry = Registry::default();
+        let error = registry
+            .parse(
+                r#"
+name = "bad"
+[[script]]
+name = "missing"
+wasm = "nope.wat"
+"#,
+                &dir,
+            )
+            .expect_err("missing module must be rejected");
+        assert!(error.to_string().contains("cannot be read"));
+
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "bad"
+[[script]]
+name = "duplicate-module"
+wasm = "ok.wat"
+"#,
+                &dir,
+            )
+            .expect("valid wasm manifest parses");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn wasm_receives_the_input_payload() {
+        let dir =
+            std::env::temp_dir().join(format!("rayscan-script-wasm-input-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let output = r#"{"findings":[{"title":"Input seen","severity":"info"}]}"#;
+        let escaped = output.replace('\\', "\\\\").replace('"', "\\\"");
+        // run() only returns the finding when the first input byte is '{',
+        // proving the host wrote the JSON payload at alloc's pointer.
+        std::fs::write(
+            dir.join("check.wat"),
+            format!(
+                r#"(module
+  (memory (export "memory") 1)
+  (data (i32.const 0) "{escaped}")
+  (global $bump (mut i32) (i32.const 4096))
+  (func (export "alloc") (param $len i32) (result i32)
+    (local $ptr i32)
+    (local.set $ptr (global.get $bump))
+    (global.set $bump (i32.add (global.get $bump) (local.get $len)))
+    (local.get $ptr))
+  (func (export "run") (param $in i32) (param $len i32) (result i64)
+    (if (i32.and
+          (i32.ne (local.get $len) (i32.const 0))
+          (i32.eq (i32.load8_u (local.get $in)) (i32.const 123)))
+      (then (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const 0)) (i64.const 32))
+        (i64.extend_i32_u (i32.const {len})))))
+      (else (return (i64.const 0))))
+    (i64.const 0))
+)"#,
+                len = output.len()
+            ),
+        )
+        .expect("write wasm module");
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "inputcheck"
+[[script]]
+name = "reader"
+wasm = "check.wat"
+"#,
+                &dir,
+            )
+            .expect("parse manifest");
+        let script = &registry.scripts[0];
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            80,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let (findings, _) = run_script(script, &result)
+            .await
+            .expect("module must observe its input payload");
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].title, "Input seen");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn wasm_rejects_oversized_output() {
+        let dir =
+            std::env::temp_dir().join(format!("rayscan-script-wasm-big-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        // run() claims a 200 KB output at address 0 without writing anything.
+        write_wasm_script(
+            &dir,
+            "big.wat",
+            r#"(module
+  (memory (export "memory") 1)
+  (func (export "alloc") (param i32) (result i32) (i32.const 1024))
+  (func (export "run") (param i32) (param i32) (result i64)
+    (i64.or
+      (i64.shl (i64.extend_i32_u (i32.const 0)) (i64.const 32))
+      (i64.extend_i32_u (i32.const 200000))))
+)"#,
+        );
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "big"
+[[script]]
+name = "flood"
+wasm = "big.wat"
+"#,
+                &dir,
+            )
+            .expect("parse manifest");
+        let mut results = [PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            80,
+            PortState::Open,
+            Duration::from_millis(1),
+        )];
+        let findings = registry.apply(&mut results, false, true).await;
+        assert_eq!(findings, 0, "oversized output must be rejected");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn wasm_timeout_bounds_a_runaway_module() {
+        let dir =
+            std::env::temp_dir().join(format!("rayscan-script-wasm-loop-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(
+            &dir,
+            "loop.wat",
+            r#"(module
+  (memory (export "memory") 1)
+  (func (export "alloc") (param i32) (result i32) (i32.const 1024))
+  (func (export "run") (param i32) (param i32) (result i64)
+    (loop $forever (br $forever))
+    (i64.const 0))
+)"#,
+        );
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "loop"
+[[script]]
+name = "spin"
+wasm = "loop.wat"
+timeout_ms = 100
+"#,
+                &dir,
+            )
+            .expect("parse manifest");
+        let script = &registry.scripts[0];
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            80,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let outcome = run_script(script, &result).await;
+        let error = outcome.expect_err("runaway module must fail");
+        assert!(
+            error.contains("timed out") || error.contains("fuel"),
+            "unexpected error: {error}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

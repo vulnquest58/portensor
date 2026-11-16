@@ -86,7 +86,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
 | Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`) |
 | Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 45 embedded probes (12 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
-| Plugin engine (Q2) | Cross-language sidecar script plugins over a JSON stdin/stdout contract (`--scripts`), manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`) |
+| Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353) via `--udp` flag, including IPv6 (`src/udp.rs`) |
 | OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` (`src/fingerprint.rs`); Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
@@ -931,13 +931,14 @@ authoring guide.
 rayscan scan -t 10.0.0.5 -p 9000 --plugins probes.toml --explain 9000
 ```
 
-### Sidecar Script Plugins (`--scripts`, `--allow-intrusive`, `rayscan scripts list`)
+### Script Plugins (`--scripts`, `--allow-intrusive`, `rayscan scripts list`)
 
 The declarative probe engine never executes code. When a check needs real
 logic — parsing a JSON API, scripting a TLS negotiation, computing risk — it
-runs as a **sidecar script plugin**: an external program described by a TOML
-manifest. Rayscan speaks JSON over stdin/stdout with the script, so Python,
-Go, Rust, or any shell script can participate without linking to the scanner.
+runs as a **script plugin**: either a WASM module or a sidecar process,
+described by a TOML manifest. Rayscan speaks the same one-JSON-in/one-JSON-out
+contract with both, so Python, Go, Rust, any shell script, or a compiled
+`wasm32` module can participate without linking to the scanner.
 
 Manifest (one `[[script]]` per check; a directory may hold several `*.toml`
 manifests):
@@ -950,21 +951,33 @@ name = "container-check"
 description = "Flags unauthenticated Docker engine API endpoints"
 category = "vulnerability"      # discovery | vulnerability | auth | brute | compliance
 danger = "safe"                 # "intrusive" requires --allow-intrusive
-command = ["python3", "check.py"]  # runs with the manifest directory as cwd
+command = ["python3", "check.py"]  # sidecar: runs with the manifest dir as cwd
+# wasm = "check.wasm"           # or: sandboxed in-process WASM module
 services = ["docker"]           # optional service filter; ports = [] also optional
 timeout_ms = 5000               # 100-30000
 ```
 
-Each run receives the port context on stdin — `target`, `port`, `state`,
+Each run receives the port context as JSON — `target`, `port`, `state`,
 `confidence`, `banner`, `detail`, `evidence`, the full `service` object, and
-`tls` metadata — plus `RAYSCAN_SCRIPT_API`, `RAYSCAN_TARGET`, and
-`RAYSCAN_PORT` environment variables. The script answers with
-`{"findings": [{"id", "title", "severity", "confidence", "description",
+`tls` metadata. Sidecar scripts get it on stdin plus `RAYSCAN_SCRIPT_API`,
+`RAYSCAN_TARGET`, and `RAYSCAN_PORT` environment variables; WASM modules
+receive it through their `alloc`/`run` exports (see below). The script answers
+with `{"findings": [{"id", "title", "severity", "confidence", "description",
 "evidence", "cve", "references"}]}`. Findings are validated (length caps,
 control-character stripping, CVE/reference shape) and attached to the port as
 a separate `findings` array — they never inflate or deflate the port's
 accuracy confidence. `--min-severity high` drops findings below the threshold
 before rendering; values are `info`, `low`, `medium`, `high`, and `critical`.
+
+**WASM modules** (`wasm = "module.wasm"`, mutually exclusive with `command`)
+run in-process on wasmtime with no WASI: no file system, network, clock, or
+environment access. Execution is bounded by a fuel budget, a 16 MiB memory
+limit, and the manifest timeout. Modules export `memory`,
+`alloc(len: i32) -> i32`, and `run(input_ptr: i32, input_len: i32) -> i64`,
+where the return value packs the output JSON location as
+`(ptr << 32) | len`. The module is compiled at manifest load, so syntax errors
+fail fast in `rayscan scripts list`. Need a WASI-capable or heavier runtime?
+Use a sidecar `command` instead.
 
 Discovery scripts can also identify the port: an optional `service` object
 (`name` required; `product`, `version`, `cpe`, `info`, `confidence` optional)
@@ -984,10 +997,12 @@ rayscan scan -t 10.0.0.5 --scripts ./scripts --json
 rayscan scan -t 10.0.0.5 --scripts ./scripts --allow-intrusive
 ```
 
-Limits: 128 scripts and 32 packs per run, 64 KiB manifest and stdout caps, 16
-findings per script run, 100 ms-30 s per-script timeouts. Scripts execute with
-your privileges and only target open TCP ports you already scanned — treat
-every script directory like you would any binary you run.
+Limits: 128 scripts and 32 packs per run, 64 KiB manifest and stdout caps,
+4 MiB WASM module source, 16 findings per script run, 100 ms-30 s per-script
+timeouts. Sidecar scripts execute with your privileges and only target open
+TCP ports you already scanned — treat every script directory like you would
+any binary you run. WASM modules add a sandbox, but a `command` manifest is
+equivalent to running the binary yourself.
 
 ### TLS Certificate Inspection (`--tls` / `--no-tls`)
 
@@ -1335,7 +1350,7 @@ src/syn/aimd.rs             AIMD rate controller for the TX loop
 src/tls.rs                  direct/STARTTLS certificate inspection
 src/smb.rs                  SMB2/SMB1 negotiation, signing, and OS metadata
 src/plugin.rs               multi-step TOML probe engine and built-in library
-src/script.rs               sidecar script plugin runner (JSON protocol, findings)
+src/script.rs               script plugin runner (sidecar + sandboxed WASM, JSON protocol)
 src/discovery.rs            ICMP/TCP ping sweep
 src/shard.rs                stable FNV-1a target sharding
 src/merge.rs                JSON/JSONL shard report merger
