@@ -54,10 +54,13 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
     let Cli {
         theme,
         db_dir,
+        scripts_dir,
         command,
     } = cli;
     match command {
-        Command::Scan(args) => run_scan(args, theme, db_dir.as_deref()).await,
+        Command::Scan(args) => {
+            run_scan(args, theme, db_dir.as_deref(), scripts_dir.as_deref()).await
+        }
         Command::Diff(args) => diff::run_cli(args, theme),
         Command::Merge(args) => merge::run_cli(args),
         Command::Doctor(args) => doctor::run(args, theme),
@@ -65,17 +68,37 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         Command::Probes(args) => match args.action {
             crate::cli::ProbesAction::List(list) => plugin::run_cli(list),
         },
-        Command::Scripts(args) => match args.action {
-            crate::cli::ScriptsAction::List(list) => script::run_cli(list),
-        },
+        Command::Scripts(args) => script::run_cli(args, scripts_dir.as_deref()),
         Command::Interactive => interactive::run(theme).await,
     }
+}
+
+/// Build a script registry from explicit `--scripts` paths plus the local
+/// library, if requested. Every path contributes packs to one registry and
+/// duplicate plugin names are rejected.
+fn load_scripts(
+    resolved: &crate::cli::ResolvedConfig,
+    scripts_dir: Option<&std::path::Path>,
+) -> Result<Option<script::Registry>, AppError> {
+    let mut paths = resolved.scripts.clone();
+    if resolved.scripts_library {
+        paths.push(script::library_dir(scripts_dir)?);
+    }
+    if paths.is_empty() {
+        return Ok(None);
+    }
+    let mut registry = script::Registry::default();
+    for path in &paths {
+        registry.add_path(path)?;
+    }
+    Ok(Some(registry))
 }
 
 pub(crate) async fn run_scan(
     args: ScanArgs,
     theme: Option<Theme>,
     db_dir: Option<&std::path::Path>,
+    scripts_dir: Option<&std::path::Path>,
 ) -> Result<(), AppError> {
     let mut resolved = args.resolve()?;
     resolved.theme = theme.unwrap_or(resolved.theme);
@@ -88,10 +111,7 @@ pub(crate) async fn run_scan(
         None => plugin::Registry::default(),
     };
     plugins.merge_builtin()?;
-    let scripts = match resolved.scripts.as_deref() {
-        Some(path) => Some(script::Registry::load(path)?),
-        None => None,
-    };
+    let scripts = load_scripts(&resolved, scripts_dir)?;
 
     let db_paths = db::DbPaths::resolve(db_dir);
     if !resolved.no_db_update

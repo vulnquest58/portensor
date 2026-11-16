@@ -142,7 +142,8 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         no_db_update: false,
         diff: None,
         plugins: None,
-        scripts: None,
+        scripts: Vec::new(),
+        scripts_library: false,
         allow_intrusive: false,
         min_severity: None,
         scope: None,
@@ -177,7 +178,7 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         return Ok(());
     }
 
-    crate::run_scan(args, theme, None).await
+    crate::run_scan(args, theme, None, None).await
 }
 
 fn prompt_error(error: InquireError) -> AppError {

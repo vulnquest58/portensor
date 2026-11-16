@@ -6,6 +6,18 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Script pack library**: install packs once and reuse them across scans.
+  `rayscan scripts install DIR` validates (compiles) every manifest before
+  copying a pack directory into the library, `rayscan scripts uninstall NAME`
+  removes it, `rayscan scripts library [--json]` prints the location, and
+  `rayscan scripts list` defaults to the installed packs when no PATH is
+  given. Scans load stowed packs with `--scripts-library`. The library lives
+  at `<data>/rayscan/scripts` (sibling of the NVD database) and honors the new
+  global `--scripts-dir DIR` plus `RAYSCAN_SCRIPTS_DIR`. Script directories
+  now also load manifests from one level of pack subdirectories, and `--scripts`
+  is repeatable — all paths feed one registry with duplicate plugin detection.
+  Installs are capped at 4096 entries / 512 MiB per pack and refuse
+  symlinks; replacing an installed pack requires `--force`.
 - **WASM script plugins**: manifests can now reference a sandboxed WebAssembly
   module (`wasm = "check.wasm"`, mutually exclusive with `command`). Modules
   run in-process on wasmtime without WASI — no file system, network, clock, or

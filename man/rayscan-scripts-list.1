@@ -4,7 +4,7 @@
 .SH NAME
 rayscan\-scripts\-list \- List and validate script plugin manifests
 .SH SYNOPSIS
-\fBlist\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIPATH\fR> 
+\fBlist\fR [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fIPATH\fR] 
 .SH DESCRIPTION
 List and validate script plugin manifests
 .SH OPTIONS
@@ -15,5 +15,5 @@ Emit machine\-readable JSON
 \fB\-h\fR, \fB\-\-help\fR
 Print help
 .TP
-<\fIPATH\fR>
-Script manifest file or directory of *.toml manifests
+[\fIPATH\fR]
+Script manifest file or directory of *.toml manifests. Defaults to the local script library

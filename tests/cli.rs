@@ -922,6 +922,134 @@ timeout_ms = 3000
     server.stop();
 }
 
+#[test]
+fn script_library_install_list_scan_uninstall() {
+    let server = banner_server();
+    let port = server.port().to_string();
+    let base = std::env::temp_dir().join(format!("rayscan-scripts-lib-{}", server.port()));
+    let source = base.join("src").join("wasm-lib-pack");
+    std::fs::create_dir_all(&source).expect("create source pack");
+    let output = r#"{"findings":[{"title":"Library finding","severity":"low"}],"service":{"name":"http","product":"Library Lab","version":"1.1"}}"#;
+    std::fs::write(source.join("check.wat"), wasm_module_emitting(output))
+        .expect("write wasm module");
+    std::fs::write(
+        source.join("pack.toml"),
+        "name = \"wasm-lib-pack\"\n[[script]]\nname = \"check\"\nwasm = \"check.wat\"\nservices = [\"http\"]\n",
+    )
+    .expect("write manifest");
+    let library = base.join("library");
+
+    let installed = rayscan()
+        .args([
+            "--scripts-dir",
+            library.to_str().expect("library path"),
+            "scripts",
+            "install",
+            source.to_str().expect("source path"),
+        ])
+        .output()
+        .expect("install pack");
+    assert!(
+        installed.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&installed.stderr)
+    );
+
+    let info = rayscan()
+        .args([
+            "--scripts-dir",
+            library.to_str().expect("library path"),
+            "scripts",
+            "library",
+            "--json",
+        ])
+        .output()
+        .expect("library info");
+    assert!(info.status.success());
+    let info: Value = serde_json::from_slice(&info.stdout).expect("library JSON");
+    assert_eq!(info["exists"], true);
+    assert!(
+        info["path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("library"))
+    );
+
+    let listed = rayscan()
+        .args([
+            "--scripts-dir",
+            library.to_str().expect("library path"),
+            "scripts",
+            "list",
+            "--json",
+        ])
+        .output()
+        .expect("list library");
+    assert!(
+        listed.status.success(),
+        "list failed: {}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    let scripts: Value = serde_json::from_slice(&listed.stdout).expect("script JSON");
+    assert_eq!(scripts[0]["plugin"], "wasm-lib-pack/check");
+    assert_eq!(scripts[0]["kind"], "wasm");
+
+    let scanned = rayscan()
+        .args([
+            "--scripts-dir",
+            library.to_str().expect("library path"),
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts-library",
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("scan with script library");
+    assert!(
+        scanned.status.success(),
+        "scan failed: {}",
+        String::from_utf8_lossy(&scanned.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&scanned.stdout).expect("valid JSON output");
+    assert_eq!(
+        payload["open"][0]["findings"][0]["title"],
+        "Library finding"
+    );
+    assert_eq!(payload["open"][0]["service"]["product"], "Library Lab");
+
+    let removed = rayscan()
+        .args([
+            "--scripts-dir",
+            library.to_str().expect("library path"),
+            "scripts",
+            "uninstall",
+            "wasm-lib-pack",
+        ])
+        .output()
+        .expect("uninstall pack");
+    assert!(
+        removed.status.success(),
+        "uninstall failed: {}",
+        String::from_utf8_lossy(&removed.stderr)
+    );
+    let empty = rayscan()
+        .args([
+            "--scripts-dir",
+            library.to_str().expect("library path"),
+            "scripts",
+            "list",
+        ])
+        .output()
+        .expect("list empty library");
+    assert!(!empty.status.success(), "empty library must not list packs");
+
+    let _ = std::fs::remove_dir_all(&base);
+    server.stop();
+}
+
 #[cfg(unix)]
 fn write_script_plugin(dir: &std::path::Path, danger: &str) -> std::path::PathBuf {
     std::fs::write(

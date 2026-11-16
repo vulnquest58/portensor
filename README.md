@@ -997,12 +997,35 @@ rayscan scan -t 10.0.0.5 --scripts ./scripts --json
 rayscan scan -t 10.0.0.5 --scripts ./scripts --allow-intrusive
 ```
 
+#### Script library
+
+Packs can be installed once and reused from every scan. The library lives
+under the platform data directory (`%APPDATA%\rayscan\scripts` on Windows,
+`$XDG_DATA_HOME/rayscan/scripts` or `~/.local/share/rayscan/scripts`
+elsewhere), one subdirectory per pack; override the location with the global
+`--scripts-dir DIR` or `RAYSCAN_SCRIPTS_DIR`.
+
+```bash
+rayscan scripts install ./my-pack          # validate + copy into the library
+rayscan scripts list                       # list installed packs (PATH optional)
+rayscan scripts library --json             # print the library location
+rayscan scan -t 10.0.0.5 --scripts-library # run every installed pack
+rayscan scripts uninstall my-pack
+```
+
+`install` compiles every manifest first, so a broken pack never lands on disk,
+and re-installing an existing name requires `--force`. `--scripts` stays
+available for ad-hoc paths and is repeatable; every path (plus the library
+when `--scripts-library` is set) contributes packs to one registry and
+duplicate plugin names are rejected.
+
 Limits: 128 scripts and 32 packs per run, 64 KiB manifest and stdout caps,
 4 MiB WASM module source, 16 findings per script run, 100 ms-30 s per-script
-timeouts. Sidecar scripts execute with your privileges and only target open
-TCP ports you already scanned — treat every script directory like you would
-any binary you run. WASM modules add a sandbox, but a `command` manifest is
-equivalent to running the binary yourself.
+timeouts, 4096 entries / 512 MiB per installed pack. Sidecar scripts execute
+with your privileges and only target open TCP ports you already scanned —
+treat every script directory like you would any binary you run. WASM modules
+add a sandbox, but a `command` manifest is equivalent to running the binary
+yourself.
 
 ### TLS Certificate Inspection (`--tls` / `--no-tls`)
 
@@ -1152,6 +1175,7 @@ format = "table"
 show = ["open"]
 theme = "dark"
 plugins = "probes.toml"  # optional declarative probe pack
+scripts = "scripts/"     # optional script pack manifest or directory
 jitter_ms = 50           # optional random delay before each probe
 ```
 

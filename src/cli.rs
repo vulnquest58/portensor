@@ -29,7 +29,7 @@ use crate::tls::TlsMode;
                   detection on ports that accept UDP traffic.",
     arg_required_else_help = true,
     subcommand_required = true,
-    after_help = "Examples:\n  rayscan scan --target 127.0.0.1 --ports 1-1024\n  rayscan scan -t 10.0.0.0/24 -p 22,80,443 --json\n  rayscan scan -t 10.77.0.2 -p 1-10000 --profile careful --show all\n  rayscan scan -t 10.77.0.2 --scripts ./scripts --json\n  rayscan scripts list ./scripts --json\n  rayscan db intel --force\n  sudo rayscan scan -6 -t fe80::/64 --ndp -p 22,80,443"
+    after_help = "Examples:\n  rayscan scan --target 127.0.0.1 --ports 1-1024\n  rayscan scan -t 10.0.0.0/24 -p 22,80,443 --json\n  rayscan scan -t 10.77.0.2 -p 1-10000 --profile careful --show all\n  rayscan scan -t 10.77.0.2 --scripts ./scripts --json\n  rayscan scripts list ./scripts --json\n  rayscan scripts install ./my-pack\n  rayscan scan -t 10.77.0.2 --scripts-library\n  rayscan db intel --force\n  sudo rayscan scan -6 -t fe80::/64 --ndp -p 22,80,443"
 )]
 pub struct Cli {
     /// Color theme for tables, progress, and diagnostics.
@@ -39,6 +39,10 @@ pub struct Cli {
     /// Directory for the local NVD advisory database.
     #[arg(long, global = true, value_name = "DIR")]
     pub db_dir: Option<PathBuf>,
+
+    /// Directory for the local script pack library.
+    #[arg(long, global = true, value_name = "DIR")]
+    pub scripts_dir: Option<PathBuf>,
 
     #[command(subcommand)]
     pub command: Command,
@@ -98,14 +102,46 @@ pub struct ScriptsArgs {
 pub enum ScriptsAction {
     /// List and validate script plugin manifests.
     List(ScriptsListArgs),
+    /// Install a pack directory into the local script library.
+    Install(ScriptsInstallArgs),
+    /// Remove an installed pack from the local script library.
+    Uninstall(ScriptsUninstallArgs),
+    /// Print the local script library location.
+    Library(ScriptsLibraryArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct ScriptsListArgs {
     /// Script manifest file or directory of *.toml manifests.
+    /// Defaults to the local script library.
     #[arg(value_name = "PATH")]
-    pub path: PathBuf,
+    pub path: Option<PathBuf>,
 
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ScriptsInstallArgs {
+    /// Pack directory to validate and copy into the library.
+    #[arg(value_name = "DIR")]
+    pub source: PathBuf,
+
+    /// Replace an existing installed pack of the same name.
+    #[arg(long)]
+    pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ScriptsUninstallArgs {
+    /// Installed pack name (library subdirectory).
+    #[arg(value_name = "NAME")]
+    pub name: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ScriptsLibraryArgs {
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub json: bool,
@@ -488,8 +524,13 @@ pub struct ScanArgs {
     pub plugins: Option<PathBuf>,
 
     /// TOML manifest or directory of script plugin manifests (sidecar or WASM).
+    /// Repeatable; every path contributes packs to the same registry.
     #[arg(long, value_name = "PATH")]
-    pub scripts: Option<PathBuf>,
+    pub scripts: Vec<PathBuf>,
+
+    /// Load script packs installed in the local library (see `rayscan scripts`).
+    #[arg(long)]
+    pub scripts_library: bool,
 
     /// Allow script plugins whose manifest sets danger = "intrusive".
     #[arg(long)]
@@ -578,8 +619,10 @@ pub struct ResolvedConfig {
     pub diff_file: Option<PathBuf>,
     /// Optional probe pack file or directory.
     pub plugins: Option<PathBuf>,
-    /// Optional script plugin manifest file or directory.
-    pub scripts: Option<PathBuf>,
+    /// Optional script plugin manifest files or directories.
+    pub scripts: Vec<PathBuf>,
+    /// Load packs from the local script library.
+    pub scripts_library: bool,
     /// Run script plugins marked danger = "intrusive".
     pub allow_intrusive: bool,
     /// Minimum script finding severity kept in output.
@@ -840,7 +883,12 @@ impl ScanArgs {
             no_db_update: self.no_db_update,
             diff_file: self.diff.clone(),
             plugins: self.plugins.clone().or_else(|| file.plugins.clone()),
-            scripts: self.scripts.clone().or_else(|| file.scripts.clone()),
+            scripts: if self.scripts.is_empty() {
+                file.scripts.clone().into_iter().collect()
+            } else {
+                self.scripts.clone()
+            },
+            scripts_library: self.scripts_library,
             allow_intrusive: self.allow_intrusive || file.allow_intrusive.unwrap_or(false),
             min_severity: self
                 .min_severity
@@ -1010,7 +1058,8 @@ mod tests {
             no_db_update: false,
             diff: None,
             plugins: None,
-            scripts: None,
+            scripts: Vec::new(),
+            scripts_library: false,
             allow_intrusive: false,
             min_severity: None,
             ping_sweep: false,

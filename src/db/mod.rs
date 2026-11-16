@@ -225,25 +225,34 @@ impl DbPaths {
 }
 
 #[cfg(windows)]
-fn default_root() -> Option<PathBuf> {
+pub(crate) fn default_data_root() -> Option<PathBuf> {
     std::env::var_os("APPDATA")
         .or_else(|| std::env::var_os("LOCALAPPDATA"))
         .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(|base| PathBuf::from(base).join("rayscan").join("db"))
+        .map(|base| PathBuf::from(base).join("rayscan"))
+}
+
+#[cfg(windows)]
+fn default_root() -> Option<PathBuf> {
+    default_data_root().map(|base| base.join("db"))
 }
 
 #[cfg(not(windows))]
-fn default_root() -> Option<PathBuf> {
+pub(crate) fn default_data_root() -> Option<PathBuf> {
     if let Some(base) = std::env::var_os("XDG_DATA_HOME") {
-        return Some(PathBuf::from(base).join("rayscan").join("db"));
+        return Some(PathBuf::from(base).join("rayscan"));
     }
     std::env::var_os("HOME").map(|home| {
         PathBuf::from(home)
             .join(".local")
             .join("share")
             .join("rayscan")
-            .join("db")
     })
+}
+
+#[cfg(not(windows))]
+fn default_root() -> Option<PathBuf> {
+    default_data_root().map(|base| base.join("db"))
 }
 
 pub fn now_unix() -> u64 {

@@ -98,7 +98,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
-use crate::cli::ScriptsListArgs;
+use crate::cli::{ScriptsAction, ScriptsArgs, ScriptsListArgs};
 use crate::error::AppError;
 use crate::model::{PortResult, PortState};
 use crate::plugin::{Assessment, merge_assessment};
@@ -121,6 +121,9 @@ const MAX_IDENTIFIER_CHARS: usize = 64;
 const MAX_COMMAND_ARGS: usize = 16;
 const MAX_COMMAND_ARG_CHARS: usize = 512;
 const MAX_WASM_BYTES: usize = 4 * 1024 * 1024;
+/// Caps applied when installing a pack directory into the script library.
+const MAX_LIBRARY_ENTRIES: usize = 4096;
+const MAX_LIBRARY_BYTES: u64 = 512 * 1024 * 1024;
 /// Fuel budget per WASM run (roughly wasm instructions). The wall-clock
 /// timeout remains the hard backstop; fuel keeps a runaway loop bounded even
 /// beyond the kill window.
@@ -351,6 +354,7 @@ impl Registry {
 
         let mut files = Vec::new();
         if metadata.is_dir() {
+            let mut subdirectories = Vec::new();
             for entry in std::fs::read_dir(path).map_err(|error| {
                 AppError::usage(format!(
                     "cannot read scripts directory {}: {error}",
@@ -364,17 +368,42 @@ impl Registry {
                     ))
                 })?;
                 let candidate = entry.path();
+                let file_type = entry.file_type().ok();
                 let is_manifest = candidate
                     .extension()
                     .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
-                if is_manifest && entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                if is_manifest && file_type.is_some_and(|kind| kind.is_file()) {
                     files.push(candidate);
+                } else if file_type.is_some_and(|kind| kind.is_dir()) {
+                    subdirectories.push(candidate);
                 }
+            }
+            // Library layout: one subdirectory per installed pack. Load
+            // manifests directly inside each subdirectory so a library root
+            // (or any grouped scripts directory) works without extra flags.
+            subdirectories.sort();
+            for directory in subdirectories {
+                let mut nested = Vec::new();
+                let entries = match std::fs::read_dir(&directory) {
+                    Ok(entries) => entries,
+                    Err(_) => continue,
+                };
+                for entry in entries.flatten() {
+                    let candidate = entry.path();
+                    let is_manifest = candidate
+                        .extension()
+                        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
+                    if is_manifest && entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                        nested.push(candidate);
+                    }
+                }
+                nested.sort();
+                files.extend(nested);
             }
             files.sort();
             if files.is_empty() {
                 return Err(AppError::usage(format!(
-                    "no *.toml script manifests found in {}",
+                    "no *.toml script manifests found in {} or its pack subdirectories",
                     path.display()
                 )));
             }
@@ -559,8 +588,87 @@ impl Registry {
     }
 }
 
-pub fn run_cli(args: ScriptsListArgs) -> Result<(), AppError> {
-    let registry = Registry::load(&args.path)?;
+/// Resolve the local script pack library directory.
+///
+/// Priority: explicit `--scripts-dir`, `RAYSCAN_SCRIPTS_DIR`, then the
+/// platform data directory (`<data>/rayscan/scripts`, sibling of the NVD db).
+pub fn library_dir(explicit: Option<&Path>) -> Result<PathBuf, AppError> {
+    if let Some(path) = explicit {
+        return Ok(path.to_path_buf());
+    }
+    if let Some(path) = std::env::var_os("RAYSCAN_SCRIPTS_DIR") {
+        return Ok(PathBuf::from(path));
+    }
+    crate::db::default_data_root()
+        .map(|base| base.join("scripts"))
+        .ok_or_else(|| {
+            AppError::usage(
+                "cannot determine the script library directory; set RAYSCAN_SCRIPTS_DIR or --scripts-dir",
+            )
+        })
+}
+
+pub fn run_cli(args: ScriptsArgs, scripts_dir: Option<&Path>) -> Result<(), AppError> {
+    match args.action {
+        ScriptsAction::List(list) => list_cli(list, scripts_dir),
+        ScriptsAction::Install(install) => {
+            let library = library_dir(scripts_dir)?;
+            let installed = install_pack(&install.source, &library, install.force)?;
+            println!(
+                "installed {} -> {}",
+                install.source.display(),
+                installed.display()
+            );
+            Ok(())
+        }
+        ScriptsAction::Uninstall(uninstall) => {
+            let library = library_dir(scripts_dir)?;
+            let removed = uninstall_pack(&uninstall.name, &library)?;
+            println!("removed {}", removed.display());
+            Ok(())
+        }
+        ScriptsAction::Library(library_args) => {
+            let library = library_dir(scripts_dir)?;
+            let exists = library.is_dir();
+            if library_args.json {
+                let payload = serde_json::json!({
+                    "path": library.display().to_string(),
+                    "exists": exists,
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).map_err(|error| AppError::runtime(
+                        format!("cannot encode library JSON: {error}")
+                    ))?
+                );
+            } else {
+                println!("{}", library.display());
+                if !exists {
+                    println!(
+                        "(directory does not exist yet; install a pack with `rayscan scripts install DIR`)"
+                    );
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+fn list_cli(args: ScriptsListArgs, scripts_dir: Option<&Path>) -> Result<(), AppError> {
+    let path = match args.path {
+        Some(path) => path,
+        None => {
+            let library = library_dir(scripts_dir)?;
+            if !library.is_dir() {
+                return Err(AppError::usage(format!(
+                    "no script library directory at {}; install a pack with `rayscan scripts install <DIR>` or pass an explicit PATH",
+                    library.display()
+                )));
+            }
+            library
+        }
+    };
+    let registry = Registry::load(&path)?;
     let summaries = registry.summaries();
     if args.json {
         let json = serde_json::to_string_pretty(&summaries)
@@ -617,6 +725,144 @@ pub fn run_cli(args: ScriptsListArgs) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+/// Validate a pack directory and copy it into the library under its
+/// directory name. Existing installations require `force`.
+pub fn install_pack(source: &Path, library: &Path, force: bool) -> Result<PathBuf, AppError> {
+    let metadata = std::fs::metadata(source).map_err(|error| {
+        AppError::usage(format!(
+            "cannot read script pack {}: {error}",
+            source.display()
+        ))
+    })?;
+    if !metadata.is_dir() {
+        return Err(AppError::usage(format!(
+            "script pack {} must be a directory",
+            source.display()
+        )));
+    }
+    // Compile every manifest before touching the library so a broken pack
+    // never lands on disk.
+    Registry::load(source)?;
+    let name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| AppError::usage("script pack directory has no usable name"))?;
+    validate_library_name(name)?;
+    let destination = library.join(name);
+    if destination.exists() {
+        if !force {
+            return Err(AppError::usage(format!(
+                "script pack '{name}' is already installed at {}; use --force to replace it",
+                destination.display()
+            )));
+        }
+        let source_canonical = std::fs::canonicalize(source).ok();
+        let destination_canonical = std::fs::canonicalize(&destination).ok();
+        if source_canonical.is_some() && source_canonical == destination_canonical {
+            return Err(AppError::usage(format!(
+                "script pack '{name}' is already installed at {}",
+                destination.display()
+            )));
+        }
+        std::fs::remove_dir_all(&destination).map_err(|error| {
+            AppError::usage(format!(
+                "cannot replace installed pack {}: {error}",
+                destination.display()
+            ))
+        })?;
+    }
+    std::fs::create_dir_all(library).map_err(|error| {
+        AppError::usage(format!(
+            "cannot create script library {}: {error}",
+            library.display()
+        ))
+    })?;
+    copy_tree(source, &destination)?;
+    Ok(destination)
+}
+
+/// Remove an installed pack from the library. Only direct child directories
+/// are addressable; names are identifier-validated.
+pub fn uninstall_pack(name: &str, library: &Path) -> Result<PathBuf, AppError> {
+    validate_library_name(name)?;
+    let target = library.join(name);
+    let metadata = std::fs::metadata(&target).map_err(|error| {
+        AppError::usage(format!(
+            "script pack '{name}' is not installed at {}: {error}",
+            target.display()
+        ))
+    })?;
+    if !metadata.is_dir() {
+        return Err(AppError::usage(format!(
+            "script pack '{name}' at {} is not a directory",
+            target.display()
+        )));
+    }
+    std::fs::remove_dir_all(&target).map_err(|error| {
+        AppError::usage(format!(
+            "cannot remove installed pack {}: {error}",
+            target.display()
+        ))
+    })?;
+    Ok(target)
+}
+
+fn validate_library_name(name: &str) -> Result<(), AppError> {
+    if name == "." || name == ".." {
+        return Err(AppError::usage("invalid script pack name"));
+    }
+    validate_identifier("script pack", name)
+}
+
+fn copy_tree(source: &Path, destination: &Path) -> Result<(), AppError> {
+    std::fs::create_dir_all(destination).map_err(copy_error(destination))?;
+    let mut entries = 0usize;
+    let mut total = 0u64;
+    let mut stack = vec![(source.to_path_buf(), destination.to_path_buf())];
+    while let Some((from, to)) = stack.pop() {
+        for entry in std::fs::read_dir(&from).map_err(copy_error(&from))? {
+            let entry = entry.map_err(copy_error(&from))?;
+            let file_type = entry.file_type().map_err(copy_error(&entry.path()))?;
+            if !file_type.is_file() && !file_type.is_dir() {
+                return Err(AppError::usage(format!(
+                    "script pack contains an unsupported entry (symlink?): {}",
+                    entry.path().display()
+                )));
+            }
+            entries += 1;
+            if entries > MAX_LIBRARY_ENTRIES {
+                return Err(AppError::usage(format!(
+                    "script pack contains more than {MAX_LIBRARY_ENTRIES} entries"
+                )));
+            }
+            let target = to.join(entry.file_name());
+            if file_type.is_dir() {
+                std::fs::create_dir_all(&target).map_err(copy_error(&target))?;
+                stack.push((entry.path(), target));
+            } else {
+                let size = entry.metadata().map_err(copy_error(&entry.path()))?.len();
+                total = total.saturating_add(size);
+                if total > MAX_LIBRARY_BYTES {
+                    return Err(AppError::usage(format!(
+                        "script pack exceeds the {MAX_LIBRARY_BYTES}-byte install limit"
+                    )));
+                }
+                std::fs::copy(entry.path(), &target).map_err(copy_error(&target))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn copy_error(path: &Path) -> impl Fn(std::io::Error) -> AppError + '_ {
+    move |error| {
+        AppError::usage(format!(
+            "cannot copy script pack entry {}: {error}",
+            path.display()
+        ))
+    }
 }
 
 fn compile_script(pack: &str, dir: &Path, raw: RawScript) -> Result<CompiledScript, AppError> {
@@ -1872,5 +2118,78 @@ timeout_ms = 100
             "unexpected error: {error}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn library_dir_prefers_the_explicit_path() {
+        let explicit = std::path::Path::new("/tmp/rayscan-library-explicit");
+        assert_eq!(
+            library_dir(Some(explicit)).expect("explicit library"),
+            explicit
+        );
+    }
+
+    #[test]
+    fn install_and_uninstall_round_trip() {
+        let base =
+            std::env::temp_dir().join(format!("rayscan-script-library-{}", std::process::id()));
+        let source = base.join("src").join("lab-pack");
+        std::fs::create_dir_all(&source).expect("create source pack");
+        std::fs::write(
+            source.join("check.wat"),
+            wasm_echo_wat(r#"{"findings":[{"title":"Library finding"}]}"#),
+        )
+        .expect("write module");
+        std::fs::write(
+            source.join("pack.toml"),
+            "name = \"lab-pack\"\n[[script]]\nname = \"check\"\nwasm = \"check.wat\"\n",
+        )
+        .expect("write manifest");
+        let library = base.join("library");
+
+        let installed = install_pack(&source, &library, false).expect("install pack");
+        assert_eq!(installed, library.join("lab-pack"));
+        assert!(installed.join("pack.toml").is_file());
+        assert!(installed.join("check.wat").is_file());
+        let registry = Registry::load(&library).expect("library loads");
+        assert_eq!(registry.script_count(), 1);
+        assert_eq!(registry.pack_count(), 1);
+
+        let duplicate = install_pack(&source, &library, false).expect_err("duplicate install");
+        assert!(duplicate.to_string().contains("already installed"));
+        install_pack(&source, &library, true).expect("forced reinstall");
+
+        let removed = uninstall_pack("lab-pack", &library).expect("uninstall pack");
+        assert_eq!(removed, library.join("lab-pack"));
+        assert!(!installed.exists());
+        let missing = uninstall_pack("lab-pack", &library).expect_err("second uninstall");
+        assert!(missing.to_string().contains("not installed"));
+
+        for name in ["..", ".", "a/b", "a\\b"] {
+            assert!(
+                uninstall_pack(name, &library).is_err(),
+                "name '{name}' must be rejected"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn install_rejects_broken_packs_before_copying() {
+        let base =
+            std::env::temp_dir().join(format!("rayscan-script-library-bad-{}", std::process::id()));
+        let source = base.join("src").join("broken-pack");
+        std::fs::create_dir_all(&source).expect("create source pack");
+        std::fs::write(source.join("pack.toml"), "name = \"broken\"\n").expect("write manifest");
+        let library = base.join("library");
+        let error = install_pack(&source, &library, false).expect_err("empty pack");
+        assert!(error.to_string().contains("contains no [[script]]"));
+        assert!(!library.join("broken-pack").exists());
+
+        let file_source = base.join("src").join("single.toml");
+        std::fs::write(&file_source, "name = \"single\"\n").expect("write file");
+        let error = install_pack(&file_source, &library, false).expect_err("file source");
+        assert!(error.to_string().contains("must be a directory"));
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
