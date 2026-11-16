@@ -1336,7 +1336,8 @@ packet capture.
   BlackRock permutation, BPF filter, and ARP. Complete.
 - [Phase 3](docs/phase3-gate.md): SYN retransmission, connect verification of
   SYN-open candidates, tarpit/SYN-proxy reclassification, and the exact SYN
-  lab gate. Complete.
+  lab gate. Complete; loss resilience re-verified in
+  [SYN Loss-Resilience Gate](docs/syn-loss-gate.md).
 - [Phase 4](docs/phase4-gate.md): service and version detection (TCP + UDP). Complete.
 - [Phase 5](docs/phase5-gate.md): OS fingerprinting via TCP/IP stack analysis. Complete.
 - [Phase 6](docs/phase6-gate.md): graceful Ctrl-C, resumable scans, nmap-xml/greppable
@@ -1412,6 +1413,7 @@ docs/phase3-gate.md         Phase 3 evidence
 docs/phase4-gate.md         Phase 4 evidence
 docs/phase5-gate.md         Phase 5 evidence
 docs/phase6-gate.md         Phase 6 evidence
+docs/syn-loss-gate.md       SYN retransmission and packet-loss evidence
 docs/live-test-metasploitable.md  final live validation and safe scan parameters
 docs/live-metasploitable-full-suite.md  comprehensive 10-scenario live test suite
 docs/phase8-ux-gate.md      Phase 8 UX checkpoint evidence

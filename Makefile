@@ -8,7 +8,7 @@ DESTDIR     ?=
 
 .PHONY: all build release test fmt lint audit deny fuzz sign ci \
         lab lab-down lab-check bench bench-test localhost-gate \
-        syn-gate service-gate syn-service-gate \
+        syn-gate service-gate syn-service-gate loss-gate loss-lab \
         musl install docker man dist clean
 
 all: build
@@ -127,6 +127,12 @@ localhost-gate:
 
 syn-gate:
 	python3 bench/syn_gate.py
+
+loss-gate:
+	@if [ "$$(id -u)" -eq 0 ]; then python3 bench/accuracy_suite.py; else sudo -E python3 bench/accuracy_suite.py; fi
+
+loss-lab:
+	@if [ "$$(id -u)" -eq 0 ]; then bash scripts/syn-loss-lab.sh; else sudo -E bash scripts/syn-loss-lab.sh; fi
 
 service-gate:
 	python3 bench/service_gate.py

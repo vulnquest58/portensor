@@ -121,6 +121,26 @@ All notable changes to rayscan are documented here.
   `rayscan(1)`. `make install` installs every generated page and release
   archives bundle them.
 
+### Fixed
+
+- SYN verification no longer loses live ports on lossy links. Retries of an
+  ambiguous verification (a handshake that ends in an immediate close) could
+  replace an earlier successful handshake with the last attempt's timeout, so
+  a dropped SYN on the final retry demoted an open port to filtered. Outcomes
+  are now ranked `Open > Silent > Closed > Filtered` and the strongest
+  evidence wins (`prefer_best_evidence` in `src/scanner.rs`). Verification
+  also honors the same 1500 ms `MIN_CONNECT_TIMEOUT` floor as connect scans,
+  since a shorter ceiling cannot outlast the kernel's first SYN retransmit.
+  On a 20% bidirectional-loss veth lab, `--syn --retries 2` went from 9-15/20
+  recovered open ports to 18-20/20; see `docs/syn-loss-gate.md` and
+  `scripts/syn-loss-lab.sh`.
+- SYN-proxy ports are no longer reported open. A reset that arrives after the
+  handshake but **before** any probe payload was sent is now classified
+  `closed` (and feeds the SYN-proxy defense assessment) instead of `open`;
+  the RSC-BUG-001 rule still applies to resets after a delivered payload.
+  This restores the Phase 3 accuracy gate (`bench/accuracy_suite.py`, zero
+  false positives) on the lab target at 0%, 5%, and 20% loss.
+
 ## [0.5.0] - 2026-11-13
 
 ### Added

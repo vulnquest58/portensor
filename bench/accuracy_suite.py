@@ -164,14 +164,14 @@ def main(argv: list[str] | None = None) -> int:
         time.sleep(0.5)
 
         profile_tag = "PASS" if profile_pass else "FAIL"
-        print(f"  → profile {loss}: {profile_tag}")
+        print(f"  -> profile {loss}: {profile_tag}")
         print()
 
     if overall_pass:
-        print(f"ALL PROFILES PASS — recall >= {RECALL_THRESHOLD:.0%}, FP == 0")
+        print(f"ALL PROFILES PASS -- recall >= {RECALL_THRESHOLD:.0%}, FP == 0")
         return 0
     else:
-        print("SOME PROFILES FAILED — see rows marked FAIL above")
+        print("SOME PROFILES FAILED -- see rows marked FAIL above")
         return 1
 
 

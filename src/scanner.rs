@@ -330,6 +330,27 @@ pub async fn verify_candidates(
     Ok(results)
 }
 
+/// Ranks how strongly a verification outcome proves the port has a listener.
+///
+/// A completed handshake is direct evidence; a timeout on a later attempt is
+/// merely absence of a reply (packet loss looks identical to filtering), so it
+/// must never overwrite stronger evidence gathered by an earlier attempt.
+fn evidence_rank(state: PortState) -> u8 {
+    match state {
+        PortState::Open => 3,
+        PortState::Silent => 2,
+        PortState::Closed => 1,
+        PortState::Filtered | PortState::Unreachable | PortState::Error => 0,
+    }
+}
+
+fn prefer_best_evidence(best: Option<PortResult>, latest: PortResult) -> PortResult {
+    match best {
+        Some(best) if evidence_rank(best.state) > evidence_rank(latest.state) => best,
+        _ => latest,
+    }
+}
+
 async fn verify_candidate(
     options: &ScanOptions,
     limiter: &RateLimiter,
@@ -337,13 +358,17 @@ async fn verify_candidate(
     port: u16,
 ) -> PortResult {
     let address = socket_addr(host, port);
+    // Match the connect-scan path: a shorter ceiling than the kernel's first
+    // SYN retransmit (~1s) cannot tell a lossy SYN from a filtered port.
+    let timeout = options.timeout.max(MIN_CONNECT_TIMEOUT);
     let mut attempt = 0u32;
+    let mut best: Option<PortResult> = None;
 
     loop {
         limiter.acquire().await;
         apply_jitter(options.jitter).await;
         let started = Instant::now();
-        let outcome = tokio::time::timeout(options.timeout, TcpStream::connect(address)).await;
+        let outcome = tokio::time::timeout(timeout, TcpStream::connect(address)).await;
         let elapsed = started.elapsed();
 
         match outcome {
@@ -353,9 +378,10 @@ async fn verify_candidate(
                     tokio::time::sleep(retry_delay(attempt)).await;
                     continue;
                 }
-                let failure = Failure::timed_out(options.timeout);
-                return PortResult::new(host, port, failure.kind.state(), elapsed)
+                let failure = Failure::timed_out(timeout);
+                let result = PortResult::new(host, port, failure.kind.state(), elapsed)
                     .with_detail(failure.detail);
+                return prefer_best_evidence(best, result);
             }
             Ok(Err(error)) => {
                 let failure = classify_io_error(&error);
@@ -364,8 +390,9 @@ async fn verify_candidate(
                     tokio::time::sleep(retry_delay(attempt)).await;
                     continue;
                 }
-                return PortResult::new(host, port, failure.kind.state(), elapsed)
+                let result = PortResult::new(host, port, failure.kind.state(), elapsed)
                     .with_detail(failure.detail);
+                return prefer_best_evidence(best, result);
             }
             Ok(Ok(stream)) => {
                 let result = verify_service(
@@ -385,11 +412,12 @@ async fn verify_candidate(
                 let ambiguous = matches!(result.state, PortState::Closed | PortState::Silent)
                     || (result.state == PortState::Open && result.service.is_none());
                 if ambiguous && attempt < options.retries {
+                    best = Some(prefer_best_evidence(best, result));
                     attempt += 1;
                     tokio::time::sleep(retry_delay(attempt)).await;
                     continue;
                 }
-                return result;
+                return prefer_best_evidence(best, result);
             }
         }
     }
@@ -732,7 +760,9 @@ async fn verify_and_inspect(
     match read_chunk(&mut stream, &mut banner, grace_end).await {
         ReadOutcome::Data | ReadOutcome::Timeout => {}
         ReadOutcome::Eof => closed = true,
-        ReadOutcome::Error(error) => return verification_failure(host, port, latency, error),
+        ReadOutcome::Error(error) => {
+            return verification_failure(host, port, latency, error, false);
+        }
     }
 
     // Services such as SMB, MongoDB, Redis, and memcached wait for a
@@ -754,7 +784,7 @@ async fn verify_and_inspect(
                     break;
                 }
                 ReadLoopOutcome::Error(error) => {
-                    return verification_failure(host, port, latency, error);
+                    return verification_failure(host, port, latency, error, true);
                 }
             }
         }
@@ -769,7 +799,7 @@ async fn verify_and_inspect(
             ReadLoopOutcome::Data => {}
             ReadLoopOutcome::Closed => closed = true,
             ReadLoopOutcome::Error(error) => {
-                return verification_failure(host, port, latency, error);
+                return verification_failure(host, port, latency, error, true);
             }
         }
     }
@@ -796,24 +826,46 @@ fn verification_failure(
     port: u16,
     latency: Duration,
     error: std::io::Error,
+    probe_sent: bool,
 ) -> PortResult {
     let failure = classify_io_error(&error);
 
     // FIX RSC-BUG-001: A reset or abort received AFTER a successful TCP handshake
-    // means the port IS open — the listener (or its SYN-proxy) accepted the
-    // connection and then rejected our specific probe payload.
-    // We must NOT classify this as Closed; the handshake already proved the port
-    // is listening. This is distinct from a RST-to-SYN during connect() itself,
-    // which correctly maps to Closed via classify_kind() on the connect() error.
-    let state = match failure.kind {
-        FailureKind::Closed => PortState::Open,
-        other => other.state(),
+    // and AFTER we sent a probe payload means the port IS open - the listener
+    // accepted the connection and then rejected our specific payload. That is
+    // distinct from a RST-to-SYN during connect() itself, which correctly maps
+    // to Closed via classify_kind() on the connect() error.
+    //
+    // A reset BEFORE any payload is different: an idle established connection
+    // that the peer kills outright is what a SYN-proxy with no backend does
+    // (and what firewalls that reset unknown clients do). The port answered
+    // the handshake but refuses to carry a session, so it must not be reported
+    // open; the Closed reclassification also feeds SYN-proxy detection
+    // (src/defense.rs).
+    let (state, detail) = if failure.kind == FailureKind::Closed {
+        if probe_sent {
+            (
+                PortState::Open,
+                format!(
+                    "port accepted connection; probe rejected by listener or upstream filter ({})",
+                    failure.detail
+                ),
+            )
+        } else {
+            (
+                PortState::Closed,
+                format!(
+                    "connection reset right after the handshake and before any probe payload \
+                     was sent (middlebox refusal or listener that resets idle sessions: {})",
+                    failure.detail
+                ),
+            )
+        }
+    } else {
+        (failure.kind.state(), failure.detail)
     };
 
-    PortResult::new(host, port, state, latency).with_detail(format!(
-        "port accepted connection; probe rejected by listener or upstream filter ({})",
-        failure.detail
-    ))
+    PortResult::new(host, port, state, latency).with_detail(detail)
 }
 
 fn silent_result(
@@ -1000,17 +1052,57 @@ mod tests {
         (port, task)
     }
 
+    /// Accepts exactly one connection, closes it, then stops listening so any
+    /// later verification attempt is refused. Models a listener that answers
+    /// the first probe and is unreachable (or lossy) afterwards.
+    async fn close_once_server() -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let task = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            drop(socket);
+            drop(listener);
+        });
+        (port, task)
+    }
+
     #[test]
-    fn reset_after_handshake_is_classified_open() {
-        // RSC-BUG-001 regression: verification_failure() only runs after a
-        // successful TCP handshake, so a reset reported there means the port
-        // is open and the probe payload was rejected — never Closed.
+    fn best_evidence_prefers_stronger_states() {
+        let open = PortResult::new(host(), 80, PortState::Open, Duration::ZERO);
+        let silent = PortResult::new(host(), 80, PortState::Silent, Duration::ZERO);
+        let filtered = PortResult::new(host(), 80, PortState::Filtered, Duration::ZERO);
+        let closed = PortResult::new(host(), 80, PortState::Closed, Duration::ZERO);
+
+        assert_eq!(
+            prefer_best_evidence(Some(open.clone()), filtered.clone()).state,
+            PortState::Open
+        );
+        assert_eq!(
+            prefer_best_evidence(Some(silent.clone()), filtered.clone()).state,
+            PortState::Silent
+        );
+        assert_eq!(
+            prefer_best_evidence(Some(closed), filtered.clone()).state,
+            PortState::Closed
+        );
+        assert_eq!(
+            prefer_best_evidence(Some(filtered), open.clone()).state,
+            PortState::Open
+        );
+        assert_eq!(prefer_best_evidence(None, open).state, PortState::Open);
+    }
+
+    #[test]
+    fn reset_after_probe_payload_is_classified_open() {
+        // RSC-BUG-001 regression: a reset that arrives after the handshake and
+        // after our probe payload means the listener accepted the connection
+        // and rejected the payload — never Closed.
         let error = std::io::Error::from(std::io::ErrorKind::ConnectionReset);
-        let result = verification_failure(host(), 88, Duration::from_millis(5), error);
+        let result = verification_failure(host(), 88, Duration::from_millis(5), error, true);
         assert_eq!(
             result.state,
             PortState::Open,
-            "a reset after connect() proves the port accepted the connection"
+            "a reset after a delivered probe proves the port accepted the connection"
         );
     }
 
@@ -1022,9 +1114,20 @@ mod tests {
             std::io::ErrorKind::BrokenPipe,
         ] {
             let error = std::io::Error::from(kind);
-            let result = verification_failure(host(), 445, Duration::from_millis(5), error);
+            let result = verification_failure(host(), 445, Duration::from_millis(5), error, true);
             assert_eq!(result.state, PortState::Open, "kind {kind:?}");
         }
+    }
+
+    #[test]
+    fn reset_before_probe_payload_is_not_open() {
+        // SYN-proxy with no backend (or a firewall that resets unknown
+        // clients): the handshake completes, then the peer kills the idle
+        // connection before any payload. That is not usable openness, and the
+        // Closed reclassification is what feeds SYN-proxy detection.
+        let error = std::io::Error::from(std::io::ErrorKind::ConnectionReset);
+        let result = verification_failure(host(), 9003, Duration::from_millis(5), error, false);
+        assert_eq!(result.state, PortState::Closed);
     }
 
     #[tokio::test]
@@ -1168,6 +1271,22 @@ mod tests {
             result.service.as_ref().unwrap().product.as_deref(),
             Some("retry-lab")
         );
+    }
+
+    #[tokio::test]
+    async fn verification_keeps_stronger_evidence_when_a_retry_fails() {
+        // Regression for lossy paths: the first attempt completes the
+        // handshake (immediate close = open listener), then the retry cannot
+        // connect at all. The loss on the retry must not demote the port.
+        let (port, server) = close_once_server().await;
+        let mut options = options(false);
+        options.retries = 1;
+
+        let limiter = RateLimiter::new(0);
+        let result = verify_candidate(&options, &limiter, host(), port).await;
+        server.await.unwrap();
+
+        assert_eq!(result.state, PortState::Open);
     }
 
     #[tokio::test]
