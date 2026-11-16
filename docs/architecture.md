@@ -109,6 +109,15 @@ For each job:
 5. On handshake success, wait briefly for a banner unless `--connect-only` is set.
 6. Emit `open`, `closed`, `filtered`, `silent`, `unreachable`, or `error`.
 
+Banner waits and active probes (step 5) run on a dedicated verification pool
+sized 4× the connect worker count, so bursts of silent or slow-banner ports
+cannot occupy connect-worker slots and throttle the connect pipeline.
+
+Remaining SYN-engine speed ideas (not yet implemented): wave-based
+retransmission that retransmits a probe as soon as its own RTT window
+expires instead of waiting a full timeout after each whole pass, and
+exploiting AIMD headroom above the configured rate on healthy paths.
+
 Timeouts do not provide RTT samples (Karn's rule); they increase a bounded
 per-host backoff. Successful connects and RTT-bearing refusals update SRTT and
 RTTVAR. The minimum connect timeout is 1.5 seconds so a dropped SYN has room for
