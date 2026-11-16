@@ -974,6 +974,7 @@ mod tests {
             product: Some("OpenSSH".to_string()),
             version: Some("8.9".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         r22.confidence = Some(1.0);
 
@@ -983,6 +984,7 @@ mod tests {
             product: Some("Apache".to_string()),
             version: Some("2.4.52".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         r80.confidence = Some(0.95);
 
@@ -1046,6 +1048,7 @@ mod tests {
             product: Some("nginx".to_string()),
             version: Some("1.18.0".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         result.confidence = Some(1.0);
         result.advisories = vec![

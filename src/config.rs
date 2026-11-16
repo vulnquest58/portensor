@@ -135,6 +135,8 @@ pub struct FileConfig {
     pub show: Option<Vec<StateFilter>>,
     pub theme: Option<Theme>,
     pub plugins: Option<PathBuf>,
+    pub scripts: Option<PathBuf>,
+    pub allow_intrusive: Option<bool>,
     pub jitter_ms: Option<u64>,
 }
 

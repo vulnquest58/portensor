@@ -15,6 +15,8 @@ use crate::theme::{Theme, color_enabled};
 
 /// Maximum advisory rows rendered per port in human-readable output.
 const MAX_ADVISORY_LINES: usize = 10;
+/// Maximum sidecar finding rows rendered in human-readable output.
+const MAX_SCRIPT_FINDING_LINES: usize = 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -213,6 +215,7 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
         if options.advisories {
             print!("{}", render_advisory_section(&selected));
         }
+        print!("{}", render_script_findings(&selected));
         if let Some(exp_port) = options.explain {
             println!("\nAccuracy & Evidence Explanations:");
             println!("{}", "─".repeat(70));
@@ -245,6 +248,9 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
                         )
                     );
                     for line in advisory_explain_lines(res) {
+                        println!("{line}");
+                    }
+                    for line in service_explain_lines(res) {
                         println!("{line}");
                     }
                 }
@@ -471,6 +477,7 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
     if opts.advisories {
         output.push_str(&render_advisory_section(results));
     }
+    output.push_str(&render_script_findings(results));
 
     if let Some(exp_port) = opts.explain {
         output.push_str("\nAccuracy & Evidence Explanations:\n");
@@ -502,6 +509,10 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
                     },
                 ));
                 for line in advisory_explain_lines(res) {
+                    output.push_str(&line);
+                    output.push('\n');
+                }
+                for line in service_explain_lines(res) {
                     output.push_str(&line);
                     output.push('\n');
                 }
@@ -674,6 +685,103 @@ fn advisory_explain_lines(result: &PortResult) -> Vec<String> {
     lines
 }
 
+fn service_explain_lines(result: &PortResult) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(detail) = result.detail.as_deref().filter(|detail| !detail.is_empty()) {
+        lines.push(format!("  Identification:      {detail}"));
+    }
+    let Some(service) = &result.service else {
+        return lines;
+    };
+    if let Some(cpe) = &service.cpe {
+        lines.push(format!("  CPE:                 {cpe}"));
+    }
+    for (key, value) in service.info.iter().take(8) {
+        lines.push(format!("  Fact {key}: {value}"));
+    }
+    if service.info.len() > 8 {
+        lines.push(format!(
+            "  ... and {} more fact(s) (see JSON output)",
+            service.info.len() - 8
+        ));
+    }
+    for finding in result.script_findings.iter().take(8) {
+        let confidence = finding
+            .confidence
+            .map(|value| format!(" {:.0}%", value * 100.0))
+            .unwrap_or_default();
+        lines.push(format!(
+            "  Finding [{}] {} (plugin: {}){}",
+            finding.severity.label(),
+            finding.title,
+            finding.plugin,
+            confidence
+        ));
+        if let Some(evidence) = &finding.evidence {
+            lines.push(format!("    evidence: {evidence}"));
+        }
+    }
+    if result.script_findings.len() > 8 {
+        lines.push(format!(
+            "  ... and {} more finding(s) (see JSON output)",
+            result.script_findings.len() - 8
+        ));
+    }
+    lines
+}
+
+fn render_script_findings(results: &[&PortResult]) -> String {
+    let hits: Vec<&&PortResult> = results
+        .iter()
+        .filter(|result| !result.script_findings.is_empty())
+        .collect();
+    if hits.is_empty() {
+        return String::new();
+    }
+
+    let total: usize = hits.iter().map(|result| result.script_findings.len()).sum();
+    let mut output = String::from("\nScript Plugin Findings:\n");
+    output.push_str(&"\u{2501}".repeat(70));
+    output.push('\n');
+    let mut rendered = 0;
+    for result in &hits {
+        for finding in &result.script_findings {
+            if rendered >= MAX_SCRIPT_FINDING_LINES {
+                break;
+            }
+            let confidence = finding
+                .confidence
+                .map(|value| format!(" {:.0}%", value * 100.0))
+                .unwrap_or_default();
+            output.push_str(&format!(
+                "  {}:{} [{}] {} (plugin: {}){}\n",
+                result.host,
+                result.port,
+                finding.severity.label(),
+                finding.title,
+                finding.plugin,
+                confidence
+            ));
+            if let Some(evidence) = &finding.evidence {
+                let evidence: String = evidence.chars().take(160).collect();
+                output.push_str(&format!("    {evidence}\n"));
+            }
+            rendered += 1;
+        }
+    }
+    if total > rendered {
+        output.push_str(&format!(
+            "\n  ... and {} more finding(s); see JSON output for the full list.\n",
+            total - rendered
+        ));
+    }
+    output.push_str(&format!(
+        "\n  {total} script finding(s) across {} open service(s); sidecar scripts run with your privileges - verify results.\n",
+        hits.len()
+    ));
+    output
+}
+
 fn render_advisory_section(results: &[&PortResult]) -> String {
     let hits: Vec<&&PortResult> = results
         .iter()
@@ -794,6 +902,8 @@ pub(crate) struct JsonResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) evidence: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) findings: Vec<crate::script::PluginFinding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) advisories: Vec<crate::advisory::AdvisoryMatch>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tls: Option<crate::tls::TlsInfo>,
@@ -813,6 +923,7 @@ impl JsonResult {
             detail: result.detail.clone(),
             confidence: result.confidence,
             evidence: result.evidence.clone(),
+            findings: result.script_findings.clone(),
             advisories: result.advisories.clone(),
             tls: result.tls.clone(),
             rdp: result.rdp.clone(),
@@ -1204,6 +1315,69 @@ fn render_sarif(results: &[&PortResult]) -> Result<String, AppError> {
                 }
             }));
         }
+
+        for finding in &result.script_findings {
+            let level = match finding.severity {
+                crate::script::FindingSeverity::Critical | crate::script::FindingSeverity::High => {
+                    "error"
+                }
+                crate::script::FindingSeverity::Medium => "warning",
+                crate::script::FindingSeverity::Low | crate::script::FindingSeverity::Info => {
+                    "note"
+                }
+            };
+            let rule_id = format!("script:{}:{}", finding.plugin, finding.id);
+            rules.entry(rule_id.clone()).or_insert_with(|| {
+                json!({
+                    "id": rule_id,
+                    "name": finding.title,
+                    "shortDescription": {"text": finding.title},
+                    "fullDescription": {
+                        "text": finding.description.clone().unwrap_or_else(|| finding.title.clone())
+                    },
+                    "defaultConfiguration": {"level": level},
+                    "properties": {
+                        "severity": finding.severity.label(),
+                        "plugin": finding.plugin,
+                        "confidence": finding.confidence,
+                        "cve": finding.cve,
+                        "references": finding.references,
+                    }
+                })
+            });
+            let service = Some(service_label(result)).filter(|label| !label.is_empty());
+            findings.push(json!({
+                "ruleId": rule_id,
+                "level": level,
+                "message": {
+                    "text": format!(
+                        "{}:{} [{}] {} (plugin: {})",
+                        result.host,
+                        result.port,
+                        finding.severity.label(),
+                        finding.title,
+                        finding.plugin
+                    )
+                },
+                "locations": [{
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": format!("tcp://{}:{}", result.host, result.port)}
+                    }
+                }],
+                "properties": {
+                    "host": result.host.to_string(),
+                    "port": result.port,
+                    "service": service,
+                    "plugin": finding.plugin,
+                    "severity": finding.severity.label(),
+                    "confidence": finding.confidence,
+                    "description": finding.description,
+                    "evidence": finding.evidence,
+                    "cve": finding.cve,
+                    "references": finding.references,
+                }
+            }));
+        }
     }
 
     let payload = json!({
@@ -1348,6 +1522,43 @@ fn render_markdown(
                     advisory.severity.label(),
                     advisory.cvss,
                     md_cell(&advisory.title)
+                ));
+            }
+        }
+        out.push('\n');
+    }
+
+    let script_hits: Vec<_> = results
+        .iter()
+        .filter(|result| !result.script_findings.is_empty())
+        .collect();
+    if !script_hits.is_empty() {
+        out.push_str("## Script Findings\n\n");
+        out.push_str(
+            "| Host | Port | Severity | Plugin | Title | Confidence | CVEs | Evidence |\n",
+        );
+        out.push_str("|---|---:|---|---|---|---:|---|---|\n");
+        for result in script_hits {
+            for finding in &result.script_findings {
+                let confidence = finding
+                    .confidence
+                    .map(|value| format!("{:.0}%", value * 100.0))
+                    .unwrap_or_default();
+                let cves = if finding.cve.is_empty() {
+                    "-".to_string()
+                } else {
+                    finding.cve.join(", ")
+                };
+                out.push_str(&format!(
+                    "| {} | {} | {} | {} | {} | {} | {} | {} |\n",
+                    result.host,
+                    result.port,
+                    finding.severity.label(),
+                    md_cell(&finding.plugin),
+                    md_cell(&finding.title),
+                    confidence,
+                    md_cell(&cves),
+                    md_cell(finding.evidence.as_deref().unwrap_or(""))
                 ));
             }
         }
@@ -1574,6 +1785,7 @@ mod tests {
                     product: Some("rayscan-lab".to_string()),
                     version: None,
                     confidence: Some(0.85),
+                    ..Default::default()
                 }),
                 banner: Some("HTTP/1.1 200 OK".to_string()),
             });
@@ -1764,6 +1976,7 @@ mod tests {
             product: Some("vsFTPd".to_string()),
             version: Some("2.3.4".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         report.results[0].banner = Some("220 (vsFTPd 2.3.4)".to_string());
         crate::accuracy::score_report(&mut report);
@@ -1821,6 +2034,7 @@ mod tests {
             product: Some("vsFTPd".to_string()),
             version: Some("2.3.4".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         report.results[0].banner = Some("220 (vsFTPd 2.3.4)".to_string());
         crate::accuracy::score_report(&mut report);
@@ -1840,6 +2054,7 @@ mod tests {
             product: Some("vsFTPd".to_string()),
             version: Some("2.3.4".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         report.results[0].banner = Some("220 (vsFTPd 2.3.4)".to_string());
         crate::advisory::apply_advisories(&mut report);
@@ -1872,11 +2087,16 @@ mod tests {
             product: Some("vsFTPd".to_string()),
             version: Some("2.3.4".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         report.results[0].banner = Some("220 (vsFTPd 2.3.4)".to_string());
         report.results[0].tls = Some(crate::tls::TlsInfo {
             version: "TLSv1.3".to_string(),
             cipher: "TLS13_AES_256_GCM_SHA384".to_string(),
+            alpn: Some("http/1.1".to_string()),
+            key_algorithm: Some("RSA".to_string()),
+            signature_algorithm: Some("sha256WithRSA".to_string()),
+            chain: vec!["CN=example.test".to_string()],
             subject: Some("CN=example.test".to_string()),
             issuer: Some("CN=example.test".to_string()),
             san: Vec::new(),
@@ -1902,6 +2122,74 @@ mod tests {
         assert!(output.contains("TLSv1.3"));
         assert!(output.contains("self-signed"));
         assert!(output.contains("hostname-mismatch"));
+    }
+
+    fn script_finding() -> crate::script::PluginFinding {
+        crate::script::PluginFinding {
+            id: "exposed-api".to_string(),
+            title: "Docker API exposed".to_string(),
+            severity: crate::script::FindingSeverity::High,
+            confidence: Some(0.9),
+            description: Some("Unauthenticated Docker engine API".to_string()),
+            evidence: Some("version endpoint answered".to_string()),
+            cve: vec!["CVE-2024-1234".to_string()],
+            references: vec!["https://example.test/docker".to_string()],
+            plugin: "lab/container-check".to_string(),
+        }
+    }
+
+    #[test]
+    fn script_findings_render_in_table_json_markdown_and_sarif() {
+        let mut report = sample_report();
+        report.results[0].script_findings.push(script_finding());
+
+        let results: Vec<&PortResult> = report.results.iter().collect();
+
+        let table = render_table(
+            &report,
+            &results,
+            TableOptions {
+                theme: Theme::Minimal,
+                ..Default::default()
+            },
+        );
+        assert!(table.contains("Script Plugin Findings:"));
+        assert!(table.contains("[HIGH] Docker API exposed"));
+        assert!(table.contains("plugin: lab/container-check"));
+
+        let json = render_json(&report, "192.0.2.1", StateSet::open(), None, None).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            payload["open"][0]["findings"][0]["title"],
+            "Docker API exposed"
+        );
+        assert_eq!(payload["open"][0]["findings"][0]["severity"], "high");
+        assert_eq!(
+            payload["open"][0]["findings"][0]["plugin"],
+            "lab/container-check"
+        );
+
+        let markdown = render_markdown(&report, "192.0.2.1", &results, None);
+        assert!(markdown.contains("## Script Findings"));
+        assert!(markdown.contains("lab/container-check"));
+        assert!(markdown.contains("CVE-2024-1234"));
+
+        let sarif = render_sarif(&results).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&sarif).unwrap();
+        assert!(
+            payload["runs"][0]["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|result| result["ruleId"] == "script:lab/container-check:exposed-api")
+        );
+        assert!(
+            payload["runs"][0]["tool"]["driver"]["rules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|rule| rule["id"] == "script:lab/container-check:exposed-api")
+        );
     }
 
     #[test]

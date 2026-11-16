@@ -53,16 +53,21 @@ Check permissions, terminal support, and scan capabilities
 rayscan\-db(1)
 Manage the local NVD CVE advisory database
 .TP
+rayscan\-probes(1)
+List built\-in and custom probe packs
+.TP
+rayscan\-scripts(1)
+List and validate sidecar script plugin manifests
+.TP
 rayscan\-interactive(1)
 Set up and run a scan with guided prompts
-.TP
-rayscan\-help(1)
-Print this message or the help of the given subcommand(s)
 .SH EXTRA
 Examples:
   rayscan scan \-\-target 127.0.0.1 \-\-ports 1\-1024
   rayscan scan \-t 10.0.0.0/24 \-p 22,80,443 \-\-json
   rayscan scan \-t 10.77.0.2 \-p 1\-10000 \-\-profile careful \-\-show all
+  rayscan scan \-t 10.77.0.2 \-\-scripts ./scripts \-\-json
+  rayscan scripts list ./scripts \-\-json
   rayscan db intel \-\-force
   sudo rayscan scan \-6 \-t fe80::/64 \-\-ndp \-p 22,80,443
 .SH VERSION

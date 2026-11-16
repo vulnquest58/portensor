@@ -1,0 +1,150 @@
+# Web-based platforms whose health or status endpoints disclose the product
+# and an exact version without credentials.
+
+name = "appliances"
+description = "Web platform identity and version probes"
+
+[[probe]]
+name = "jenkins-root"
+service = "jenkins"
+ports = [8080]
+product = "Jenkins"
+cpe = "cpe:2.3:a:jenkins:jenkins"
+confidence = 0.96
+version_regex = '(?i)X-Jenkins:\s*([0-9][0-9.]*)'
+ignore_case = true
+
+[[probe.step]]
+name = "root"
+send = "GET / HTTP/1.1\r\nHost: scan\r\nConnection: close\r\n\r\n"
+expect = "X-Jenkins:"
+read_until = '\r\n\r\n'
+timeout_ms = 1500
+
+[probe.info]
+server = '(?i)Server:\s*([^\r\n]+)'
+
+[[probe]]
+name = "grafana-health"
+service = "grafana"
+ports = [3000]
+product = "Grafana"
+cpe = "cpe:2.3:a:grafana:grafana"
+confidence = 0.96
+version_regex = '"version"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "health"
+send = "GET /api/health HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"database"'
+timeout_ms = 1500
+
+[probe.info]
+database = '"database"\s*:\s*"([^"]+)"'
+commit = '"commit"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "prometheus-buildinfo"
+service = "prometheus"
+ports = [9090]
+product = "Prometheus"
+cpe = "cpe:2.3:a:prometheus:prometheus"
+confidence = 0.96
+version_regex = '"version"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "buildinfo"
+send = "GET /api/v1/status/buildinfo HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"goVersion"'
+timeout_ms = 1500
+
+[probe.info]
+go_version = '"goVersion"\s*:\s*"([^"]+)"'
+branch = '"branch"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "kibana-status"
+service = "kibana"
+ports = [5601]
+product = "Kibana"
+cpe = "cpe:2.3:a:elastic:kibana"
+confidence = 0.95
+version_regex = '"number"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "status"
+send = "GET /api/status HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"status"'
+timeout_ms = 1500
+
+[probe.info]
+level = '"level"\s*:\s*"([^"]+)"'
+summary = '"summary"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "rabbitmq-overview"
+service = "rabbitmq"
+ports = [15672]
+product = "RabbitMQ Management"
+cpe = "cpe:2.3:a:pivotal:rabbitmq"
+confidence = 0.96
+version_regex = '"rabbitmq_version"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "overview"
+send = "GET /api/overview HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"management_version"'
+timeout_ms = 1500
+
+[probe.info]
+management_version = '"management_version"\s*:\s*"([^"]+)"'
+erlang_version = '"erlang_version"\s*:\s*"([^"]+)"'
+node = '"node"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "portainer-status"
+service = "portainer"
+ports = [9000]
+product = "Portainer"
+confidence = 0.93
+version_regex = '"Version"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "status"
+send = "GET /api/status HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"Version"'
+timeout_ms = 1500
+
+[[probe]]
+name = "portainer-https"
+service = "portainer"
+ports = [9443]
+product = "Portainer"
+confidence = 0.93
+tls = true
+version_regex = '"Version"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "status"
+send = "GET /api/status HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"Version"'
+read_until = '\r\n\r\n'
+timeout_ms = 2000
+
+[[probe]]
+name = "sonarqube-status"
+service = "sonarqube"
+ports = [9000]
+product = "SonarQube"
+cpe = "cpe:2.3:a:sonarsource:sonarqube"
+confidence = 0.94
+version_regex = '"version"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "system-status"
+send = "GET /api/system/status HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"status"'
+timeout_ms = 1500
+
+[probe.info]
+status = '"status"\s*:\s*"([^"]+)"'

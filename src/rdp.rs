@@ -61,6 +61,7 @@ impl RdpInfo {
             product: Some(product),
             version: version.clone(),
             confidence: Some(if version.is_some() { 0.98 } else { 0.90 }),
+            ..Default::default()
         })
     }
 }

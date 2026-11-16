@@ -35,6 +35,12 @@ impl BannerServer {
 /// post-scan local recheck), so a listener that stops after the first accept
 /// would be reported closed by the recheck.
 fn banner_server() -> BannerServer {
+    banner_server_with(b"HTTP/1.1 200 OK\r\nServer: rayscan-lab\r\nContent-Length: 0\r\n\r\n")
+}
+
+/// Serve `banner` on every connection until [`BannerServer::stop`].
+fn banner_server_with(banner: &[u8]) -> BannerServer {
+    let banner = banner.to_vec();
     let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
     listener
         .set_nonblocking(true)
@@ -46,9 +52,7 @@ fn banner_server() -> BannerServer {
         while !thread_stop.load(Ordering::Relaxed) {
             match listener.accept() {
                 Ok((mut stream, _)) => {
-                    let _ = stream.write_all(
-                        b"HTTP/1.1 200 OK\r\nServer: rayscan-lab\r\nContent-Length: 0\r\n\r\n",
-                    );
+                    let _ = stream.write_all(&banner);
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     thread::sleep(std::time::Duration::from_millis(5));
@@ -676,6 +680,377 @@ fn baseline_alerts_and_fail_on_change_drive_monitoring() {
     let changed = std::fs::read_to_string(&alert).expect("alert file");
     assert!(changed.contains("status: changes detected"));
     assert!(changed.contains(&format!("[+] NEW 127.0.0.1:{port}")));
+
+    let _ = std::fs::remove_dir_all(&dir);
+    server.stop();
+}
+#[test]
+fn explain_shows_probe_identification_and_facts() {
+    let server = banner_server();
+    let port = server.port().to_string();
+    let dir = std::env::temp_dir().join(format!("rayscan-probe-expl_{}", server.port()));
+    std::fs::create_dir_all(&dir).expect("create probe temp dir");
+    let pack = dir.join("pack.toml");
+    std::fs::write(
+        &pack,
+        format!(
+            r#"
+name = "explain-test"
+[[probe]]
+name = "lab"
+service = "rayscan-lab"
+ports = [{port}]
+send = "GET / HTTP/1.0\r\nHost: scan\r\n\r\n"
+expect = "rayscan-lab"
+product = "Rayscan Lab"
+[probe.info]
+server = 'Server: ([^\r\n]+)'
+"#
+        ),
+    )
+    .expect("write probe pack");
+
+    let output = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--plugins",
+            pack.to_str().expect("pack path"),
+            "--explain",
+            &port,
+            "--quiet",
+        ])
+        .output()
+        .expect("run explained scan");
+    assert!(
+        output.status.success(),
+        "scan failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
+    assert!(stdout.contains("Identification:      plugin:explain-test/lab"));
+    assert!(stdout.contains("Fact server: rayscan-lab"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+    server.stop();
+}
+
+#[test]
+fn probes_list_reports_built_in_packs() {
+    let output = rayscan()
+        .args(["probes", "list"])
+        .output()
+        .expect("run rayscan probes list");
+    assert!(
+        output.status.success(),
+        "probes list failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
+    assert!(stdout.contains("redis-info"));
+    assert!(stdout.contains("modbus-device-id"));
+    assert!(stdout.contains("vnc-handshake"));
+    assert!(stdout.contains("jenkins-root"));
+}
+
+#[test]
+fn probes_list_json_is_machine_readable() {
+    let output = rayscan()
+        .args(["probes", "list", "--json"])
+        .output()
+        .expect("run rayscan probes list --json");
+    assert!(output.status.success());
+    let probes: Value = serde_json::from_slice(&output.stdout).expect("probe JSON");
+    let probes = probes.as_array().expect("probe array");
+    assert!(probes.len() >= 20, "expected full built-in library");
+    assert!(
+        probes.iter().any(|probe| probe["tls"] == true),
+        "expected TLS-aware probes in the listing"
+    );
+    let redis = probes
+        .iter()
+        .find(|probe| probe["name"] == "redis-info")
+        .expect("redis probe");
+    assert_eq!(redis["service"], "redis");
+    assert_eq!(redis["steps"], 1);
+}
+
+#[test]
+fn scripts_list_reports_manifest_metadata() {
+    let dir = std::env::temp_dir().join(format!("rayscan-scripts-list-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create script temp dir");
+    let manifest = dir.join("pack.toml");
+    std::fs::write(
+        &manifest,
+        r#"
+name = "test-scripts"
+[[script]]
+name = "lab-check"
+description = "Synthetic check"
+category = "vulnerability"
+command = ["python3", "check.py"]
+ports = [80, 443]
+services = ["HTTP"]
+timeout_ms = 2500
+"#,
+    )
+    .expect("write script manifest");
+
+    let output = rayscan()
+        .args([
+            "scripts",
+            "list",
+            manifest.to_str().expect("manifest path"),
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scripts list");
+    assert!(
+        output.status.success(),
+        "scripts list failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let scripts: Value = serde_json::from_slice(&output.stdout).expect("script JSON");
+    let scripts = scripts.as_array().expect("script array");
+    assert_eq!(scripts.len(), 1);
+    assert_eq!(scripts[0]["plugin"], "test-scripts/lab-check");
+    assert_eq!(scripts[0]["category"], "vulnerability");
+    assert_eq!(scripts[0]["danger"], "safe");
+    assert_eq!(scripts[0]["timeout_ms"], 2500);
+    assert_eq!(scripts[0]["services"][0], "http");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[cfg(unix)]
+fn write_script_plugin(dir: &std::path::Path, danger: &str) -> std::path::PathBuf {
+    std::fs::write(
+        dir.join("plugin.sh"),
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"findings\":[{\"id\":\"lab\",\"title\":\"Lab finding\",\"severity\":\"high\",\"confidence\":0.9,\"description\":\"Synthetic finding\",\"evidence\":\"lab evidence\",\"cve\":[\"CVE-2024-1234\"],\"references\":[\"https://example.test/lab\"]}]}'\n",
+    )
+    .expect("write script plugin");
+    let manifest = dir.join("pack.toml");
+    std::fs::write(
+        &manifest,
+        format!(
+            r#"
+name = "test-scripts"
+[[script]]
+name = "lab-check"
+description = "Synthetic check"
+category = "vulnerability"
+danger = "{danger}"
+command = ["sh", "plugin.sh"]
+services = ["http"]
+timeout_ms = 3000
+"#
+        ),
+    )
+    .expect("write script manifest");
+    manifest
+}
+
+#[cfg(unix)]
+#[test]
+fn script_findings_appear_in_json_and_explain() {
+    let server = banner_server();
+    let port = server.port().to_string();
+    let dir = std::env::temp_dir().join(format!("rayscan-scripts-run-{}", server.port()));
+    std::fs::create_dir_all(&dir).expect("create script temp dir");
+    let manifest = write_script_plugin(&dir, "safe");
+
+    let output = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts",
+            manifest.to_str().expect("manifest path"),
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("run scan with scripts");
+    assert!(
+        output.status.success(),
+        "scan failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("valid JSON output");
+    let finding = &payload["open"][0]["findings"][0];
+    assert_eq!(finding["title"], "Lab finding");
+    assert_eq!(finding["severity"], "high");
+    assert_eq!(finding["plugin"], "test-scripts/lab-check");
+    assert_eq!(finding["cve"][0], "CVE-2024-1234");
+
+    let explained = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts",
+            manifest.to_str().expect("manifest path"),
+            "--explain",
+            &port,
+            "--quiet",
+        ])
+        .output()
+        .expect("run explained scan with scripts");
+    assert!(explained.status.success());
+    let stdout = String::from_utf8(explained.stdout).expect("utf-8 output");
+    assert!(stdout.contains("Script Plugin Findings:"));
+    assert!(stdout.contains("[HIGH] Lab finding"));
+    assert!(stdout.contains("Finding [HIGH] Lab finding (plugin: test-scripts/lab-check)"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+    server.stop();
+}
+
+#[cfg(unix)]
+#[test]
+fn intrusive_scripts_require_the_allow_flag() {
+    let server = banner_server();
+    let port = server.port().to_string();
+    let dir = std::env::temp_dir().join(format!("rayscan-scripts-danger-{}", server.port()));
+    std::fs::create_dir_all(&dir).expect("create script temp dir");
+    let manifest = write_script_plugin(&dir, "intrusive");
+
+    let blocked = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts",
+            manifest.to_str().expect("manifest path"),
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("run scan with intrusive script");
+    assert!(blocked.status.success());
+    let payload: Value = serde_json::from_slice(&blocked.stdout).expect("valid JSON output");
+    assert!(payload["open"][0].get("findings").is_none());
+
+    let allowed = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts",
+            manifest.to_str().expect("manifest path"),
+            "--allow-intrusive",
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("run scan with allow-intrusive");
+    assert!(allowed.status.success());
+    let payload: Value = serde_json::from_slice(&allowed.stdout).expect("valid JSON output");
+    assert_eq!(payload["open"][0]["findings"][0]["title"], "Lab finding");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    server.stop();
+}
+
+#[cfg(unix)]
+fn write_identify_plugin(dir: &std::path::Path) -> std::path::PathBuf {
+    std::fs::write(
+        dir.join("plugin.sh"),
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"findings\":[{\"title\":\"Low noise\",\"severity\":\"low\"},{\"title\":\"Serious issue\",\"severity\":\"high\"}],\"service\":{\"name\":\"LABENGINE\",\"product\":\"Lab Engine\",\"version\":\"1.2.3\",\"info\":{\"role\":\"test\"}}}'\n",
+    )
+    .expect("write script plugin");
+    let manifest = dir.join("pack.toml");
+    std::fs::write(
+        &manifest,
+        r#"
+name = "test-scripts"
+[[script]]
+name = "lab-identify"
+description = "Identifies the lab service and reports findings"
+category = "discovery"
+command = ["sh", "plugin.sh"]
+timeout_ms = 3000
+"#,
+    )
+    .expect("write script manifest");
+    manifest
+}
+
+#[cfg(unix)]
+#[test]
+fn script_identifies_service_and_min_severity_filters() {
+    let server = banner_server_with(b"LABENGINE 1.2 ready\r\n\r\n");
+    let port = server.port().to_string();
+    let dir = std::env::temp_dir().join(format!("rayscan-scripts-ident-{}", server.port()));
+    std::fs::create_dir_all(&dir).expect("create script temp dir");
+    let manifest = write_identify_plugin(&dir);
+
+    let output = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts",
+            manifest.to_str().expect("manifest path"),
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("run scan with identify script");
+    assert!(
+        output.status.success(),
+        "scan failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("valid JSON output");
+    assert_eq!(payload["open"][0]["service"]["name"], "labengine");
+    assert_eq!(payload["open"][0]["service"]["product"], "Lab Engine");
+    assert_eq!(payload["open"][0]["service"]["version"], "1.2.3");
+    assert_eq!(payload["open"][0]["service"]["info"]["role"], "test");
+    assert_eq!(
+        payload["open"][0]["findings"]
+            .as_array()
+            .expect("findings")
+            .len(),
+        2
+    );
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
+    assert!(stdout.contains("script:test-scripts/lab-identify"));
+
+    let filtered = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port,
+            "--scripts",
+            manifest.to_str().expect("manifest path"),
+            "--min-severity",
+            "high",
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("run scan with min-severity");
+    assert!(filtered.status.success());
+    let payload: Value = serde_json::from_slice(&filtered.stdout).expect("valid JSON output");
+    let findings = payload["open"][0]["findings"].as_array().expect("findings");
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0]["title"], "Serious issue");
 
     let _ = std::fs::remove_dir_all(&dir);
     server.stop();

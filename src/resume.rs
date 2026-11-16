@@ -250,6 +250,7 @@ pub fn restore_results(state: &ScanState) -> (Vec<PortResult>, StateCounts) {
                     product: r.service_product.clone(),
                     version: r.service_version.clone(),
                     confidence: None,
+                    ..Default::default()
                 });
             }
             if r.banner.is_some() || r.service.is_some() {
@@ -613,6 +614,7 @@ mod tests {
             product: Some("vsFTPd".to_string()),
             version: Some("2.3.4".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         ftp.banner = Some("220 (vsFTPd 2.3.4)".to_string());
 

@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH rayscan-diff 1  "diff " 
+.SH NAME
+rayscan\-diff \- Compare two previous scan reports or state files to display differences
+.SH SYNOPSIS
+\fBdiff\fR [\fB\-\-json\fR] [\fB\-\-fail\-on\-change\fR] [\fB\-\-alert\-file\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIBASELINE_FILE\fR> <\fICURRENT_FILE\fR> 
+.SH DESCRIPTION
+Compare two previous scan reports or state files to display differences
+.SH OPTIONS
+.TP
+\fB\-\-json\fR
+Output differences in JSON format
+.TP
+\fB\-\-fail\-on\-change\fR
+Exit with status 1 when any change is detected
+.TP
+\fB\-\-alert\-file\fR \fI<FILE>\fR
+Write a concise change alert to FILE (written on every run)
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fIBASELINE_FILE\fR>
+Baseline JSON report or state file
+.TP
+<\fICURRENT_FILE\fR>
+Current/comparison JSON report or state file

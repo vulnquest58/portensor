@@ -219,8 +219,12 @@ pub fn score_report(report: &mut ScanReport) {
     for result in &mut report.results {
         let guess = report.os_fingerprints.get(&result.host);
         let score = AccuracyScore::calculate(result, guess);
+        let previous = result.evidence.take().filter(|value| !value.is_empty());
         result.confidence = Some(score.total);
-        result.evidence = Some(score.evidence);
+        result.evidence = Some(match previous {
+            Some(previous) => format!("{} | {}", score.evidence, previous),
+            None => score.evidence,
+        });
     }
 }
 
@@ -238,6 +242,7 @@ mod tests {
             product: Some("OpenSSH".to_string()),
             version: Some("8.4p1".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
         result.banner = Some("SSH-2.0-OpenSSH_8.4p1".to_string());
 

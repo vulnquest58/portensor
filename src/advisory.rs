@@ -389,6 +389,7 @@ mod tests {
             product: product.map(str::to_string),
             version: version.map(str::to_string),
             confidence: None,
+            ..Default::default()
         });
         result.banner = banner.map(str::to_string);
         result
@@ -519,6 +520,7 @@ mod tests {
             product: Some("OpenSSH".to_string()),
             version: Some("4.7p1".to_string()),
             confidence: Some(0.98),
+            ..Default::default()
         });
 
         let mut report = ScanReport {

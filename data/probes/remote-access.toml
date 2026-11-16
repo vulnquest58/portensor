@@ -1,0 +1,54 @@
+# Remote-access gateways whose version or configuration leaks before
+# authentication.
+
+name = "remote"
+description = "Remote access and management endpoint probes"
+
+[[probe]]
+name = "vnc-handshake"
+service = "vnc"
+ports = [5900, 5901, 5902]
+product = "VNC Server"
+confidence = 0.93
+version_regex = 'RFB ([0-9][0-9.]*)'
+
+[[probe.step]]
+name = "server-greeting"
+expect_regex = 'RFB [0-9][0-9.]+'
+timeout_ms = 1200
+
+[[probe.step]]
+name = "version-reply"
+send = "RFB 003.008\n"
+timeout_ms = 1200
+
+[[probe]]
+name = "winrm-wsman"
+service = "winrm"
+ports = [5985]
+product = "Microsoft WinRM"
+cpe = "cpe:2.3:a:microsoft:windows_remote_management"
+confidence = 0.90
+
+[[probe.step]]
+name = "wsman-probe"
+send = "POST /wsman HTTP/1.1\r\nHost: scan\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+expect_regex = '(?i)^(WWW-Authenticate|HTTP/1\.[01] 401)'
+read_until = '\r\n\r\n'
+timeout_ms = 1500
+
+[[probe]]
+name = "winrm-wsman-tls"
+service = "winrm"
+ports = [5986]
+product = "Microsoft WinRM"
+cpe = "cpe:2.3:a:microsoft:windows_remote_management"
+confidence = 0.90
+tls = true
+
+[[probe.step]]
+name = "wsman-probe"
+send = "POST /wsman HTTP/1.1\r\nHost: scan\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+expect_regex = '(?i)^(WWW-Authenticate|HTTP/1\.[01] 401)'
+read_until = '\r\n\r\n'
+timeout_ms = 2000

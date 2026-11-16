@@ -1,0 +1,257 @@
+# Container orchestrators, service discovery, and secret stores with
+# unauthenticated HTTP identity endpoints.
+
+name = "containers"
+description = "Container platform and control-plane probes"
+
+[[probe]]
+name = "docker-version"
+service = "docker"
+ports = [2375]
+product = "Docker Engine"
+cpe = "cpe:2.3:a:docker:docker"
+confidence = 0.97
+version_regex = '"Version"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "version-json"
+send = "GET /version HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"ApiVersion"'
+timeout_ms = 1500
+
+[probe.info]
+api_version = '"ApiVersion"\s*:\s*"([^"]+)"'
+min_api_version = '"MinAPIVersion"\s*:\s*"([^"]+)"'
+go_version = '"GoVersion"\s*:\s*"([^"]+)"'
+os = '"Os"\s*:\s*"([^"]+)"'
+kernel = '"KernelVersion"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "docker-ping"
+service = "docker"
+ports = [2375]
+product = "Docker Engine"
+confidence = 0.90
+
+[[probe.step]]
+name = "ping"
+send = "HEAD /_ping HTTP/1.1\r\nHost: scan\r\nConnection: close\r\n\r\n"
+expect_regex = '(?i)^(OK|HTTP/1\.[01] [0-9]{3})'
+read_until = '\r\n\r\n'
+timeout_ms = 1200
+
+[[probe]]
+name = "docker-ping-tls"
+service = "docker"
+ports = [2376]
+product = "Docker Engine"
+confidence = 0.90
+tls = true
+
+[[probe.step]]
+name = "ping-tls"
+send = "HEAD /_ping HTTP/1.1\r\nHost: scan\r\nConnection: close\r\n\r\n"
+expect_regex = '(?i)^(OK|HTTP/1\.[01] [0-9]{3})'
+read_until = '\r\n\r\n'
+timeout_ms = 1500
+
+[[probe]]
+name = "docker-registry"
+service = "docker-registry"
+ports = [5000]
+product = "Docker Registry"
+confidence = 0.92
+
+[[probe.step]]
+name = "v2"
+send = "GET /v2/ HTTP/1.1\r\nHost: scan\r\nConnection: close\r\n\r\n"
+expect_regex = '(?i)Docker-Distribution-Api-Version'
+read_until = '\r\n\r\n'
+timeout_ms = 1200
+
+[probe.info]
+api_version = '(?i)Docker-Distribution-Api-Version:\s*([^\r\n]+)'
+
+[[probe]]
+name = "kubernetes-version"
+service = "kubernetes"
+ports = [8001, 8080]
+product = "Kubernetes"
+cpe = "cpe:2.3:a:kubernetes:kubernetes"
+confidence = 0.96
+version_regex = '"gitVersion"\s*:\s*"v?([^"]+)"'
+
+[[probe.step]]
+name = "version-json"
+send = "GET /version HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"gitVersion"'
+timeout_ms = 1500
+
+[probe.info]
+platform = '"platform"\s*:\s*"([^"]+)"'
+go_version = '"goVersion"\s*:\s*"([^"]+)"'
+build_date = '"buildDate"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "kubernetes-api-tls"
+service = "kubernetes"
+ports = [6443]
+product = "Kubernetes"
+cpe = "cpe:2.3:a:kubernetes:kubernetes"
+confidence = 0.96
+tls = true
+version_regex = '"gitVersion"\s*:\s*"v?([^"]+)"'
+
+[[probe.step]]
+name = "version-json"
+send = "GET /version HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"gitVersion"'
+read_until = '\r\n\r\n'
+timeout_ms = 2000
+
+[probe.info]
+platform = '"platform"\s*:\s*"([^"]+)"'
+go_version = '"goVersion"\s*:\s*"([^"]+)"'
+build_date = '"buildDate"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "kubernetes-kubelet-tls"
+service = "kubernetes-kubelet"
+ports = [10250]
+product = "Kubernetes Kubelet"
+confidence = 0.88
+tls = true
+
+[[probe.step]]
+name = "version-json"
+send = "GET /version HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect_regex = '(?i)^(HTTP/1\.[01]|Unauthorized|Forbidden|404 page not found)'
+read_until = '\r\n\r\n'
+timeout_ms = 2000
+
+[[probe]]
+name = "kubernetes-kubelet"
+service = "kubernetes-kubelet"
+ports = [10255]
+product = "Kubernetes Kubelet"
+confidence = 0.88
+
+[[probe.step]]
+name = "version-json"
+send = "GET /version HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect_regex = '(?i)^(HTTP/1\.[01]|Unauthorized|Forbidden|404 page not found)'
+read_until = '\r\n\r\n'
+timeout_ms = 1500
+
+[[probe]]
+name = "kubelet-pods"
+service = "kubernetes-kubelet"
+ports = [10255]
+product = "Kubernetes Kubelet"
+confidence = 0.93
+
+[[probe.step]]
+name = "pods"
+send = "GET /pods HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"items"'
+timeout_ms = 2000
+
+[[probe]]
+name = "etcd-version"
+service = "etcd"
+ports = [4001]
+product = "etcd"
+cpe = "cpe:2.3:a:etcd:etcd"
+confidence = 0.97
+version_regex = '"etcdserver"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "version-json"
+send = "GET /version HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"etcdserver"'
+timeout_ms = 1500
+
+[probe.info]
+cluster_version = '"etcdcluster"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "etcd-version-tls"
+service = "etcd"
+ports = [2379, 2380]
+product = "etcd"
+cpe = "cpe:2.3:a:etcd:etcd"
+confidence = 0.97
+tls = true
+version_regex = '"etcdserver"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "version-json"
+send = "GET /version HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"etcdserver"'
+read_until = '\r\n\r\n'
+timeout_ms = 2000
+
+[probe.info]
+cluster_version = '"etcdcluster"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "consul-agent-self"
+service = "consul"
+ports = [8500]
+product = "HashiCorp Consul"
+cpe = "cpe:2.3:a:hashicorp:consul"
+confidence = 0.95
+version_regex = '"Version"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "agent-self"
+send = "GET /v1/agent/self HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"Config"'
+timeout_ms = 1800
+
+[probe.info]
+datacenter = '"Datacenter"\s*:\s*"([^"]+)"'
+node_name = '"NodeName"\s*:\s*"([^"]+)"'
+server = '"Server"\s*:\s*(true|false)'
+
+[[probe]]
+name = "vault-health"
+service = "vault"
+ports = [8200]
+product = "HashiCorp Vault"
+cpe = "cpe:2.3:a:hashicorp:vault"
+confidence = 0.94
+version_regex = '"version"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "sys-health"
+send = "GET /v1/sys/health HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"initialized"'
+timeout_ms = 1500
+
+[probe.info]
+cluster_name = '"cluster_name"\s*:\s*"([^"]+)"'
+initialized = '"initialized"\s*:\s*(true|false)'
+sealed = '"sealed"\s*:\s*(true|false)'
+
+[[probe]]
+name = "vault-health-tls"
+service = "vault"
+ports = [8200]
+product = "HashiCorp Vault"
+cpe = "cpe:2.3:a:hashicorp:vault"
+confidence = 0.94
+tls = true
+version_regex = '"version"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "sys-health"
+send = "GET /v1/sys/health HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"initialized"'
+read_until = '\r\n\r\n'
+timeout_ms = 2000
+
+[probe.info]
+cluster_name = '"cluster_name"\s*:\s*"([^"]+)"'
+initialized = '"initialized"\s*:\s*(true|false)'
+sealed = '"sealed"\s*:\s*(true|false)'

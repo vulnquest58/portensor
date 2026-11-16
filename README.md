@@ -79,14 +79,15 @@ UDP probes and cannot perform raw IPv6 scans.
 | Area | Current capability |
 | :--- | :--- |
 | Toolchain | `rust-toolchain.toml`, pinned Rust 1.99.1, `rustfmt`, `clippy` |
-| CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan doctor`, `rayscan db update/status`, guided `rayscan interactive`, global `--theme` |
+| CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list`, guided `rayscan interactive`, global `--theme` |
 | Discovery | Async TCP connect scanner plus Linux raw SYN for IPv4 and IPv6 (`--syn`); optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
 | Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`) |
-| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.98`), light protocol-native probes for services that wait for a request, and declarative TOML probe packs (`--plugins`) |
-| TLS inspection | Certificate, version, cipher, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
+| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 45 embedded probes (12 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
+| Plugin engine (Q2) | Cross-language sidecar script plugins over a JSON stdin/stdout contract (`--scripts`), manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`) |
+| TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353) via `--udp` flag, including IPv6 (`src/udp.rs`) |
 | OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` (`src/fingerprint.rs`); Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
 | Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
@@ -404,6 +405,10 @@ sudo rayscan scan --syn --os --target 192.168.100.37 --explain
 # Filter out low-confidence/ambiguous candidates (require >= 90% confidence):
 rayscan scan --target 192.168.100.37 --min-confidence 90
 ```
+
+`--explain` also prints the identification detail tag (`plugin:<pack>/<probe>`
+for probe matches), extracted CPE, and protocol facts collected in
+`service.info`.
 
 ### Defense Awareness & Middlebox Classifier (`--defense`)
 
@@ -780,11 +785,20 @@ grace read, and never retried beyond the scan timeout:
 | Port | Probe | Extracted identity |
 | :--- | :--- | :--- |
 | any | `GET / HTTP/1.0` (only if no banner) | HTTP status + headers + first ~1 KB of body |
-| 445 | SMB2 NEGOTIATE (dialects 2.0.2–3.0.2), SMB1 fallback | `SMB 3.0.2`, `SMBv1`, … |
+| 445 | SMB2 NEGOTIATE (dialects 2.0.2–3.1.1), SMB1 fallback | dialect, signing mode, capabilities, server GUID, Native OS / LAN Manager / domain (SMBv1) |
 | 27017 | MongoDB legacy `buildInfo` | `MongoDB` + server version |
 | 6379 | Redis `INFO server` | `Redis` + `redis_version` |
 | 11211 | memcached `stats` | `memcached` + version |
 | 3389 | X.224 negotiation + TLS CredSSP NTLM probe | `RDP`, negotiated protocol, NLA computer/domain, Windows build |
+
+Deep coverage for services that never speak first comes from the built-in
+probe library below: PostgreSQL startup, Elasticsearch/OpenSearch root,
+Cassandra OPTIONS, Docker Engine and registry, Kubernetes API server and
+kubelet, etcd, Consul, Vault, Modbus, S7, DNP3, EtherNet/IP, VNC, WinRM,
+Jenkins, Grafana, Prometheus, Kibana, RabbitMQ management, Portainer, and
+SonarQube. TLS-fronted endpoints are covered by TLS-aware probes for the
+Kubernetes API server and kubelet, Docker API, etcd, Elasticsearch/OpenSearch,
+Vault, WinRM, and Portainer.
 
 RDP never sends an unsolicited banner. Silent results on 3389 are retained and
 promoted to `open` when the NLA identity succeeds, and JSON output gains an
@@ -804,9 +818,11 @@ fingerprints over the generic `Server` token:
   Cisco, …), MySQL/MariaDB, PostgreSQL, Redis, memcached, MongoDB, FTP, SMTP,
   VNC, SMB, RDP, and TLS.
 
-Each `service` object in JSON/JSONL now carries an identification
-`confidence`: `0.98` when a version was parsed, `0.85` when only a product was
-identified, and `0.70` for a bare protocol name.
+Each `service` object in JSON/JSONL carries an identification `confidence`
+from the probe ladder: `0.98` when a version was parsed, `0.85` when only a
+product was identified, and `0.70` for a bare protocol name (plus `0.01` per
+extra corroborating step, capped at `0.99`). Probes may also populate
+`service.cpe` and a `service.info` map of protocol facts.
 
 ```json
 {
@@ -818,38 +834,160 @@ identified, and `0.70` for a bare protocol name.
     "name": "http",
     "product": "Jenkins",
     "version": "2.426.1",
-    "confidence": 0.98
+    "confidence": 0.98,
+    "cpe": "cpe:2.3:a:jenkins:jenkins",
+    "info": { "server": "Jetty(10.0.19)" }
   }
 }
 ```
 
-### Declarative Probe Packs (`--plugins`)
+### Probe Engine: Built-ins and Declarative Packs (`--plugins`)
 
-Custom service probes can be supplied as a TOML pack without recompiling. The
-pack is loaded only when explicitly requested with `--plugins FILE`; nothing is
-auto-discovered from the working directory. Active probes are capped at 4 KB,
-a pack at 256 KB, regexes at 512 characters, and only open TCP results are
-annotated. The first matching probe wins and adds
-`plugin:<pack>/<probe>` evidence.
+Service identification is driven by a declarative probe engine. Six packs
+(45 probes, 12 TLS-aware) are compiled into the binary and always available:
+
+| Pack | Coverage |
+| :--- | :--- |
+| `databases` | PostgreSQL startup, Redis `INFO`, Cassandra `OPTIONS`, Elasticsearch/OpenSearch root (HTTP and HTTPS), memcached stats, CouchDB root, MySQL/MariaDB greeting (passive), MongoDB `isMaster` OP_QUERY (TCP and TLS) |
+| `containers` | Docker Engine `/version`/`_ping` (HTTP and TLS), Docker registry v2, Kubernetes API server and kubelet (HTTP and TLS), etcd (HTTP and TLS), Consul agent, Vault health (HTTP and TLS) |
+| `industrial` | Modbus device identification, S7 COTP, DNP3 link status, EtherNet/IP ListServices |
+| `remote` | VNC handshake + version, WinRM WSMan (HTTP and HTTPS) |
+| `appliances` | Jenkins, Grafana, Prometheus, Kibana, RabbitMQ management, Portainer (HTTP and HTTPS), SonarQube |
+| `messaging` | MQTT CONNECT/CONNACK (TCP and TLS), Kafka ApiVersions (TCP and TLS) |
+
+```bash
+rayscan probes list
+rayscan probes list --json
+rayscan probes list --plugins ./my-probes/
+```
+
+Probes are TOML. The v2 schema supports multi-step sessions over one TCP
+connection, TLS sessions, binary payloads, binary expectations, early-stop
+reads, CPE tagging, and capture-group extraction into `service.info`:
 
 ```toml
-# probes.toml — one pack per file
+# probes.toml - one pack per file
 name = "example"
 description = "Example appliance probes"
 
 [[probe]]
-name = "acme-admin"
+name = "acme-console"
 service = "acme-admin"
 ports = [9000]
 product = "Acme Appliance"
-send = "GET /status HTTP/1.1\r\nHost: target\r\n\r\n"
-expect_regex = "ACME Admin"
-version_regex = "Version: ([0-9.]+)"
+cpe = "cpe:2.3:a:acme:appliance"
+version_regex = 'Acme Console v([0-9.]+)'
+timeout_ms = 1500
+# tls = true          # run steps over TLS (self-signed accepted,
+#                     # ALPN advertises http/1.1)
+
+[probe.info]
+node = 'node-id: ([a-f0-9-]+)'
+region = 'region: ([a-z0-9-]+)'
+
+[[probe.step]]
+name = "greeting"
+expect_regex = 'ACME Console'
+read_until = '\r\n'
+
+[[probe.step]]
+name = "status"
+send = "GET /status HTTP/1.1\r\nHost: target\r\nConnection: close\r\n\r\n"
+expect = "HTTP/1.1 200"
+read_until = '\r\n\r\n'
 ```
+
+Each step may send text (`send`) or binary (`send_hex`) and match one of
+`expect` (literal), `expect_regex`, or `expect_hex` (binary substring). A
+failing step aborts the probe; all other steps run sequentially on the same
+socket, so challenge-response protocols work without reconnecting. Steps with
+no payload read the initial banner. `read_until` stops reading as soon as the
+regex matches, keeping HTTP-style multi-step probes fast. With `tls = true` the
+probe runs its own handshake (the scanner accepts self-signed certificates by
+design) and the same step/extraction rules apply. Active plaintext probes are
+skipped on ports where TLS inspection already succeeded, so HTTPS endpoints are
+never sent plaintext payloads.
+
+Extraction runs over the whole transcript. Capture group 1 wins when present,
+so `[probe.info] name = 'node-id: ([a-f0-9-]+)'` emits `"node": "<id>"` in the
+`service.info` object alongside `service.cpe`. A probe-level `version_regex`
+takes precedence over per-step patterns.
+
+Confidence follows the corroboration ladder: `0.70` for a bare service name,
+`0.85` when a product matched, `0.98` when a version was extracted, plus
+`0.01` per extra independently satisfiable step (capped at `0.99`). An explicit
+`confidence` in the pack overrides the ladder. The first matching probe per
+port wins, user packs load before built-ins, and every hit appends
+`plugin:<pack>/<name>` to the port's `detail` tag plus the agreeing step names
+to JSON `evidence`.
+
+Limits: 16 KiB response, 8 KiB payload, 8 steps per probe, 512 probes and 64
+packs per run, 256 KiB per pack file, 512-character regexes, and timeouts
+clamped to 100 ms–10 s. Only open TCP results are probed. See
+[docs/probe-engine.md](docs/probe-engine.md) for the full schema reference and
+authoring guide.
 
 ```bash
 rayscan scan -t 10.0.0.5 -p 9000 --plugins probes.toml --explain 9000
 ```
+
+### Sidecar Script Plugins (`--scripts`, `--allow-intrusive`, `rayscan scripts list`)
+
+The declarative probe engine never executes code. When a check needs real
+logic — parsing a JSON API, scripting a TLS negotiation, computing risk — it
+runs as a **sidecar script plugin**: an external program described by a TOML
+manifest. Rayscan speaks JSON over stdin/stdout with the script, so Python,
+Go, Rust, or any shell script can participate without linking to the scanner.
+
+Manifest (one `[[script]]` per check; a directory may hold several `*.toml`
+manifests):
+
+```toml
+name = "container-audit"
+
+[[script]]
+name = "container-check"
+description = "Flags unauthenticated Docker engine API endpoints"
+category = "vulnerability"      # discovery | vulnerability | auth | brute | compliance
+danger = "safe"                 # "intrusive" requires --allow-intrusive
+command = ["python3", "check.py"]  # runs with the manifest directory as cwd
+services = ["docker"]           # optional service filter; ports = [] also optional
+timeout_ms = 5000               # 100-30000
+```
+
+Each run receives the port context on stdin — `target`, `port`, `state`,
+`confidence`, `banner`, `detail`, `evidence`, the full `service` object, and
+`tls` metadata — plus `RAYSCAN_SCRIPT_API`, `RAYSCAN_TARGET`, and
+`RAYSCAN_PORT` environment variables. The script answers with
+`{"findings": [{"id", "title", "severity", "confidence", "description",
+"evidence", "cve", "references"}]}`. Findings are validated (length caps,
+control-character stripping, CVE/reference shape) and attached to the port as
+a separate `findings` array — they never inflate or deflate the port's
+accuracy confidence. `--min-severity high` drops findings below the threshold
+before rendering; values are `info`, `low`, `medium`, `high`, and `critical`.
+
+Discovery scripts can also identify the port: an optional `service` object
+(`name` required; `product`, `version`, `cpe`, `info`, `confidence` optional)
+merges into `service.*` when the port is not yet identified or already carries
+the same service name, feeds accuracy scoring and advisory correlation, and
+tags `detail` with `script:<pack>/<name>`. Without an explicit `confidence`
+the probe ladder applies (0.98 with a version, 0.85 with a product, 0.70
+name-only).
+
+Findings appear in JSON/JSONL, a `Script Plugin Findings:` table section, the
+Markdown `## Script Findings` table, SARIF rules, and `--explain` output.
+Runtime script failures are reported on stderr and never abort a scan.
+
+```bash
+rayscan scripts list ./scripts --json     # validate manifests before a run
+rayscan scan -t 10.0.0.5 --scripts ./scripts --json
+rayscan scan -t 10.0.0.5 --scripts ./scripts --allow-intrusive
+```
+
+Limits: 128 scripts and 32 packs per run, 64 KiB manifest and stdout caps, 16
+findings per script run, 100 ms-30 s per-script timeouts. Scripts execute with
+your privileges and only target open TCP ports you already scanned — treat
+every script directory like you would any binary you run.
 
 ### TLS Certificate Inspection (`--tls` / `--no-tls`)
 
@@ -875,9 +1013,11 @@ rayscan scan -t 10.0.0.5 -p 443 --no-tls
 ```
 
 The JSON port object gains a `tls` object containing `version`, `cipher`,
-`subject`, `issuer`, `san`, `serial`, `not_before`, `not_after`,
+`alpn`, `key_algorithm`, `signature_algorithm`, `chain` (certificate subject
+lines), `subject`, `issuer`, `san`, `serial`, `not_before`, `not_after`,
 `days_remaining`, `expired`, `not_yet_valid`, `self_signed`,
-`hostname_matches`, `chain_len`, and optional `starttls`. The certificate is
+`hostname_matches`, `chain_len`, and optional `starttls`. Sessions advertise
+`h2`/`http/1.1` via ALPN and report the negotiated protocol. The certificate is
 captured even when it is self-signed, expired, or does not match the target;
 these conditions are reported as fields rather than treated as handshake
 failures.
@@ -1193,7 +1333,9 @@ src/syn/engine.rs           TX/RX orchestrator, retransmission, result aggregati
 src/syn/v6.rs               AF_INET6 raw IPv6 SYN engine
 src/syn/aimd.rs             AIMD rate controller for the TX loop
 src/tls.rs                  direct/STARTTLS certificate inspection
-src/plugin.rs               declarative TOML probe packs
+src/smb.rs                  SMB2/SMB1 negotiation, signing, and OS metadata
+src/plugin.rs               multi-step TOML probe engine and built-in library
+src/script.rs               sidecar script plugin runner (JSON protocol, findings)
 src/discovery.rs            ICMP/TCP ping sweep
 src/shard.rs                stable FNV-1a target sharding
 src/merge.rs                JSON/JSONL shard report merger
@@ -1206,9 +1348,10 @@ src/limits.rs               target/worker bounds and RLIMIT handling
 src/output.rs               table/JSON/JSONL/CSV/NmapXml/Greppable/SARIF/Markdown rendering
 src/fingerprint.rs          OS fingerprinting via TCP/IP stack analysis
 src/bin/gen_man.rs          man page generator (cargo run --bin gen_man)
-man/rayscan.1               generated man page
+man/rayscan.1               generated man page (plus one page per subcommand)
 Dockerfile                  multi-stage musl build → scratch image
 deny.toml                   cargo-deny license/advisory/source policy
+data/probes/                built-in probe packs (embedded via include_str!)
 fuzz/                       cargo-fuzz targets for parsers and service detection
 scripts/sign-release.sh     optional GPG/cosign release signing
 tests/cli.rs                binary-level CLI and JSON tests
@@ -1221,6 +1364,7 @@ bench/syn_gate.py           exact raw-SYN lab accuracy gate
 bench/accuracy_suite.py     multi-profile accuracy runner (0%/5%/20% packet loss)
 bench/tests/                offline harness tests
 docs/architecture.md        boundaries and design rules
+docs/probe-engine.md        probe schema, built-in library, and authoring guide
 docs/benchmark-contract.md  CLI/JSON contract
 docs/phase0-gate.md         Phase 0 evidence
 docs/phase1-gate.md         Phase 1 evidence

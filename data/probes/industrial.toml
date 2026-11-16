@@ -1,0 +1,60 @@
+# Operational-technology protocols: modest payloads that trigger identity or
+# liveness responses without touching process data.
+
+name = "industrial"
+description = "OT/ICS protocol identification probes"
+
+[[probe]]
+name = "modbus-device-id"
+service = "modbus"
+ports = [502]
+product = "Modbus Device"
+confidence = 0.90
+
+[[probe.step]]
+name = "read-device-identification"
+send_hex = "00 01 00 00 00 06 01 2B 0E 01 00"
+expect_hex = "2B 0E"
+timeout_ms = 1500
+
+[[probe]]
+name = "s7-comm"
+service = "s7"
+ports = [102]
+product = "Siemens S7comm"
+confidence = 0.92
+
+[[probe.step]]
+name = "cotp-connect"
+send_hex = "03 00 00 16 11 E0 00 00 00 01 00 0C C1 02 01 00 C2 02 01 02 C3 02 01 00"
+expect_hex = "11 D0"
+timeout_ms = 1500
+
+[[probe]]
+name = "dnp3-link-status"
+service = "dnp3"
+ports = [20000]
+product = "DNP3 Outstation"
+confidence = 0.90
+
+[[probe.step]]
+name = "link-status"
+send_hex = "05 64 05 C9 01 00 00 00 00"
+expect_hex = "05 64"
+timeout_ms = 1200
+
+[[probe]]
+name = "ethernet-ip-list-services"
+service = "ethernet-ip"
+ports = [44818]
+product = "EtherNet/IP Device"
+confidence = 0.92
+
+[[probe.step]]
+name = "list-services"
+send_hex = "04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+expect_hex = "00 01 14 00 01 00 20 00"
+timeout_ms = 1500
+
+[probe.info]
+service_name = '(Communications)'

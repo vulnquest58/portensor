@@ -275,6 +275,7 @@ mod tests {
             product: Some("nginx".to_string()),
             version: None,
             confidence: Some(0.85),
+            ..Default::default()
         });
         let mut r2 = PortResult::new(host, 22, PortState::Open, Duration::from_millis(1));
         r2.service = Some(ServiceInfo {
@@ -282,6 +283,7 @@ mod tests {
             product: Some("OpenSSH".to_string()),
             version: None,
             confidence: Some(0.85),
+            ..Default::default()
         });
 
         let report = ScanReport {
@@ -359,6 +361,7 @@ mod tests {
                 product: Some("product".to_string()),
                 version: None,
                 confidence: Some(0.85),
+                ..Default::default()
             });
             open.confidence = Some(1.0);
             results.push(open);
@@ -413,6 +416,7 @@ mod tests {
                 product: Some("product".to_string()),
                 version: None,
                 confidence: Some(0.85),
+                ..Default::default()
             });
             open.confidence = Some(1.0);
             results.push(open);

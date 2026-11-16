@@ -4,6 +4,87 @@ All notable changes to rayscan are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Sidecar script plugin engine (Q2 start)**: cross-language script plugins
+  described by TOML manifests (`--scripts FILE_OR_DIR`). Rayscan sends one
+  JSON context document on stdin (target, port, state, confidence, banner,
+  detail, evidence, full `service` object, TLS metadata) and reads one JSON
+  result from stdout; the script runs with the manifest directory as its
+  working directory and honors optional `ports`/`services` filters and a
+  100 ms-30 s per-run timeout (`timeout_ms`, default 5000). Findings are
+  validated (16 per run, length caps, CVE and URL shape checks, control
+  characters stripped) and attached per port as a `findings` array without
+  altering the accuracy confidence. They surface in JSON/JSONL, a
+  `Script Plugin Findings:` table section, the Markdown `## Script Findings`
+  table, SARIF rules/results, and `--explain`. Manifests declare a category
+  (`discovery`, `vulnerability`, `auth`, `brute`, `compliance`) and a danger
+  level; `danger = "intrusive"` scripts only run with `--allow-intrusive`.
+  Runtime script failures print a warning and never abort the scan.
+- **Script-declared service identification**: script plugins can return an
+  optional `service` object (`name`, `product`, `version`, `cpe`, `info`,
+  `confidence`) that merges into the port's service record when the port is
+  not yet identified or already carries the same service name. It feeds
+  accuracy scoring and CVE advisory correlation and tags `detail` with
+  `script:<pack>/<name>`. Confidence defaults to the probe ladder (0.98 with
+  a version, 0.85 with a product, 0.70 name-only).
+- **`--min-severity`**: drops script findings below a threshold
+  (`info|low|medium|high|critical`) before rendering, across every output
+  format.
+- **`rayscan scripts list [PATH]`** validates script manifests and prints
+  pack, name, category, danger, command, filters, and timeout; `--json` emits
+  machine-readable output.
+- **Multi-step service/version probe engine (v2)**: the embedded probe library
+  now ships 45 probes (12 TLS-aware) across six packs — `databases` (PostgreSQL
+  startup, Redis `INFO`, Cassandra `OPTIONS`, Elasticsearch/OpenSearch HTTP and
+  HTTPS, memcached, CouchDB, MySQL/MariaDB greeting, MongoDB `isMaster` OP_QUERY
+  over TCP and TLS), `containers` (Docker Engine and registry,
+  Kubernetes API server and kubelet, etcd, Consul, Vault, each HTTP/HTTPS where
+  applicable), `industrial` (Modbus, S7 COTP, DNP3, EtherNet/IP), `remote` (VNC
+  handshake, WinRM WSMan HTTP/HTTPS), `appliances` (Jenkins, Grafana,
+  Prometheus, Kibana, RabbitMQ management, Portainer HTTP/HTTPS, SonarQube),
+  and `messaging` (MQTT CONNECT/CONNACK and Kafka ApiVersions over TCP and
+  TLS).
+  Packs support sequential steps over one connection, UTF-8 and hex payloads,
+  literal/regex/binary expectations, `read_until` early stops, CPE tagging,
+  capture-group extraction into `service.info`, and corroboration-aware
+  confidence (base ladder plus 0.01 per extra satisfying step, capped at
+  0.99). The v1 single-step format still loads, and `--plugins` accepts a file
+  or directory.
+- **TLS-aware probe steps** (`tls = true`): probes can run over a TLS session
+  with self-signed certificates accepted and `http/1.1` advertised via ALPN,
+  enabling deep HTTPS probing of Kubernetes, Docker, etcd, Elasticsearch,
+  Vault, WinRM, and Portainer endpoints. Active plaintext probes are skipped on
+  ports where TLS inspection succeeded, so HTTPS endpoints never receive
+  plaintext payloads.
+- **`rayscan probes list`**: prints every compiled probe with pack, service,
+  ports, and step count; `--json` emits machine-readable output and
+  `--plugins PATH` includes custom packs.
+- **Deep SMB negotiation** (`src/smb.rs`): SMB2 NEGOTIATE now records dialect
+  (2.0.2–3.1.1), signing requirement, capabilities, and server GUID; SMB1
+  fallback extracts Native OS, LAN Manager, and domain strings. Results are
+  exposed as `smb_*` fields in `service.info`.
+- **Richer TLS metadata**: handshakes advertise `h2` and `http/1.1` via ALPN
+  and report the negotiated protocol, public-key and signature algorithms
+  (including Ed25519/ECDSA/RSA-PSS), and certificate-chain subjects in the
+  `tls` output object.
+- **`service.cpe` and `service.info`** fields on detected services, populated
+  by built-in and custom probes. `--explain` now prints the identification
+  detail tag, CPE, and up to eight protocol facts per port.
+
+### Changed
+
+- User probe packs load before built-in packs, so a custom probe for the same
+  port takes precedence (first match per port still wins).
+- Probe assessments that refine an existing service preserve its
+  product/version/CPE when the probe does not supply them, merge `info` maps,
+  and never lower the previously reported confidence.
+- `gen_man` now emits one man page per subcommand (`rayscan-scan(1)`,
+  `rayscan-db-update(1)`, `rayscan-scripts-list(1)`, ...) with full option
+  documentation, resolving the previously dangling cross-references in
+  `rayscan(1)`. `make install` installs every generated page and release
+  archives bundle them.
+
 ## [0.5.0] - 2026-11-13
 
 ### Added

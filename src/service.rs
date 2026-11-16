@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 
 use serde::Serialize;
@@ -5,7 +6,7 @@ use serde::Serialize;
 const MAX_BANNER_TEXT: usize = 160;
 
 /// A service identified from the initial response of an open port.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct ServiceInfo {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -16,6 +17,13 @@ pub struct ServiceInfo {
     /// name-only ≈ 0.70, product-only ≈ 0.85, versioned ≈ 0.98.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
+    /// Well-known CPE 2.3 identifier when the product is unambiguous.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpe: Option<String>,
+    /// Protocol-level facts extracted by deep probes (dialects, auth mode,
+    /// build info, cluster names, ...). Keys are probe-defined snake_case.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub info: BTreeMap<String, String>,
 }
 
 impl ServiceInfo {
@@ -25,6 +33,8 @@ impl ServiceInfo {
             product: None,
             version: None,
             confidence: Some(0.70),
+            cpe: None,
+            info: BTreeMap::new(),
         }
     }
 

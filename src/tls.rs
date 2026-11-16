@@ -99,6 +99,14 @@ pub struct TlsInfo {
     pub version: String,
     pub cipher: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub alpn: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_algorithm: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_algorithm: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chain: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub issuer: Option<String>,
@@ -215,12 +223,14 @@ fn annotate(result: &mut PortResult, outcome: TlsOutcome) {
                 product: service.product,
                 version: service.version,
                 confidence: service.confidence,
+                ..Default::default()
             },
             None => ServiceInfo {
                 name: default_name.to_string(),
                 product: None,
                 version: None,
                 confidence: None,
+                ..Default::default()
             },
         });
     }
@@ -531,6 +541,25 @@ impl ServerCertVerifier for CaptureVerifier {
     }
 }
 
+/// Client configuration for TLS-capable probe steps.
+///
+/// Uses the same intentionally permissive verifier as certificate inspection
+/// (scanners must be able to reach self-signed and expired endpoints) and
+/// advertises HTTP/1.1 so HTTP-based identity endpoints answer.
+pub(crate) fn probe_client_config() -> ClientConfig {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let mut config = ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .expect("ring provider supports the default protocol versions")
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(CaptureVerifier {
+            chain: Mutex::new(Vec::new()),
+        }))
+        .with_no_client_auth();
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    config
+}
+
 fn handshake(
     mut stream: TcpStream,
     host: IpAddr,
@@ -545,12 +574,13 @@ fn handshake(
     });
     let verifier: Arc<dyn ServerCertVerifier> = capture.clone();
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let config = ClientConfig::builder_with_provider(provider)
+    let mut config = ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
         .ok()?
         .dangerous()
         .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
+    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let server_name = ServerName::try_from(host.to_string()).ok()?;
     let mut connection = ClientConnection::new(Arc::new(config), server_name).ok()?;
 
@@ -571,11 +601,12 @@ fn handshake(
         .map(|suite| format!("{:?}", suite.suite()))
         .unwrap_or_else(|| "unknown".to_string());
     let chain = capture.chain.lock().unwrap().clone();
-    Some((
-        parse_info(host, &version, &cipher, &chain, starttls),
-        connection,
-        stream,
-    ))
+    let alpn = connection
+        .alpn_protocol()
+        .map(|protocol| String::from_utf8_lossy(protocol).into_owned());
+    let mut info = parse_info(host, &version, &cipher, &chain, starttls);
+    info.alpn = alpn;
+    Some((info, connection, stream))
 }
 
 fn format_version(version: rustls::ProtocolVersion) -> String {
@@ -601,6 +632,10 @@ fn parse_info(
     let mut info = TlsInfo {
         version: version.to_string(),
         cipher: cipher.to_string(),
+        alpn: None,
+        key_algorithm: None,
+        signature_algorithm: None,
+        chain: Vec::new(),
         subject: None,
         issuer: None,
         san: Vec::new(),
@@ -616,6 +651,12 @@ fn parse_info(
         starttls: starttls.map(str::to_string),
     };
 
+    for certificate in chain.iter().take(8) {
+        if let Ok((_, parsed)) = parse_x509_certificate(certificate) {
+            info.chain.push(parsed.subject().to_string());
+        }
+    }
+
     let Some(leaf) = chain.first() else {
         return info;
     };
@@ -623,6 +664,14 @@ fn parse_info(
         return info;
     };
 
+    info.key_algorithm = Some(algorithm_name(
+        &certificate.public_key().algorithm.algorithm.to_id_string(),
+        KEY_ALGORITHMS,
+    ));
+    info.signature_algorithm = Some(algorithm_name(
+        &certificate.signature_algorithm.algorithm.to_id_string(),
+        SIGNATURE_ALGORITHMS,
+    ));
     info.subject = Some(certificate.subject().to_string());
     info.issuer = Some(certificate.issuer().to_string());
     info.serial = Some(certificate.raw_serial_as_string());
@@ -678,6 +727,36 @@ fn parse_info(
     info
 }
 
+const KEY_ALGORITHMS: &[(&str, &str)] = &[
+    ("1.2.840.113549.1.1.1", "RSA"),
+    ("1.2.840.113549.1.1.10", "RSA-PSS"),
+    ("1.2.840.10045.2.1", "ECDSA"),
+    ("1.3.101.112", "Ed25519"),
+    ("1.3.101.113", "Ed448"),
+    ("1.2.840.10040.4.1", "DSA"),
+];
+
+const SIGNATURE_ALGORITHMS: &[(&str, &str)] = &[
+    ("1.2.840.113549.1.1.5", "sha1WithRSA"),
+    ("1.2.840.113549.1.1.11", "sha256WithRSA"),
+    ("1.2.840.113549.1.1.12", "sha384WithRSA"),
+    ("1.2.840.113549.1.1.13", "sha512WithRSA"),
+    ("1.2.840.113549.1.1.10", "RSASSA-PSS"),
+    ("1.2.840.10045.4.3.2", "ecdsa-with-SHA256"),
+    ("1.2.840.10045.4.3.3", "ecdsa-with-SHA384"),
+    ("1.2.840.10045.4.3.4", "ecdsa-with-SHA512"),
+    ("1.3.101.112", "Ed25519"),
+    ("1.3.101.113", "Ed448"),
+];
+
+fn algorithm_name(oid: &str, table: &[(&str, &str)]) -> String {
+    table
+        .iter()
+        .find(|(candidate, _)| *candidate == oid)
+        .map(|(_, name)| (*name).to_string())
+        .unwrap_or_else(|| oid.to_string())
+}
+
 fn ip_from_bytes(bytes: &[u8]) -> Option<IpAddr> {
     match bytes.len() {
         4 => Some(IpAddr::from(<[u8; 4]>::try_from(bytes).ok()?)),
@@ -708,6 +787,10 @@ mod tests {
         TlsInfo {
             version: "TLSv1.3".to_string(),
             cipher: "TLS13_AES_256_GCM_SHA384".to_string(),
+            alpn: None,
+            key_algorithm: Some("RSA".to_string()),
+            signature_algorithm: Some("sha256WithRSA".to_string()),
+            chain: Vec::new(),
             subject: None,
             issuer: None,
             san: Vec::new(),
@@ -738,6 +821,7 @@ mod tests {
                 product: Some("Jenkins".to_string()),
                 version: Some("2.426.1".to_string()),
                 confidence: Some(0.98),
+                ..Default::default()
             }),
             banner: None,
         };

@@ -1,0 +1,61 @@
+# Message-broker and pub/sub protocols: identity disclosures that come from
+# standard handshake traffic a normal client would send.
+
+name = "messaging"
+description = "Message broker protocol identification probes"
+
+[[probe]]
+name = "mqtt-connect"
+service = "mqtt"
+ports = [1883, 1884]
+product = "MQTT Broker"
+confidence = 0.92
+
+[[probe.step]]
+name = "connect"
+send_hex = "10 13 00 04 4D 51 54 54 04 02 00 3C 00 07 72 61 79 73 63 61 6E"
+expect_hex = "20 02"
+timeout_ms = 1500
+
+[[probe]]
+name = "mqtt-connect-tls"
+service = "mqtt"
+ports = [8883, 8884]
+product = "MQTT Broker"
+confidence = 0.92
+tls = true
+
+[[probe.step]]
+name = "connect"
+send_hex = "10 13 00 04 4D 51 54 54 04 02 00 3C 00 07 72 61 79 73 63 61 6E"
+expect_hex = "20 02"
+timeout_ms = 1500
+
+[[probe]]
+name = "kafka-apiversions"
+service = "kafka"
+ports = [9092]
+product = "Apache Kafka"
+cpe = "cpe:2.3:a:apache:kafka"
+confidence = 0.90
+
+[[probe.step]]
+name = "api-versions"
+send_hex = "00 00 00 0A 00 12 00 00 00 00 00 01 FF FF"
+expect_hex = "00 12 00 00"
+timeout_ms = 1500
+
+[[probe]]
+name = "kafka-apiversions-tls"
+service = "kafka"
+ports = [9093]
+product = "Apache Kafka"
+cpe = "cpe:2.3:a:apache:kafka"
+confidence = 0.90
+tls = true
+
+[[probe.step]]
+name = "api-versions"
+send_hex = "00 00 00 0A 00 12 00 00 00 00 00 01 FF FF"
+expect_hex = "00 12 00 00"
+timeout_ms = 1500

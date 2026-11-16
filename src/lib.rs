@@ -25,8 +25,10 @@ pub mod resume;
 pub mod rtt;
 pub mod scanner;
 pub mod scope;
+pub mod script;
 pub mod service;
 pub mod shard;
+pub mod smb;
 pub mod syn;
 pub mod targets;
 pub mod theme;
@@ -60,6 +62,12 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         Command::Merge(args) => merge::run_cli(args),
         Command::Doctor(args) => doctor::run(args, theme),
         Command::Db(args) => db::run_cli(args, db_dir.as_deref(), theme),
+        Command::Probes(args) => match args.action {
+            crate::cli::ProbesAction::List(list) => plugin::run_cli(list),
+        },
+        Command::Scripts(args) => match args.action {
+            crate::cli::ScriptsAction::List(list) => script::run_cli(list),
+        },
         Command::Interactive => interactive::run(theme).await,
     }
 }
@@ -75,9 +83,14 @@ pub(crate) async fn run_scan(
     // Scan progress and intelligence phases are silent automatically for
     // these formats — no --quiet flag required.
     let progress_quiet = args.quiet || resolved.format.is_machine_readable();
-    let plugins = match resolved.plugins.as_deref() {
+    let mut plugins = match resolved.plugins.as_deref() {
         Some(path) => plugin::Registry::load(path)?,
         None => plugin::Registry::default(),
+    };
+    plugins.merge_builtin()?;
+    let scripts = match resolved.scripts.as_deref() {
+        Some(path) => Some(script::Registry::load(path)?),
+        None => None,
     };
 
     let db_paths = db::DbPaths::resolve(db_dir);
@@ -294,10 +307,26 @@ pub(crate) async fn run_scan(
                 args.quiet,
             )
             .await;
+            smb::apply(
+                &mut report.results,
+                resolved.timeout.min(std::time::Duration::from_secs(5)),
+                progress_quiet,
+            )
+            .await;
         }
         plugins
             .apply(&mut report.results, resolved.probe_timeout, progress_quiet)
             .await;
+        if let Some(scripts) = &scripts {
+            scripts
+                .apply(
+                    &mut report.results,
+                    resolved.allow_intrusive,
+                    progress_quiet,
+                )
+                .await;
+            script::retain_findings(&mut report.results, resolved.min_severity);
+        }
         accuracy::score_report(&mut report);
         if resolved.advisories {
             advisory::apply_advisories_with(&mut report, local_index.as_ref());
@@ -674,6 +703,7 @@ pub(crate) async fn run_scan(
                         product: udp_svc.product,
                         version: udp_svc.version,
                         confidence: None,
+                        ..Default::default()
                     });
                     if result.detail.is_none() {
                         result.detail = Some("udp".to_string());
@@ -729,6 +759,7 @@ pub(crate) async fn run_scan(
                     product: service.product,
                     version: service.version,
                     confidence: None,
+                    ..Default::default()
                 });
                 report.results.push(result);
                 report.counts.add(crate::model::PortState::Open);
@@ -861,6 +892,12 @@ pub(crate) async fn run_scan(
             progress_quiet,
         )
         .await;
+        smb::apply(
+            &mut report.results,
+            resolved.timeout.min(std::time::Duration::from_secs(5)),
+            progress_quiet,
+        )
+        .await;
     }
 
     // ── Phase 6: Save state if requested ────────────────────────────────────
@@ -934,6 +971,16 @@ pub(crate) async fn run_scan(
     plugins
         .apply(&mut report.results, resolved.probe_timeout, progress_quiet)
         .await;
+    if let Some(scripts) = &scripts {
+        scripts
+            .apply(
+                &mut report.results,
+                resolved.allow_intrusive,
+                progress_quiet,
+            )
+            .await;
+        script::retain_findings(&mut report.results, resolved.min_severity);
+    }
     accuracy::score_report(&mut report);
     if resolved.advisories {
         advisory::apply_advisories_with(&mut report, local_index.as_ref());

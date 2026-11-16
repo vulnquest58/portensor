@@ -61,15 +61,15 @@ musl:
 	@echo "Static binary: target/$(MUSL_TARGET)/release/rayscan"
 	@file target/$(MUSL_TARGET)/release/rayscan 2>/dev/null || true
 
-## Install rayscan to $(DESTDIR)$(PREFIX)/bin and man page to share/man/man1.
+## Install rayscan to $(DESTDIR)$(PREFIX)/bin and man pages to share/man/man1.
 install: release
 	install -Dm755 target/release/rayscan \
 		$(DESTDIR)$(PREFIX)/bin/rayscan
-	@if [ -f man/rayscan.1 ]; then \
-		install -Dm644 man/rayscan.1 \
-			$(DESTDIR)$(PREFIX)/share/man/man1/rayscan.1; \
-		echo "Installed man page to $(DESTDIR)$(PREFIX)/share/man/man1/rayscan.1"; \
-	fi
+	@for page in man/*.1; do \
+		install -Dm644 "$$page" \
+			"$(DESTDIR)$(PREFIX)/share/man/man1/$$(basename $$page)"; \
+		echo "Installed man page $$page"; \
+	done
 	@echo "Installed rayscan to $(DESTDIR)$(PREFIX)/bin/rayscan"
 
 ## Generate the man page from the CLI definition via clap_mangen.
@@ -90,7 +90,7 @@ dist: man
 	@mkdir -p /tmp/rayscan-dist-win/bin
 	@cp rayscan-linux /tmp/rayscan-dist-linux/bin/
 	@cp rayscan-static-musl /tmp/rayscan-dist-linux/bin/
-	@cp man/rayscan.1 /tmp/rayscan-dist-linux/share/man/man1/
+	@cp man/*.1 /tmp/rayscan-dist-linux/share/man/man1/
 	@cp README.md CHANGELOG.md LICENSE /tmp/rayscan-dist-linux/
 	@tar -czf dist/rayscan-$(VERSION)-linux-x86_64.tar.gz -C /tmp/rayscan-dist-linux .
 	@cp rayscan.exe /tmp/rayscan-dist-win/bin/

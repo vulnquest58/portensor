@@ -1,0 +1,217 @@
+# Deep probes for database engines that disclose identity, version, or
+# configuration through native or HTTP interfaces.
+
+name = "databases"
+description = "Database engine identity and version probes"
+
+[[probe]]
+name = "redis-info"
+service = "redis"
+ports = [6379, 6380, 6381]
+product = "Redis"
+cpe = "cpe:2.3:a:redis:redis"
+confidence = 0.95
+version_regex = 'redis_version:([0-9][0-9.]*)'
+
+[[probe.step]]
+name = "info-server"
+send = "INFO server\r\n"
+expect = "redis_"
+timeout_ms = 1500
+
+[probe.info]
+mode = 'redis_mode:([a-z]+)'
+os = 'os:([^\r\n]+)'
+uptime_seconds = 'uptime_in_seconds:([0-9]+)'
+config_file = 'config_file:([^\r\n]+)'
+
+[[probe]]
+name = "elasticsearch-root"
+service = "elasticsearch"
+ports = [9200]
+product = "Elasticsearch"
+confidence = 0.97
+version_regex = '"number"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "root-json"
+send = "GET / HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = "You Know, for Search"
+timeout_ms = 1500
+
+[probe.info]
+cluster_name = '"cluster_name"\s*:\s*"([^"]+)"'
+build_flavor = '"build_flavor"\s*:\s*"([^"]+)"'
+build_type = '"build_type"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "opensearch-root"
+service = "opensearch"
+ports = [9200]
+product = "OpenSearch"
+confidence = 0.97
+version_regex = '"number"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "root-json"
+send = "GET / HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = "The OpenSearch Project"
+timeout_ms = 1500
+
+[probe.info]
+cluster_name = '"cluster_name"\s*:\s*"([^"]+)"'
+distribution = '"distribution"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "elasticsearch-root-tls"
+service = "elasticsearch"
+ports = [9200]
+product = "Elasticsearch"
+confidence = 0.97
+tls = true
+version_regex = '"number"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "root-json"
+send = "GET / HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = "You Know, for Search"
+read_until = '\r\n\r\n'
+timeout_ms = 2000
+
+[probe.info]
+cluster_name = '"cluster_name"\s*:\s*"([^"]+)"'
+build_flavor = '"build_flavor"\s*:\s*"([^"]+)"'
+build_type = '"build_type"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "opensearch-root-tls"
+service = "opensearch"
+ports = [9200]
+product = "OpenSearch"
+confidence = 0.97
+tls = true
+version_regex = '"number"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "root-json"
+send = "GET / HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = "The OpenSearch Project"
+read_until = '\r\n\r\n'
+timeout_ms = 2000
+
+[probe.info]
+cluster_name = '"cluster_name"\s*:\s*"([^"]+)"'
+distribution = '"distribution"\s*:\s*"([^"]+)"'
+
+[[probe]]
+name = "couchdb-root"
+service = "couchdb"
+ports = [5984]
+product = "Apache CouchDB"
+cpe = "cpe:2.3:a:apache:couchdb"
+confidence = 0.96
+version_regex = '"version"\s*:\s*"([0-9][^"]*)"'
+
+[[probe.step]]
+name = "root-json"
+send = "GET / HTTP/1.1\r\nHost: scan\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+expect = '"couchdb"'
+timeout_ms = 1500
+
+[probe.info]
+vendor = '"vendor"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"'
+features = '"features"\s*:\s*\[([^\]]+)\]'
+
+[[probe]]
+name = "memcached-stats"
+service = "memcached"
+ports = [11211]
+product = "memcached"
+confidence = 0.93
+version_regex = 'STAT version ([0-9][0-9.]*)'
+
+[[probe.step]]
+name = "stats"
+send = "stats\r\n"
+expect = "STAT version"
+timeout_ms = 1200
+
+[probe.info]
+curr_connections = 'STAT curr_connections ([0-9]+)'
+uptime = 'STAT uptime ([0-9]+)'
+max_connections = 'STAT max_connections ([0-9]+)'
+
+[[probe]]
+name = "cassandra-options"
+service = "cassandra"
+ports = [9042]
+product = "Apache Cassandra"
+confidence = 0.92
+
+[[probe.step]]
+name = "options"
+send_hex = "04 00 00 01 05 00 00 00 00"
+expect_hex = "43 51 4C 5F 56 45 52 53 49 4F 4E"
+timeout_ms = 1500
+
+[probe.info]
+cql_version = 'CQL_VERSION[^0-9]{1,4}([0-9]+[0-9.]*)'
+
+[[probe]]
+name = "postgresql-startup"
+service = "postgresql"
+ports = [5432, 5433]
+product = "PostgreSQL"
+cpe = "cpe:2.3:a:postgresql:postgresql"
+confidence = 0.90
+
+[[probe.step]]
+name = "startup"
+send_hex = "00 00 00 29 00 03 00 00 75 73 65 72 00 70 6f 73 74 67 72 65 73 00 64 61 74 61 62 61 73 65 00 70 6f 73 74 67 72 65 73 00 00"
+expect_regex = 'FATAL|password|authentication|SCRAM|pg_hba'
+timeout_ms = 1800
+
+[probe.info]
+auth_method = 'SCRAM-SHA-256|MD5|password|GSS|SSPI'
+database = '(postgres|template1)'
+
+[[probe]]
+name = "mysql-greeting"
+service = "mysql"
+ports = [3306, 3307]
+product = "MySQL"
+cpe = "cpe:2.3:a:oracle:mysql"
+confidence = 0.92
+ignore_case = true
+expect_regex = '\x00\x0a[0-9][0-9a-z.\-_]{1,63}\x00'
+version_regex = '\x00\x0a([0-9][0-9a-z.\-_]{1,63})\x00'
+product_regex = '(mariadb|percona|tidb)'
+
+[[probe]]
+name = "mongodb-hello"
+service = "mongodb"
+ports = [27017, 27018, 27019]
+product = "MongoDB"
+cpe = "cpe:2.3:a:mongodb:mongodb"
+confidence = 0.90
+
+[[probe.step]]
+name = "op-query-ismaster"
+send_hex = "36 00 00 00 00 00 00 00 00 00 00 00 D4 07 00 00 00 00 00 00 61 64 6D 69 6E 2E 24 63 6D 64 00 01 00 00 00 13 00 00 00 10 69 73 4D 61 73 74 65 72 00 01 00 00 00 00"
+expect_regex = 'maxWireVersion|ismaster'
+timeout_ms = 1500
+
+[[probe]]
+name = "mongodb-hello-tls"
+service = "mongodb"
+ports = [27017, 27018, 27019]
+product = "MongoDB"
+cpe = "cpe:2.3:a:mongodb:mongodb"
+confidence = 0.90
+tls = true
+
+[[probe.step]]
+name = "op-query-ismaster"
+send_hex = "36 00 00 00 00 00 00 00 00 00 00 00 D4 07 00 00 00 00 00 00 61 64 6D 69 6E 2E 24 63 6D 64 00 01 00 00 00 13 00 00 00 10 69 73 4D 61 73 74 65 72 00 01 00 00 00 00"
+expect_regex = 'maxWireVersion|ismaster'
+timeout_ms = 2000

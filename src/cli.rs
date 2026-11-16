@@ -29,7 +29,7 @@ use crate::tls::TlsMode;
                   detection on ports that accept UDP traffic.",
     arg_required_else_help = true,
     subcommand_required = true,
-    after_help = "Examples:\n  rayscan scan --target 127.0.0.1 --ports 1-1024\n  rayscan scan -t 10.0.0.0/24 -p 22,80,443 --json\n  rayscan scan -t 10.77.0.2 -p 1-10000 --profile careful --show all\n  rayscan db intel --force\n  sudo rayscan scan -6 -t fe80::/64 --ndp -p 22,80,443"
+    after_help = "Examples:\n  rayscan scan --target 127.0.0.1 --ports 1-1024\n  rayscan scan -t 10.0.0.0/24 -p 22,80,443 --json\n  rayscan scan -t 10.77.0.2 -p 1-10000 --profile careful --show all\n  rayscan scan -t 10.77.0.2 --scripts ./scripts --json\n  rayscan scripts list ./scripts --json\n  rayscan db intel --force\n  sudo rayscan scan -6 -t fe80::/64 --ndp -p 22,80,443"
 )]
 pub struct Cli {
     /// Color theme for tables, progress, and diagnostics.
@@ -57,8 +57,58 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Manage the local NVD CVE advisory database.
     Db(DbArgs),
+    /// List built-in and custom probe packs.
+    Probes(ProbesArgs),
+    /// List and validate sidecar script plugin manifests.
+    Scripts(ScriptsArgs),
     /// Set up and run a scan with guided prompts.
     Interactive,
+}
+
+#[derive(Debug, Args)]
+pub struct ProbesArgs {
+    #[command(subcommand)]
+    pub action: ProbesAction,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProbesAction {
+    /// List probe packs and their probes.
+    List(ProbesListArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ProbesListArgs {
+    /// Include probes from an additional pack file or directory.
+    #[arg(long, value_name = "PATH")]
+    pub plugins: Option<PathBuf>,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ScriptsArgs {
+    #[command(subcommand)]
+    pub action: ScriptsAction,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ScriptsAction {
+    /// List and validate script plugin manifests.
+    List(ScriptsListArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ScriptsListArgs {
+    /// Script manifest file or directory of *.toml manifests.
+    #[arg(value_name = "PATH")]
+    pub path: PathBuf,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -437,6 +487,18 @@ pub struct ScanArgs {
     #[arg(long, value_name = "PATH")]
     pub plugins: Option<PathBuf>,
 
+    /// TOML manifest or directory of sidecar script plugin manifests.
+    #[arg(long, value_name = "PATH")]
+    pub scripts: Option<PathBuf>,
+
+    /// Allow sidecar scripts whose manifest sets danger = "intrusive".
+    #[arg(long)]
+    pub allow_intrusive: bool,
+
+    /// Drop script findings below this severity (info < low < medium < high < critical).
+    #[arg(long, value_enum, value_name = "SEVERITY")]
+    pub min_severity: Option<crate::script::FindingSeverity>,
+
     /// Scope definition file (TOML or plaintext) specifying authorized target boundaries.
     #[arg(long = "scope", visible_alias = "scope-file", value_name = "FILE")]
     pub scope: Option<PathBuf>,
@@ -516,6 +578,12 @@ pub struct ResolvedConfig {
     pub diff_file: Option<PathBuf>,
     /// Optional probe pack file or directory.
     pub plugins: Option<PathBuf>,
+    /// Optional sidecar script manifest file or directory.
+    pub scripts: Option<PathBuf>,
+    /// Run script plugins marked danger = "intrusive".
+    pub allow_intrusive: bool,
+    /// Minimum script finding severity kept in output.
+    pub min_severity: crate::script::FindingSeverity,
     /// Discover responsive hosts before scanning.
     pub ping_sweep: bool,
     /// ICMP/TCP ping probes per host.
@@ -772,6 +840,11 @@ impl ScanArgs {
             no_db_update: self.no_db_update,
             diff_file: self.diff.clone(),
             plugins: self.plugins.clone().or_else(|| file.plugins.clone()),
+            scripts: self.scripts.clone().or_else(|| file.scripts.clone()),
+            allow_intrusive: self.allow_intrusive || file.allow_intrusive.unwrap_or(false),
+            min_severity: self
+                .min_severity
+                .unwrap_or(crate::script::FindingSeverity::Info),
             ping_sweep: self.ping_sweep,
             ping_count,
             ping_timeout: Duration::from_millis(ping_timeout_ms),
@@ -937,6 +1010,9 @@ mod tests {
             no_db_update: false,
             diff: None,
             plugins: None,
+            scripts: None,
+            allow_intrusive: false,
+            min_severity: None,
             ping_sweep: false,
             ping_count: None,
             ping_timeout_ms: None,
