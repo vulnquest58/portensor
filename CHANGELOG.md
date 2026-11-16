@@ -78,6 +78,12 @@ All notable changes to rayscan are documented here.
   `sendmmsg` syscall arrays are preallocated per flush. UDP detection and
   OS fingerprinting phases now probe concurrently in bounded chunks instead
   of walking hosts/ports sequentially.
+- **Decoupled banner verification**: connect workers no longer occupy a slot
+  for the whole connect + verify sequence. Connected streams are handed to a
+  dedicated verification pool (4× the connect workers) that performs banner
+  waits and active probes, so bursts of silent or slow-banner ports cannot
+  throttle the connect pipeline. A 6-worker scan against 2 banner ports plus
+  16 silent tarpits completes ~3× faster than before with identical results.
 
 ### Changed
 

@@ -167,15 +167,34 @@ pub async fn scan(
     };
 
     let mut tasks = JoinSet::new();
+    // Verification pool: banner waits and active probes run outside the
+    // connect workers so slow-to-banner ports cannot throttle the connect
+    // pipeline (a worker slot is no longer occupied for the whole
+    // connect + verify sequence). Verification is pure IO-wait, so the pool
+    // is sized larger than the connect pool to absorb bursts of silent
+    // or slow-banner ports.
+    let verifier_count = workers.saturating_mul(4).clamp(16, 1024);
+    let (ver_tx, ver_rx) =
+        async_channel::bounded::<VerifyJob>(verifier_count.saturating_mul(2).max(64));
+    for _ in 0..verifier_count {
+        let ver_rx = ver_rx.clone();
+        let sender = sender.clone();
+        let options = options.clone();
+        tasks.spawn(async move {
+            run_verifier(ver_rx, sender, &options).await;
+        });
+    }
     for _ in 0..workers {
         let shared = Arc::clone(&shared);
         let next = Arc::clone(&next);
         let sender = sender.clone();
+        let ver_tx = ver_tx.clone();
         tasks.spawn(async move {
-            run_worker(shared, next, sender).await;
+            run_worker(shared, next, sender, ver_tx).await;
         });
     }
     drop(sender);
+    drop(ver_tx);
 
     let mut counts = StateCounts::default();
     let mut results = Vec::new();
@@ -376,7 +395,12 @@ async fn verify_candidate(
     }
 }
 
-async fn run_worker(shared: Arc<Shared>, next: Arc<AtomicU64>, sender: Sender<Vec<PortResult>>) {
+async fn run_worker(
+    shared: Arc<Shared>,
+    next: Arc<AtomicU64>,
+    sender: Sender<Vec<PortResult>>,
+    verifier: Sender<VerifyJob>,
+) {
     let port_count = shared.ports.len() as u64;
     let mut batch: Vec<PortResult> = Vec::with_capacity(RESULT_BATCH);
     let mut last_flush = Instant::now();
@@ -396,8 +420,68 @@ async fn run_worker(shared: Arc<Shared>, next: Arc<AtomicU64>, sender: Sender<Ve
         let port_index = (index % port_count) as usize;
         let target = shared.targets[target_index];
         let port = shared.ports[port_index];
-        let result = probe(&shared, target_index, target, port).await;
+        match probe(&shared, target_index, target, port).await {
+            ProbeOutcome::Result(result) => {
+                batch.push(*result);
+                let flush = batch.len() >= RESULT_BATCH
+                    || (!batch.is_empty() && last_flush.elapsed() >= BATCH_FLUSH_INTERVAL);
+                if flush {
+                    last_flush = Instant::now();
+                    let pending = std::mem::replace(&mut batch, Vec::with_capacity(RESULT_BATCH));
+                    if sender.send(pending).await.is_err() {
+                        break;
+                    }
+                }
+            }
+            ProbeOutcome::Verify(job) => {
+                // Hand the connected stream to the verification pool; the
+                // worker immediately continues with the next probe.
+                if verifier.send(job).await.is_err() {
+                    break;
+                }
+            }
+        }
+    }
 
+    if !batch.is_empty() {
+        // Deliver results collected before a shutdown or end-of-scan break so
+        // the report's counts stay consistent with the probes actually sent.
+        let _ = sender.send(batch).await;
+    }
+}
+
+/// A connected stream waiting for banner/verification work.
+struct VerifyJob {
+    stream: TcpStream,
+    host: IpAddr,
+    port: u16,
+    latency: Duration,
+}
+
+enum ProbeOutcome {
+    Result(Box<PortResult>),
+    Verify(VerifyJob),
+}
+
+/// Consumes connected streams from the verification queue and emits the
+/// banner-verified results into the same result channel as the workers.
+async fn run_verifier(
+    ver_rx: async_channel::Receiver<VerifyJob>,
+    sender: Sender<Vec<PortResult>>,
+    options: &ScanOptions,
+) {
+    let mut batch: Vec<PortResult> = Vec::with_capacity(RESULT_BATCH);
+    let mut last_flush = Instant::now();
+    while let Ok(job) = ver_rx.recv().await {
+        let result = verify_service(
+            job.stream,
+            job.host,
+            job.port,
+            job.latency,
+            options.probe_timeout,
+            options.service_detection,
+        )
+        .await;
         batch.push(result);
         let flush = batch.len() >= RESULT_BATCH
             || (!batch.is_empty() && last_flush.elapsed() >= BATCH_FLUSH_INTERVAL);
@@ -409,10 +493,7 @@ async fn run_worker(shared: Arc<Shared>, next: Arc<AtomicU64>, sender: Sender<Ve
             }
         }
     }
-
     if !batch.is_empty() {
-        // Deliver results collected before a shutdown or end-of-scan break so
-        // the report's counts stay consistent with the probes actually sent.
         let _ = sender.send(batch).await;
     }
 }
@@ -428,7 +509,7 @@ async fn apply_jitter(jitter: Duration) {
     }
 }
 
-async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) -> PortResult {
+async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) -> ProbeOutcome {
     let address = socket_addr(host, port);
     let mut attempt = 0u32;
 
@@ -443,14 +524,14 @@ async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) ->
         match outcome {
             Err(_) => {
                 record_timeout(shared, target_index);
-                return result_with_detail(
+                return ProbeOutcome::Result(Box::new(result_with_detail(
                     shared,
                     FailureKind::Filtered.state(),
                     host,
                     port,
                     elapsed,
                     || Failure::timed_out(timeout).detail,
-                );
+                )));
             }
             Ok(Err(error)) => {
                 let kind = classify_kind(&error);
@@ -463,24 +544,31 @@ async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) ->
                     record_sample(shared, target_index, elapsed);
                 }
                 let state = kind.state();
-                return result_with_detail(shared, state, host, port, elapsed, || {
-                    classify_io_error(&error).detail
-                });
+                return ProbeOutcome::Result(Box::new(result_with_detail(
+                    shared,
+                    state,
+                    host,
+                    port,
+                    elapsed,
+                    || classify_io_error(&error).detail,
+                )));
             }
             Ok(Ok(stream)) => {
                 record_sample(shared, target_index, elapsed);
                 if shared.options.connect_only {
-                    return PortResult::new(host, port, PortState::Open, elapsed);
+                    return ProbeOutcome::Result(Box::new(PortResult::new(
+                        host,
+                        port,
+                        PortState::Open,
+                        elapsed,
+                    )));
                 }
-                return verify_service(
+                return ProbeOutcome::Verify(VerifyJob {
                     stream,
                     host,
                     port,
-                    elapsed,
-                    shared.options.probe_timeout,
-                    shared.options.service_detection,
-                )
-                .await;
+                    latency: elapsed,
+                });
             }
         }
     }
