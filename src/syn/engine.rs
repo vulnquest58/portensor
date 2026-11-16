@@ -298,28 +298,30 @@ fn send_frames_batch(fd: i32, batch: &[TxFrame]) -> Result<(), io::Error> {
         return Ok(());
     }
 
+    // Build the iovec/msghdr/mmsghdr arrays so the syscall sees contiguous
+    // memory without per-flush heap allocation. Capacities are exact, so no
+    // push reallocates and captured pointers stay valid.
     let mut iovs: Vec<libc::iovec> = Vec::with_capacity(batch.len());
+    let mut msghdrs: Vec<libc::msghdr> = vec![unsafe { std::mem::zeroed() }; batch.len()];
     let mut msgs: Vec<libc::mmsghdr> = Vec::with_capacity(batch.len());
 
-    for TxFrame { frame, sll, .. } in batch {
-        let iov = libc::iovec {
+    for (index, TxFrame { frame, sll, .. }) in batch.iter().enumerate() {
+        iovs.push(libc::iovec {
             iov_base: frame.as_ptr() as *mut libc::c_void,
             iov_len: frame.len(),
-        };
-        iovs.push(iov);
-        let last_iov_idx = iovs.len() - 1;
-
-        let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
-        msg.msg_name = sll as *const _ as *mut libc::c_void;
-        msg.msg_namelen = std::mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t;
-        msg.msg_iov = &mut iovs[last_iov_idx];
-        msg.msg_iovlen = 1;
-
-        let mmsg = libc::mmsghdr {
-            msg_hdr: msg,
+        });
+        msghdrs[index].msg_name = sll as *const _ as *mut libc::c_void;
+        msghdrs[index].msg_namelen = std::mem::size_of::<libc::sockaddr_ll>() as libc::socklen_t;
+        msghdrs[index].msg_iovlen = 1;
+    }
+    // SAFETY: `iovs` is fully populated and will not reallocate, so the
+    // pointers below stay valid for the `sendmmsg` call.
+    for index in 0..batch.len() {
+        msghdrs[index].msg_iov = &mut iovs[index];
+        msgs.push(libc::mmsghdr {
+            msg_hdr: msghdrs[index],
             msg_len: 0,
-        };
-        msgs.push(mmsg);
+        });
     }
 
     let mut sent = 0;
@@ -397,16 +399,17 @@ fn make_sll(if_idx: i32, dst_mac: &[u8; 6]) -> libc::sockaddr_ll {
     sll
 }
 
-/// Routes a decoded response to the TX worker that owns the target address.
+/// Routes a decoded response to the TX worker that owns the destination
+/// address and port.
 fn dispatch_response(
     senders: &[crossbeam_channel::Sender<RxResponse>],
-    owners: &HashMap<Ipv4Addr, usize>,
+    plan: &ShardPlan,
     host: Ipv4Addr,
     port: u16,
     state: PortState,
     timestamp: Instant,
 ) {
-    if let Some(&index) = owners.get(&host)
+    if let Some(index) = plan.worker_index(host, port)
         && let Some(sender) = senders.get(index)
     {
         let _ = sender.send(RxResponse {
@@ -496,7 +499,15 @@ fn rx_loop(
     cookie_key: CookieKey,
     senders: Vec<crossbeam_channel::Sender<RxResponse>>,
     owners: HashMap<Ipv4Addr, usize>,
+    port_groups: HashMap<u16, usize>,
+    groups: usize,
 ) {
+    let plan = ShardPlan {
+        owners,
+        port_groups,
+        groups,
+        shards: Vec::new(),
+    };
     let mut batch = RxBatch::new(RX_BATCH);
     while running.load(Ordering::Acquire) {
         let count = match receive_batch(rx_fd, &mut batch) {
@@ -535,7 +546,7 @@ fn rx_loop(
                     if cookie_key.validate(src_ip, src_port, dst_port, ack) {
                         dispatch_response(
                             &senders,
-                            &owners,
+                            &plan,
                             Ipv4Addr::from(src_ip),
                             src_port,
                             PortState::Open,
@@ -548,7 +559,7 @@ fn rx_loop(
                 } => {
                     dispatch_response(
                         &senders,
-                        &owners,
+                        &plan,
                         Ipv4Addr::from(src_ip),
                         src_port,
                         PortState::Closed,
@@ -558,7 +569,7 @@ fn rx_loop(
                 packet::ParsedFrame::IcmpUnreachable { dst_ip, dst_port } => {
                     dispatch_response(
                         &senders,
-                        &owners,
+                        &plan,
                         Ipv4Addr::from(dst_ip),
                         dst_port,
                         PortState::Filtered,
@@ -697,6 +708,70 @@ fn shard_owners(shards: &[Vec<Ipv4Addr>]) -> HashMap<Ipv4Addr, usize> {
         }
     }
     owners
+}
+
+/// How the (target, port) probe space is split across parallel TX workers.
+struct ShardPlan {
+    /// One entry per TX worker: its target slice and port slice.
+    shards: Vec<(Vec<Ipv4Addr>, Vec<u16>)>,
+    /// Destination address to target-shard index.
+    owners: HashMap<Ipv4Addr, usize>,
+    /// Destination port to port-group index (single group when `groups == 1`).
+    port_groups: HashMap<u16, usize>,
+    /// Number of port groups per target shard.
+    groups: usize,
+}
+
+impl ShardPlan {
+    /// Resolves the RX fan-out worker index for a response destination.
+    fn worker_index(&self, host: Ipv4Addr, port: u16) -> Option<usize> {
+        let target_shard = self.owners.get(&host).copied()?;
+        if self.groups == 1 {
+            return Some(target_shard);
+        }
+        let group = self.port_groups.get(&port).copied().unwrap_or(0);
+        Some(target_shard * self.groups + group)
+    }
+}
+
+/// Splits the probe space into per-worker shards.
+///
+/// Targets are split contiguously first. When there are fewer targets than
+/// workers (the common single-host scan), the port list is additionally split
+/// into contiguous groups so one host can still saturate every TX core.
+fn shard_plan(targets: &[Ipv4Addr], ports: &[u16], max_workers: usize) -> ShardPlan {
+    let max_workers = max_workers.max(1);
+    let target_shard_count = targets.len().min(max_workers).max(1);
+    let target_shards = shard_targets(targets, target_shard_count);
+    let mut groups = if targets.len() >= max_workers {
+        1
+    } else {
+        (max_workers / target_shard_count).max(1)
+    };
+    // Every port group must contain at least one port.
+    groups = groups.min(ports.len().max(1));
+
+    let chunk_len = ports.len().div_ceil(groups);
+    let mut port_groups = HashMap::with_capacity(ports.len());
+    let mut shards = Vec::new();
+    for (group, ports_chunk) in ports.chunks(chunk_len).enumerate() {
+        for port in ports_chunk {
+            port_groups.insert(*port, group);
+        }
+    }
+    // Target-major layout so the RX fan-out index is `target * groups + group`.
+    for target_shard in &target_shards {
+        for ports_chunk in ports.chunks(chunk_len) {
+            shards.push((target_shard.clone(), ports_chunk.to_vec()));
+        }
+    }
+    let owners = shard_owners(&target_shards);
+    ShardPlan {
+        shards,
+        owners,
+        port_groups,
+        groups,
+    }
 }
 
 /// Per-TX-worker shard handed to its dedicated thread.
@@ -1042,13 +1117,14 @@ fn syn_scan_v4(
         );
     }
 
-    // 5. Thread layout: one RX thread plus one TX thread per target shard.
+    // 5. Thread layout: one RX thread plus one TX thread per probe shard.
+    //    Shards split targets first, then the port space so single-host
+    //    scans still spread across all TX cores.
     let core_ids: Vec<core_affinity::CoreId> = core_affinity::get_core_ids().unwrap_or_default();
     let core_count = core_ids.len().max(1);
     let max_tx_workers = (core_count / 2).clamp(1, 8);
-    let shards = shard_targets(&v4_targets, max_tx_workers);
-    let worker_count = shards.len();
-    let owners = shard_owners(&shards);
+    let plan = shard_plan(&v4_targets, &opts.ports, max_tx_workers);
+    let worker_count = plan.shards.len();
 
     let mut senders: Vec<crossbeam_channel::Sender<RxResponse>> = Vec::with_capacity(worker_count);
     let mut channels: Vec<crossbeam_channel::Receiver<RxResponse>> =
@@ -1065,6 +1141,9 @@ fn syn_scan_v4(
     // 6. Spawn RX worker thread with per-shard fan-out
     let rx_running = Arc::clone(&running);
     let rx_cookie = cookie_key;
+    let rx_owners = plan.owners.clone();
+    let rx_port_groups = plan.port_groups.clone();
+    let rx_groups = plan.groups;
     let rx_handle = std::thread::Builder::new()
         .name("rayscan-rx".to_string())
         .spawn(move || {
@@ -1073,7 +1152,15 @@ fn syn_scan_v4(
             {
                 core_affinity::set_for_current(first_core);
             }
-            rx_loop(rx_fd, rx_running, rx_cookie, senders, owners);
+            rx_loop(
+                rx_fd,
+                rx_running,
+                rx_cookie,
+                senders,
+                rx_owners,
+                rx_port_groups,
+                rx_groups,
+            );
         })
         .map_err(|e| AppError::runtime(format!("failed to spawn RX thread: {e}")))?;
 
@@ -1095,9 +1182,10 @@ fn syn_scan_v4(
     let routes = std::sync::Arc::new(route_cache);
     let overall_start = Instant::now();
     let mut handles = Vec::with_capacity(worker_count);
-    for (worker_id, shard) in shards.into_iter().enumerate() {
+    for (worker_id, (targets, ports)) in plan.shards.into_iter().enumerate() {
         let shard_routes = std::sync::Arc::clone(&routes);
-        let shard_opts = opts.clone();
+        let mut shard_opts = opts.clone();
+        shard_opts.ports = ports;
         let shard_receiver = channels.remove(0);
         let shard_progress = progress.clone();
         let shard_cookie = cookie_key;
@@ -1107,7 +1195,7 @@ fn syn_scan_v4(
                 run_shard(ShardJob {
                     worker_id,
                     core_count,
-                    targets: shard,
+                    targets,
                     rate_pps: per_worker_rate,
                     retry_rate_pps: per_worker_retry_rate,
                     opts: shard_opts,
@@ -1221,6 +1309,89 @@ mod tests {
         let shards = shard_targets(&targets, 8);
         assert_eq!(shards.len(), 1);
         assert_eq!(shards[0], targets);
+    }
+
+    #[test]
+    fn shard_plan_partitions_probes_exactly_once() {
+        let targets: Vec<Ipv4Addr> = (1..=3)
+            .map(|octet| Ipv4Addr::new(10, 0, 0, octet))
+            .collect();
+        let ports: Vec<u16> = (1..=100).collect();
+
+        for workers in [1_usize, 2, 4, 8, 16] {
+            let plan = shard_plan(&targets, &ports, workers);
+            assert!(
+                plan.shards.len() <= workers.max(1),
+                "worker {} produced {} shards",
+                workers,
+                plan.shards.len()
+            );
+
+            // Every (target, port) pair appears in exactly one shard.
+            let mut seen: Vec<(Ipv4Addr, u16)> = Vec::new();
+            for (shard_targets, shard_ports) in &plan.shards {
+                assert!(!shard_ports.is_empty(), "empty port shard");
+                for &target in shard_targets {
+                    for &port in shard_ports {
+                        seen.push((target, port));
+                    }
+                }
+            }
+            seen.sort_unstable();
+            seen.dedup();
+            assert_eq!(seen.len(), targets.len() * ports.len(), "probe coverage");
+
+            // Responses dispatch to the shard that owns the destination.
+            for (index, (shard_targets, shard_ports)) in plan.shards.iter().enumerate() {
+                let target = shard_targets[0];
+                for &port in shard_ports {
+                    assert_eq!(
+                        plan.worker_index(target, port),
+                        Some(index),
+                        "port {port} dispatched to the wrong shard"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shard_plan_splits_single_target_port_space() {
+        let targets = vec![Ipv4Addr::new(10, 0, 0, 1)];
+        let ports: Vec<u16> = (1..=64).collect();
+        let plan = shard_plan(&targets, &ports, 4);
+        assert_eq!(plan.shards.len(), 4);
+        assert_eq!(plan.groups, 4);
+        for (shard_targets, shard_ports) in &plan.shards {
+            assert_eq!(shard_targets.as_slice(), targets.as_slice());
+            assert_eq!(shard_ports.len(), 16);
+        }
+    }
+
+    #[test]
+    fn shard_plan_groups_ports_once_targets_fill_workers() {
+        let targets: Vec<Ipv4Addr> = (1..=8)
+            .map(|octet| Ipv4Addr::new(10, 0, 0, octet))
+            .collect();
+        let ports: Vec<u16> = (1..=32).collect();
+        let plan = shard_plan(&targets, &ports, 4);
+        assert_eq!(plan.shards.len(), 4);
+        assert_eq!(plan.groups, 1);
+        for (shard_targets, shard_ports) in &plan.shards {
+            assert_eq!(shard_ports.len(), 32);
+            assert_eq!(shard_targets.len(), 2);
+        }
+    }
+
+    #[test]
+    fn shard_plan_clamps_groups_to_the_port_count() {
+        let targets = vec![Ipv4Addr::new(10, 0, 0, 1)];
+        let ports = vec![80_u16, 443, 22];
+        let plan = shard_plan(&targets, &ports, 8);
+        assert_eq!(plan.shards.len(), 3);
+        for (_shard_targets, shard_ports) in &plan.shards {
+            assert_eq!(shard_ports.len(), 1);
+        }
     }
 
     #[test]

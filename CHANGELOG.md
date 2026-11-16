@@ -71,6 +71,13 @@ All notable changes to rayscan are documented here.
 - **`service.cpe` and `service.info`** fields on detected services, populated
   by built-in and custom probes. `--explain` now prints the identification
   detail tag, CPE, and up to eight protocol facts per port.
+- **Faster single-host SYN scans**: the SYN engine now shards the port space
+  across TX workers when a scan covers fewer targets than workers, so one
+  host can saturate every TX core instead of pacing 65k ports through a
+  single thread. Responses are routed per `(destination, port group)`;
+  `sendmmsg` syscall arrays are preallocated per flush. UDP detection and
+  OS fingerprinting phases now probe concurrently in bounded chunks instead
+  of walking hosts/ports sequentially.
 
 ### Changed
 

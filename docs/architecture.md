@@ -118,7 +118,12 @@ reported as a port state.
 
 ## SYN engine (`--syn`, Linux + CAP_NET_RAW)
 
-The SYN engine uses two OS threads — one TX, one RX — each dedicated to a core:
+The SYN engine uses one RX thread plus one TX thread per probe shard, each
+dedicated to a core. Shards split the target list contiguously first; when
+there are fewer targets than TX workers (the common single-host scan), the
+port list is additionally split into contiguous groups so one host can still
+saturate every TX core. The RX thread routes each response to the owning
+shard by destination address and port.
 
 **TX thread:**
 1. Permute logical probe indices with the BlackRock bijection (Feistel cipher on

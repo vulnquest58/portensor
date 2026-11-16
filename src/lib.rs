@@ -686,41 +686,19 @@ pub(crate) async fn run_scan(
     // co-located UDP services (e.g., DNS on 53, NTP on 123, SNMP on 161).
     if resolved.udp_detection {
         let probe_timeout = resolved.probe_timeout;
-        for result in report.results.iter_mut() {
-            if result.state == crate::model::PortState::Open && result.service.is_none() {
-                let (_, udp_det) = udp::probe_udp(result.host, result.port, probe_timeout).await;
-                if let Some(udp_svc) = udp_det.service {
-                    // Attach UDP service info into the banner field for visibility.
-                    let label = match (&udp_svc.product, &udp_svc.version) {
-                        (Some(p), Some(v)) => format!("udp:{} {}/{}", udp_svc.name, p, v),
-                        (Some(p), None) => format!("udp:{} {}", udp_svc.name, p),
-                        (None, Some(v)) => format!("udp:{} v{}", udp_svc.name, v),
-                        (None, None) => format!("udp:{}", udp_svc.name),
-                    };
-                    result.banner = Some(label);
-                    result.service = Some(crate::service::ServiceInfo {
-                        name: format!("udp:{}", udp_svc.name),
-                        product: udp_svc.product,
-                        version: udp_svc.version,
-                        confidence: None,
-                        ..Default::default()
-                    });
-                    if result.detail.is_none() {
-                        result.detail = Some("udp".to_string());
-                    }
-                } else if let Some(banner) = udp_det.banner {
-                    // Preserve raw UDP banner even without service identification.
-                    if result.banner.is_none() {
-                        result.banner = Some(format!("udp:{banner}"));
-                    }
-                }
-            }
-        }
 
-        // Probe curated UDP ports independently of TCP state. This surfaces
-        // UDP-only services such as DNS on 53, NTP on 123, or rpcbind on 111.
+        let tcp_candidates: Vec<usize> = report
+            .results
+            .iter()
+            .enumerate()
+            .filter(|(_, result)| {
+                result.state == crate::model::PortState::Open && result.service.is_none()
+            })
+            .map(|(index, _)| index)
+            .collect();
+
         let requested: HashSet<u16> = ports.iter().copied().collect();
-        let mut already_open: HashSet<(IpAddr, u16)> = report
+        let already_open: HashSet<(IpAddr, u16)> = report
             .results
             .iter()
             .filter(|result| result.state == crate::model::PortState::Open)
@@ -731,40 +709,107 @@ pub(crate) async fn run_scan(
             .copied()
             .filter(|port| requested.contains(port))
             .collect();
-        for &host in &targets {
-            for &port in &udp_ports {
-                if already_open.contains(&(host, port)) {
-                    continue;
+        // Probe curated UDP ports independently of TCP state. This surfaces
+        // UDP-only services such as DNS on 53, NTP on 123, or rpcbind on 111.
+        let curated: Vec<(IpAddr, u16)> = targets
+            .iter()
+            .flat_map(|&host| udp_ports.iter().copied().map(move |port| (host, port)))
+            .filter(|pair| !already_open.contains(pair))
+            .collect();
+
+        // Probe concurrently in bounded chunks; apply results afterwards.
+        let mut tcp_detections: Vec<(usize, udp::UdpDetection)> = Vec::new();
+        for chunk in tcp_candidates.chunks(32) {
+            let mut tasks = tokio::task::JoinSet::new();
+            for &index in chunk {
+                let host = report.results[index].host;
+                let port = report.results[index].port;
+                tasks.spawn(
+                    async move { (index, udp::probe_udp(host, port, probe_timeout).await.1) },
+                );
+            }
+            while let Some(joined) = tasks.join_next().await {
+                if let Ok((index, detection)) = joined {
+                    tcp_detections.push((index, detection));
                 }
-                let (_, detection) = udp::probe_udp(host, port, probe_timeout).await;
-                let Some(service) = detection.service else {
-                    continue;
+            }
+        }
+        for (index, udp_det) in tcp_detections {
+            let Some(result) = report.results.get_mut(index) else {
+                continue;
+            };
+            if let Some(udp_svc) = udp_det.service {
+                // Attach UDP service info into the banner field for visibility.
+                let label = match (&udp_svc.product, &udp_svc.version) {
+                    (Some(p), Some(v)) => format!("udp:{} {}/{}", udp_svc.name, p, v),
+                    (Some(p), None) => format!("udp:{} {}", udp_svc.name, p),
+                    (None, Some(v)) => format!("udp:{} v{}", udp_svc.name, v),
+                    (None, None) => format!("udp:{}", udp_svc.name),
                 };
-                let label = match (&service.product, &service.version) {
-                    (Some(p), Some(v)) => format!("udp:{} {}/{}", service.name, p, v),
-                    (Some(p), None) => format!("udp:{} {}", service.name, p),
-                    (None, Some(v)) => format!("udp:{} v{}", service.name, v),
-                    (None, None) => format!("udp:{}", service.name),
-                };
-                let mut result = crate::model::PortResult::new(
-                    host,
-                    port,
-                    crate::model::PortState::Open,
-                    std::time::Duration::ZERO,
-                )
-                .with_detail("udp");
                 result.banner = Some(label);
                 result.service = Some(crate::service::ServiceInfo {
-                    name: format!("udp:{}", service.name),
-                    product: service.product,
-                    version: service.version,
+                    name: format!("udp:{}", udp_svc.name),
+                    product: udp_svc.product,
+                    version: udp_svc.version,
                     confidence: None,
                     ..Default::default()
                 });
-                report.results.push(result);
-                report.counts.add(crate::model::PortState::Open);
-                already_open.insert((host, port));
+                if result.detail.is_none() {
+                    result.detail = Some("udp".to_string());
+                }
+            } else if let Some(banner) = udp_det.banner {
+                // Preserve raw UDP banner even without service identification.
+                if result.banner.is_none() {
+                    result.banner = Some(format!("udp:{banner}"));
+                }
             }
+        }
+
+        let mut curated_detections: Vec<(IpAddr, u16, udp::UdpDetection)> = Vec::new();
+        for chunk in curated.chunks(32) {
+            let mut tasks = tokio::task::JoinSet::new();
+            for &(host, port) in chunk {
+                tasks.spawn(async move {
+                    (
+                        host,
+                        port,
+                        udp::probe_udp(host, port, probe_timeout).await.1,
+                    )
+                });
+            }
+            while let Some(joined) = tasks.join_next().await {
+                if let Ok((host, port, detection)) = joined {
+                    curated_detections.push((host, port, detection));
+                }
+            }
+        }
+        for (host, port, detection) in curated_detections {
+            let Some(service) = detection.service else {
+                continue;
+            };
+            let label = match (&service.product, &service.version) {
+                (Some(p), Some(v)) => format!("udp:{} {}/{}", service.name, p, v),
+                (Some(p), None) => format!("udp:{} {}", service.name, p),
+                (None, Some(v)) => format!("udp:{} v{}", service.name, v),
+                (None, None) => format!("udp:{}", service.name),
+            };
+            let mut result = crate::model::PortResult::new(
+                host,
+                port,
+                crate::model::PortState::Open,
+                std::time::Duration::ZERO,
+            )
+            .with_detail("udp");
+            result.banner = Some(label);
+            result.service = Some(crate::service::ServiceInfo {
+                name: format!("udp:{}", service.name),
+                product: service.product,
+                version: service.version,
+                confidence: None,
+                ..Default::default()
+            });
+            report.results.push(result);
+            report.counts.add(crate::model::PortState::Open);
         }
     }
 
@@ -786,27 +831,38 @@ pub(crate) async fn run_scan(
             eprintln!("[os] fingerprinting {} host(s) .", host_ports.len());
         }
 
+        // Fingerprint hosts concurrently in bounded chunks.
         let mut os_map = HashMap::new();
-        for (host, port) in host_ports {
-            if let Some(guess) =
-                fingerprint::probe_fingerprint_async(host, port, probe_timeout).await
-            {
-                if !args.quiet {
-                    let ev = guess
-                        .evidence
-                        .as_deref()
-                        .map(|e| format!(" | Evidence: {e}"))
-                        .unwrap_or_default();
-                    eprintln!(
-                        "[os] {} → {} ({}) confidence={:.0}%{}",
+        let host_list: Vec<(IpAddr, u16)> = host_ports.into_iter().collect();
+        for chunk in host_list.chunks(16) {
+            let mut tasks = tokio::task::JoinSet::new();
+            for &(host, port) in chunk {
+                tasks.spawn(async move {
+                    (
                         host,
-                        guess.detail,
-                        guess.family,
-                        guess.confidence * 100.0,
-                        ev
-                    );
+                        fingerprint::probe_fingerprint_async(host, port, probe_timeout).await,
+                    )
+                });
+            }
+            while let Some(joined) = tasks.join_next().await {
+                if let Ok((host, Some(guess))) = joined {
+                    if !args.quiet {
+                        let ev = guess
+                            .evidence
+                            .as_deref()
+                            .map(|e| format!(" | Evidence: {e}"))
+                            .unwrap_or_default();
+                        eprintln!(
+                            "[os] {} → {} ({}) confidence={:.0}%{}",
+                            host,
+                            guess.detail,
+                            guess.family,
+                            guess.confidence * 100.0,
+                            ev
+                        );
+                    }
+                    os_map.insert(host, guess);
                 }
-                os_map.insert(host, guess);
             }
         }
         report.os_fingerprints = os_map;
