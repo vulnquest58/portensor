@@ -30,7 +30,7 @@ pub use aimd::{AimdConfig, AimdController};
 #[cfg(target_os = "linux")]
 pub use cookie::CookieKey;
 #[cfg(target_os = "linux")]
-pub use engine::{SynScanOptions, check_raw_privilege, syn_scan};
+pub use engine::{ProbeMode, SynScanOptions, check_raw_privilege, syn_scan};
 #[cfg(target_os = "linux")]
 pub use filter::{attach_filter, build_filter};
 #[cfg(target_os = "linux")]
@@ -52,10 +52,19 @@ use crate::model::ScanReport;
 use crate::scanner::ProgressCallback;
 
 #[cfg(not(target_os = "linux"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ProbeMode {
+    #[default]
+    Syn,
+    Ack,
+}
+
+#[cfg(not(target_os = "linux"))]
 #[derive(Clone, Debug, Default)]
 pub struct SynScanOptions {
     pub targets: Vec<std::net::IpAddr>,
     pub ports: Vec<u16>,
+    pub mode: ProbeMode,
     pub rate_pps: u64,
     pub retry_rate_pps: u64,
     pub sport_range: (u16, u16),

@@ -36,6 +36,7 @@ struct StateTotals {
     open: i64,
     closed: i64,
     filtered: i64,
+    unfiltered: i64,
     silent: i64,
     unreachable: i64,
     error: i64,
@@ -47,6 +48,7 @@ impl StateTotals {
             "open" => self.open += 1,
             "closed" => self.closed += 1,
             "filtered" => self.filtered += 1,
+            "unfiltered" => self.unfiltered += 1,
             "silent" => self.silent += 1,
             "unreachable" => self.unreachable += 1,
             _ => self.error += 1,
@@ -58,6 +60,7 @@ impl StateTotals {
             "open" => self.open -= 1,
             "closed" => self.closed -= 1,
             "filtered" => self.filtered -= 1,
+            "unfiltered" => self.unfiltered -= 1,
             "silent" => self.silent -= 1,
             "unreachable" => self.unreachable -= 1,
             _ => self.error -= 1,
@@ -68,6 +71,7 @@ impl StateTotals {
         self.open += other.open;
         self.closed += other.closed;
         self.filtered += other.filtered;
+        self.unfiltered += other.unfiltered;
         self.silent += other.silent;
         self.unreachable += other.unreachable;
         self.error += other.error;
@@ -78,6 +82,7 @@ impl StateTotals {
             "open": self.open.max(0),
             "closed": self.closed.max(0),
             "filtered": self.filtered.max(0),
+            "unfiltered": self.unfiltered.max(0),
             "silent": self.silent.max(0),
             "unreachable": self.unreachable.max(0),
             "error": self.error.max(0),
@@ -234,6 +239,10 @@ fn merge_value(value: Value, merged: &mut MergedReport, path: &Path) -> Result<(
             open: summary.get("open").and_then(Value::as_i64).unwrap_or(0),
             closed: summary.get("closed").and_then(Value::as_i64).unwrap_or(0),
             filtered: summary.get("filtered").and_then(Value::as_i64).unwrap_or(0),
+            unfiltered: summary
+                .get("unfiltered")
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
             silent: summary.get("silent").and_then(Value::as_i64).unwrap_or(0),
             unreachable: summary
                 .get("unreachable")
@@ -300,8 +309,9 @@ fn state_of(value: &Value) -> &str {
 
 fn state_rank(state: &str) -> u8 {
     match state {
-        "open" => 5,
-        "silent" => 4,
+        "open" => 6,
+        "silent" => 5,
+        "unfiltered" => 4,
         "filtered" => 3,
         "unreachable" => 2,
         "closed" => 1,

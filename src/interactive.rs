@@ -129,6 +129,7 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         ipv6: false,
         quiet: false,
         syn,
+        ack: false,
         no_aimd: false,
         rate_auto: false,
         host_concurrency: None,

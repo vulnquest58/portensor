@@ -368,6 +368,53 @@ fn os_probes_requires_os_and_is_bounded() {
 }
 
 #[test]
+fn ack_conflicts_and_unsupported_formats_are_rejected() {
+    for extra in [
+        vec!["--syn"],
+        vec!["--os"],
+        vec!["--udp"],
+        vec!["--tls"],
+        vec!["--verify"],
+        vec!["--connect-only"],
+        vec!["--discover-only"],
+        vec!["--decoys", "192.0.2.10"],
+        vec!["--scripts", "pack.toml"],
+        vec!["--plugins", "probes.toml"],
+    ] {
+        let mut command = rayscan();
+        command.args(["scan", "--target", "127.0.0.1", "--ports", "9", "--ack"]);
+        command.args(&extra);
+        command.arg("--json");
+        let output = command.output().expect("run rayscan scan");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "expected a usage error for {extra:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let port_list = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--ack",
+            "--format",
+            "port-list",
+        ])
+        .output()
+        .expect("run rayscan scan");
+    assert_eq!(port_list.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&port_list.stderr)
+            .contains("--ack cannot be used with --format port-list or host-port")
+    );
+}
+
+#[test]
 fn probe_shaping_flags_are_validated() {
     let zero_ttl = rayscan()
         .args([
@@ -401,7 +448,8 @@ fn probe_shaping_flags_are_validated() {
         .expect("run rayscan scan");
     assert_eq!(ttl_without_raw.status.code(), Some(2));
     assert!(
-        String::from_utf8_lossy(&ttl_without_raw.stderr).contains("--ttl requires --syn or --os")
+        String::from_utf8_lossy(&ttl_without_raw.stderr)
+            .contains("--ttl requires --syn, --ack, or --os")
     );
 
     let reversed_range = rayscan()

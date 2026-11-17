@@ -28,13 +28,23 @@ use crate::model::{HostProgress, PortResult, PortState, ScanReport, StateCounts,
 use crate::rtt::RttEstimator;
 use crate::scanner::{ProgressCallback, ProgressEvent};
 
-/// Configuration options for a raw SYN scan.
+/// Raw probe mode: SYN discovery or ACK firewall mapping.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ProbeMode {
+    #[default]
+    Syn,
+    Ack,
+}
+
+/// Configuration options for a raw SYN/ACK scan.
 #[derive(Clone, Debug)]
 pub struct SynScanOptions {
     /// Target IP addresses to scan.
     pub targets: Vec<IpAddr>,
     /// Target TCP ports to probe on each host.
     pub ports: Vec<u16>,
+    /// Probe type.
+    pub mode: ProbeMode,
     /// Initial transmit rate in packets per second (0 means unlimited).
     pub rate_pps: u64,
     /// Rate used for retransmission passes (0 means `rate_pps / 4`).
@@ -68,6 +78,7 @@ impl Default for SynScanOptions {
         Self {
             targets: Vec::new(),
             ports: Vec::new(),
+            mode: ProbeMode::Syn,
             rate_pps: 0,
             retry_rate_pps: 0,
             sport_range: (61000, 61999),
@@ -497,11 +508,41 @@ fn receive_batch(rx_fd: i32, batch: &mut RxBatch) -> io::Result<usize> {
     }
 }
 
+/// Response-classification rules shared by the RX worker.
+#[derive(Clone, Copy)]
+struct ProbePolicy {
+    cookie_key: CookieKey,
+    mode: ProbeMode,
+}
+
+impl ProbePolicy {
+    /// Classifies a TCP RST for the active probe mode.
+    ///
+    /// ACK probes only accept a RST whose sequence number echoes the cookie we
+    /// placed in the probe's acknowledgment field; anything else belongs to an
+    /// unrelated flow or a spoofed packet.
+    fn classify_rst(
+        self,
+        src_ip: u32,
+        src_port: u16,
+        dst_port: u16,
+        seq: u32,
+    ) -> Option<PortState> {
+        match self.mode {
+            ProbeMode::Syn => Some(PortState::Closed),
+            ProbeMode::Ack => {
+                let cookie = self.cookie_key.encode(src_ip, src_port, dst_port);
+                (seq == cookie).then_some(PortState::Unfiltered)
+            }
+        }
+    }
+}
+
 /// The continuous receive loop executed on the dedicated RX worker thread.
 fn rx_loop(
     rx_fd: i32,
     running: Arc<AtomicBool>,
-    cookie_key: CookieKey,
+    policy: ProbePolicy,
     senders: Vec<crossbeam_channel::Sender<RxResponse>>,
     owners: HashMap<Ipv4Addr, usize>,
     port_groups: HashMap<u16, usize>,
@@ -548,7 +589,9 @@ fn rx_loop(
                     ack,
                     ..
                 } => {
-                    if cookie_key.validate(src_ip, src_port, dst_port, ack) {
+                    if policy.mode == ProbeMode::Syn
+                        && policy.cookie_key.validate(src_ip, src_port, dst_port, ack)
+                    {
                         dispatch_response(
                             &senders,
                             &plan,
@@ -560,14 +603,20 @@ fn rx_loop(
                     }
                 }
                 packet::ParsedFrame::Rst {
-                    src_ip, src_port, ..
+                    src_ip,
+                    src_port,
+                    dst_port,
+                    seq,
                 } => {
+                    let Some(state) = policy.classify_rst(src_ip, src_port, dst_port, seq) else {
+                        continue;
+                    };
                     dispatch_response(
                         &senders,
                         &plan,
                         Ipv4Addr::from(src_ip),
                         src_port,
-                        PortState::Closed,
+                        state,
                         now,
                     );
                 }
@@ -601,7 +650,7 @@ fn record_response(
     rtt.entry(response.host).or_default().observe(latency);
     *answered.entry(response.host).or_default() += 1;
 
-    if let Some(&(PortState::Open, _)) = responses.get(&key) {
+    if let Some(&(PortState::Open | PortState::Unfiltered, _)) = responses.get(&key) {
         return;
     }
     responses.insert(key, (response.state, latency));
@@ -663,12 +712,7 @@ pub fn syn_scan(
     report.targets += v4_report.targets;
     report.jobs += v4_report.jobs;
     report.elapsed = started.elapsed();
-    report.counts.open += v4_report.counts.open;
-    report.counts.closed += v4_report.counts.closed;
-    report.counts.filtered += v4_report.counts.filtered;
-    report.counts.silent += v4_report.counts.silent;
-    report.counts.unreachable += v4_report.counts.unreachable;
-    report.counts.error += v4_report.counts.error;
+    report.counts.add_other(v4_report.counts);
     report.results.extend(v4_report.results);
     report.os_fingerprints.extend(v4_report.os_fingerprints);
     report.partial |= v4_report.partial;
@@ -826,17 +870,31 @@ fn push_probe(
         .get(&target_ip)
         .expect("target route resolved by the coordinator");
     let mut stack_frame = [0u8; 54];
-    packet::write_syn_frame(
-        &mut stack_frame,
-        &rt.src_mac,
-        &rt.dst_mac,
-        rt.src_ip,
-        u32::from(target_ip),
-        src_port,
-        target_port,
-        seq,
-        opts.ttl,
-    );
+    match opts.mode {
+        ProbeMode::Syn => packet::write_syn_frame(
+            &mut stack_frame,
+            &rt.src_mac,
+            &rt.dst_mac,
+            rt.src_ip,
+            u32::from(target_ip),
+            src_port,
+            target_port,
+            seq,
+            opts.ttl,
+        ),
+        ProbeMode::Ack => packet::write_ack_frame(
+            &mut stack_frame,
+            &rt.src_mac,
+            &rt.dst_mac,
+            rt.src_ip,
+            u32::from(target_ip),
+            src_port,
+            target_port,
+            seq,
+            seq,
+            opts.ttl,
+        ),
+    }
 
     let real_frames = match opts.fragment_size {
         Some(size) => packet::fragment_syn_frame(&stack_frame, size),
@@ -851,7 +909,12 @@ fn push_probe(
         );
     }
 
-    for (decoy_index, decoy) in opts.decoys.iter().enumerate() {
+    for (decoy_index, decoy) in opts
+        .decoys
+        .iter()
+        .enumerate()
+        .filter(|_| opts.mode == ProbeMode::Syn)
+    {
         let decoy_port = decoy_source_port(decoy_index, opts.sport_range.0, opts.sport_range.1);
         let decoy_frame = packet::build_syn_frame(
             &rt.src_mac,
@@ -1266,7 +1329,10 @@ fn syn_scan_v4(
 
     // 6. Spawn RX worker thread with per-shard fan-out
     let rx_running = Arc::clone(&running);
-    let rx_cookie = cookie_key;
+    let rx_policy = ProbePolicy {
+        cookie_key,
+        mode: opts.mode,
+    };
     let rx_owners = plan.owners.clone();
     let rx_port_groups = plan.port_groups.clone();
     let rx_groups = plan.groups;
@@ -1281,7 +1347,7 @@ fn syn_scan_v4(
             rx_loop(
                 rx_fd,
                 rx_running,
-                rx_cookie,
+                rx_policy,
                 senders,
                 rx_owners,
                 rx_port_groups,
@@ -1364,12 +1430,7 @@ fn syn_scan_v4(
             }
         };
         merged.jobs = merged.jobs.saturating_add(shard_report.jobs);
-        merged.counts.open += shard_report.counts.open;
-        merged.counts.closed += shard_report.counts.closed;
-        merged.counts.filtered += shard_report.counts.filtered;
-        merged.counts.silent += shard_report.counts.silent;
-        merged.counts.unreachable += shard_report.counts.unreachable;
-        merged.counts.error += shard_report.counts.error;
+        merged.counts.add_other(shard_report.counts);
         merged.results.extend(shard_report.results);
         merged.os_fingerprints.extend(shard_report.os_fingerprints);
         merged.host_progress.extend(shard_report.host_progress);
@@ -1533,5 +1594,79 @@ mod tests {
                 assert_eq!(owners.get(&target), Some(&index));
             }
         }
+    }
+
+    #[test]
+    fn ack_rst_is_accepted_only_with_the_probe_cookie() {
+        let key = CookieKey::random();
+        let policy = ProbePolicy {
+            cookie_key: key,
+            mode: ProbeMode::Ack,
+        };
+        let target = u32::from(Ipv4Addr::new(10, 0, 0, 9));
+        let cookie = key.encode(target, 443, 61000);
+
+        assert_eq!(
+            policy.classify_rst(target, 443, 61000, cookie),
+            Some(PortState::Unfiltered)
+        );
+        assert_eq!(policy.classify_rst(target, 443, 61000, cookie ^ 1), None);
+        assert_eq!(policy.classify_rst(target, 443, 61001, cookie), None);
+    }
+
+    #[test]
+    fn syn_rst_still_classifies_as_closed() {
+        let policy = ProbePolicy {
+            cookie_key: CookieKey::random(),
+            mode: ProbeMode::Syn,
+        };
+        let target = u32::from(Ipv4Addr::new(10, 0, 0, 9));
+        assert_eq!(
+            policy.classify_rst(target, 443, 61000, 0),
+            Some(PortState::Closed)
+        );
+    }
+
+    #[test]
+    fn unfiltered_response_is_not_downgraded_by_a_later_filtered_response() {
+        let host = Ipv4Addr::new(10, 0, 0, 9);
+        let mut tx_times = HashMap::new();
+        tx_times.insert((host, 443), Instant::now());
+        let mut responses = HashMap::new();
+        let mut rtt = HashMap::new();
+        let mut answered = HashMap::new();
+        let now = Instant::now();
+
+        record_response(
+            RxResponse {
+                host,
+                port: 443,
+                state: PortState::Unfiltered,
+                timestamp: now,
+            },
+            &tx_times,
+            &mut responses,
+            now,
+            &mut rtt,
+            &mut answered,
+        );
+        record_response(
+            RxResponse {
+                host,
+                port: 443,
+                state: PortState::Filtered,
+                timestamp: now,
+            },
+            &tx_times,
+            &mut responses,
+            now,
+            &mut rtt,
+            &mut answered,
+        );
+
+        assert_eq!(
+            responses.get(&(host, 443)).map(|entry| entry.0),
+            Some(PortState::Unfiltered)
+        );
     }
 }

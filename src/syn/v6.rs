@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use super::engine::{Pacer, SynScanOptions};
+use super::engine::{Pacer, ProbeMode, SynScanOptions};
 use super::packet;
 use super::permute::BlackRock;
 use super::retry::{Retry, RetryQueue, next_source_port, retry_window};
@@ -79,7 +79,8 @@ impl BatchV6 {
         self.len == 0
     }
 
-    /// Append an IPv6 SYN probe; the packet buffer is reused across probes.
+    /// Append an IPv6 SYN or ACK probe; the packet buffer is reused across probes.
+    #[expect(clippy::too_many_arguments)]
     fn push(
         &mut self,
         target: Ipv6Addr,
@@ -87,6 +88,7 @@ impl BatchV6 {
         src_port: u16,
         dst_port: u16,
         seq: u32,
+        mode: ProbeMode,
         hop_limit: u8,
     ) {
         if self.len >= self.packets.len() {
@@ -99,15 +101,26 @@ impl BatchV6 {
         let (buffer, dest, key) = &mut self.packets[self.len];
         buffer.clear();
         let mut packet_buf = [0u8; 60];
-        packet::write_ipv6_syn_packet_into(
-            &mut packet_buf,
-            &source,
-            &target,
-            src_port,
-            dst_port,
-            seq,
-            hop_limit,
-        );
+        match mode {
+            ProbeMode::Syn => packet::write_ipv6_syn_packet_into(
+                &mut packet_buf,
+                &source,
+                &target,
+                src_port,
+                dst_port,
+                seq,
+                hop_limit,
+            ),
+            ProbeMode::Ack => packet::write_ipv6_ack_packet_into(
+                &mut packet_buf,
+                &source,
+                &target,
+                src_port,
+                dst_port,
+                (seq, seq),
+                hop_limit,
+            ),
+        }
         buffer.extend_from_slice(&packet_buf);
         *dest = sockaddr_v6_raw(target);
         *key = (target, dst_port);
@@ -284,6 +297,7 @@ fn rx_loop(
     rx_fd: i32,
     running: Arc<AtomicBool>,
     cookie_key: super::cookie::CookieKey,
+    mode: ProbeMode,
     sender: crossbeam_channel::Sender<RxResponse>,
 ) {
     let mut batch = RxBatch::new(RX_BATCH);
@@ -317,7 +331,9 @@ fn rx_loop(
                     dst_port,
                     ack,
                 } => {
-                    if cookie_key.validate_v6(&src_ip.octets(), src_port, dst_port, ack) {
+                    if mode == ProbeMode::Syn
+                        && cookie_key.validate_v6(&src_ip.octets(), src_port, dst_port, ack)
+                    {
                         let _ = sender.send(RxResponse {
                             host: src_ip,
                             port: src_port,
@@ -327,12 +343,25 @@ fn rx_loop(
                     }
                 }
                 packet::ParsedV6Frame::Rst {
-                    src_ip, src_port, ..
+                    src_ip,
+                    src_port,
+                    dst_port,
+                    seq,
                 } => {
+                    let state = match mode {
+                        ProbeMode::Syn => PortState::Closed,
+                        ProbeMode::Ack => {
+                            let cookie = cookie_key.encode_v6(&src_ip.octets(), src_port, dst_port);
+                            if seq != cookie {
+                                continue;
+                            }
+                            PortState::Unfiltered
+                        }
+                    };
                     let _ = sender.send(RxResponse {
                         host: src_ip,
                         port: src_port,
-                        state: PortState::Closed,
+                        state,
                         timestamp: now,
                     });
                 }
@@ -357,7 +386,10 @@ fn record_response(
     rtt.entry(response.host).or_default().observe(latency);
     *answered.entry(response.host).or_default() += 1;
 
-    if matches!(responses.get(&key), Some((PortState::Open, _))) {
+    if matches!(
+        responses.get(&key),
+        Some((PortState::Open | PortState::Unfiltered, _))
+    ) {
         return;
     }
     responses.insert(key, (response.state, latency));
@@ -376,6 +408,7 @@ fn drain_responses(
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 fn push_v6_probe(
     batch: &mut BatchV6,
     sources: &HashMap<Ipv6Addr, Ipv6Addr>,
@@ -383,11 +416,12 @@ fn push_v6_probe(
     target: Ipv6Addr,
     port: u16,
     source_port: u16,
+    mode: ProbeMode,
     hop_limit: u8,
 ) {
     let sequence = cookie_key.encode_v6(&target.octets(), port, source_port);
     let source = sources[&target];
-    batch.push(target, source, source_port, port, sequence, hop_limit);
+    batch.push(target, source, source_port, port, sequence, mode, hop_limit);
 }
 
 /// Execute a raw IPv6 SYN scan for the supplied targets.
@@ -479,9 +513,10 @@ pub(super) fn scan_v6(
 
     let rx_running = Arc::clone(&running);
     let rx_cookie = cookie_key;
+    let rx_mode = opts.mode;
     let rx_handle = std::thread::Builder::new()
         .name("rayscan-rx6".to_string())
-        .spawn(move || rx_loop(rx_fd, rx_running, rx_cookie, result_tx))
+        .spawn(move || rx_loop(rx_fd, rx_running, rx_cookie, rx_mode, result_tx))
         .map_err(|error| AppError::runtime(format!("failed to spawn IPv6 RX thread: {error}")))?;
 
     let blackrock = BlackRock::new(total_probes);
@@ -543,6 +578,7 @@ pub(super) fn scan_v6(
                 entry.key.0,
                 entry.key.1,
                 src_port,
+                opts.mode,
                 opts.ttl,
             );
             pending_retry.push((entry.key, src_port, attempt));
@@ -562,6 +598,7 @@ pub(super) fn scan_v6(
                 target,
                 port,
                 source_port,
+                opts.mode,
                 opts.ttl,
             );
             pending_initial.push(((target, port), source_port, 0));

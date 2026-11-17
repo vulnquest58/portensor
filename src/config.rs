@@ -14,6 +14,7 @@ pub enum StateFilter {
     Open,
     Closed,
     Filtered,
+    Unfiltered,
     Silent,
     Unreachable,
     Error,
@@ -26,6 +27,7 @@ impl StateFilter {
             Self::Open => state_set(&[Self::Open]),
             Self::Closed => state_set(&[Self::Closed]),
             Self::Filtered => state_set(&[Self::Filtered]),
+            Self::Unfiltered => state_set(&[Self::Unfiltered]),
             Self::Silent => state_set(&[Self::Silent]),
             Self::Unreachable => state_set(&[Self::Unreachable]),
             Self::Error => state_set(&[Self::Error]),
@@ -44,6 +46,7 @@ pub fn state_set(filters: &[StateFilter]) -> StateSet {
             StateFilter::Open => PortState::Open,
             StateFilter::Closed => PortState::Closed,
             StateFilter::Filtered => PortState::Filtered,
+            StateFilter::Unfiltered => PortState::Unfiltered,
             StateFilter::Silent => PortState::Silent,
             StateFilter::Unreachable => PortState::Unreachable,
             StateFilter::Error => PortState::Error,
@@ -239,5 +242,9 @@ source_port_range = "40000-40100"
             state_set(&[StateFilter::Open, StateFilter::All]),
             StateSet::all()
         );
+
+        let unfiltered = StateFilter::Unfiltered.to_set();
+        assert!(unfiltered.contains(PortState::Unfiltered));
+        assert!(!unfiltered.contains(PortState::Open));
     }
 }

@@ -6,10 +6,22 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Raw TCP ACK firewall mapping**: `--ack` sends stateless ACK probes over
+  IPv4 and IPv6 and reports firewall behavior as `unfiltered` when a RST echoes
+  the probe cookie (the packet reached a host or stateless device) and
+  `filtered` when no response arrives. ACK mode defaults `--show` to
+  `unfiltered`, honors `--retries`, `--timeout`, `--rate`, `--ttl`, and
+  `--source-port-range`, and   automatically disables handshake verification,
+  service/OS/UDP detection, advisories, plugins, scripts, decoys,
+  fragmentation, and AIMD rate control (intentional drops are not congestion).
+  `--format port-list`/`host-port` are rejected because they only render
+  open/closed results. The new state flows through table, JSON,
+  JSONL, CSV, Markdown, SARIF, and Nmap XML output, merge/state totals,
+  resume files, and diffs; XML reports the ACK RST reason as `reset`.
 - **Probe shaping controls**: `--ttl N` (config key `ttl`) sets the IPv4 TTL
-  or IPv6 hop limit on raw SYN, decoy, fragment, and OS fingerprint probes.
+  or IPv6 hop limit on raw SYN, ACK, decoy, fragment, and OS fingerprint probes.
   `--source-port-range MIN-MAX` (config key `source_port_range`) selects the
-  raw SYN source-port range; the BPF filter follows the chosen range and
+  raw SYN/ACK source-port range; the BPF filter follows the chosen range and
   retransmissions continue to advance to fresh source ports. Both flags use
   the same defaults as before (TTL 64, ports 61000-61999), and invalid values
   fail with a usage error before any raw socket is opened.

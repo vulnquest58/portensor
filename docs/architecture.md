@@ -70,10 +70,10 @@ output. `--connect-only` bypasses that recheck and exposes raw SYN semantics.
 | `syn::cookie` | SipHash-1-3 SYN cookie encode / decode / validate |
 | `syn::permute` | BlackRock stateless bijection (Feistel cipher), no repeats |
 | `syn::route` | `/proc/net/route` LPM parser, ARP resolution, `iface_ip/mac/index` |
-| `syn::packet` | Raw Ethernet/IP/TCP frame builder; SYN-ACK / RST / ICMP parser |
+| `syn::packet` | Raw Ethernet/IP/TCP SYN and ACK frame builders; SYN-ACK / RST / ICMP parser |
 | `syn::filter` | Classic BPF bytecode generator and `attach_filter()` |
 | `syn::retry` | Per-probe RTT retransmission queue and fresh-source-port progression |
-| `syn::engine` | TX/RX thread orchestrator, per-probe retransmission scheduling, and result aggregation |
+| `syn::engine` | TX/RX thread orchestrator, SYN/ACK probe policy, per-probe retransmission scheduling, and result aggregation |
 | `syn::aimd` | AIMD rate controller for the TX loop — additive increase on success, multiplicative decrease on loss |
 | `verify` | Connect-plus-banner verification of SYN-open candidates and state/count merging |
 | `anomaly` | Flags hosts with anomalously large open-port counts for pre-verification scrutiny |
@@ -185,18 +185,42 @@ bind the full 128-bit address. IPv4 decoys and fragmentation are not available
 for IPv6, and mixed-family target sets are partitioned and merged into a single
 report.
 
+## TCP ACK engine (`--ack`, Linux + CAP_NET_RAW)
+
+ACK mode reuses the SYN engine's sharding, pacing, retransmission, and RX
+infrastructure but sends a probe with TCP flag `ACK` (0x10) only. The probe
+carries the tuple cookie in both the sequence and acknowledgment fields. ACK
+does not establish a handshake, so it answers a firewall question, not a
+service question: it cannot distinguish open from closed ports.
+
+- A RST is accepted as `unfiltered` only when its sequence number equals the
+  cookie for `(target IP, target port, source port)`. RSTs that fail the check
+  are ignored as unrelated or spoofed traffic.
+- No response or an ICMP unreachable after the retry window is `filtered`.
+- `unfiltered` is sticky, like `open`: later filtered timeouts do not downgrade
+  it.
+- ACK probes honor `--retries`, `--timeout`, `--rate`, `--ttl`, and
+  `--source-port-range`; decoys and fragmentation are SYN-only.
+- Verification, service/OS/UDP detection, advisories, plugins, and scripts are
+  skipped. `--show` defaults to `unfiltered`, and `--format port-list` /
+  `host-port` are rejected because those renderers print open/closed results
+  only.
+- IPv4 uses the same `AF_PACKET` frame builder; IPv6 uses the `AF_INET6` path
+  with a full-address cookie.
+
 ## Result semantics
 
-The JSON schema (`host`, `port`, `state`) is identical for both engines.
+The JSON schema (`host`, `port`, `state`) is identical across engines.
 
-| State | Connect engine meaning | Verified `--syn` meaning | Raw `--syn --connect-only` meaning |
-| :--- | :--- | :--- | :--- |
-| `open` | Handshake + banner, or immediate peer close | SYN-ACK candidate passes connect + banner verification | SYN-ACK received and cookie validates |
-| `silent` | Handshake succeeded; no banner in window | Candidate handshake succeeded; no banner in window | *(not emitted)* |
-| `closed` | ECONNREFUSED / RST | Candidate connect refused or reset | RST received |
-| `filtered` | Connect timed out | Candidate connect timed out | ICMP unreachable or no response after retries |
-| `unreachable` | EHOSTUNREACH / ENETUNREACH | Candidate connect unreachable | *(not emitted)* |
-| `error` | Local or unexpected failure | Local verification failure | *(not emitted)* |
+| State | Connect engine meaning | Verified `--syn` meaning | Raw `--syn --connect-only` meaning | Raw `--ack` meaning |
+| :--- | :--- | :--- | :--- | :--- |
+| `open` | Handshake + banner, or immediate peer close | SYN-ACK candidate passes connect + banner verification | SYN-ACK received and cookie validates | *(not emitted)* |
+| `silent` | Handshake succeeded; no banner in window | Candidate handshake succeeded; no banner in window | *(not emitted)* | *(not emitted)* |
+| `closed` | ECONNREFUSED / RST | Candidate connect refused or reset | RST received | *(not emitted)* |
+| `filtered` | Connect timed out | Candidate connect timed out | ICMP unreachable or no response after retries | ICMP unreachable or no response after retries |
+| `unfiltered` | *(not emitted)* | *(not emitted)* | *(not emitted)* | RST received with the probe cookie in its sequence field |
+| `unreachable` | EHOSTUNREACH / ENETUNREACH | Candidate connect unreachable | *(not emitted)* | *(not emitted)* |
+| `error` | Local or unexpected failure | Local verification failure | *(not emitted)* | *(not emitted)* |
 
 > **Note:** At the raw SYN layer, tarpits and SYN proxies respond with a
 > SYN-ACK and look open. The default `--syn` path therefore rechecks every

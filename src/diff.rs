@@ -690,7 +690,10 @@ pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
                         "open" => Some(PortState::Open),
                         "closed" => Some(PortState::Closed),
                         "filtered" => Some(PortState::Filtered),
+                        "unfiltered" => Some(PortState::Unfiltered),
                         "silent" => Some(PortState::Silent),
+                        "unreachable" => Some(PortState::Unreachable),
+                        "error" => Some(PortState::Error),
                         _ => None,
                     })
                     .unwrap_or(PortState::Open);
@@ -817,7 +820,10 @@ pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
                     "open" => PortState::Open,
                     "closed" => PortState::Closed,
                     "filtered" => PortState::Filtered,
+                    "unfiltered" => PortState::Unfiltered,
                     "silent" => PortState::Silent,
+                    "unreachable" => PortState::Unreachable,
+                    "error" => PortState::Error,
                     _ => PortState::Closed,
                 };
                 snapshot.ports.insert(

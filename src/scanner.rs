@@ -372,7 +372,9 @@ fn evidence_rank(state: PortState) -> u8 {
         PortState::Open => 3,
         PortState::Silent => 2,
         PortState::Closed => 1,
-        PortState::Filtered | PortState::Unreachable | PortState::Error => 0,
+        PortState::Filtered | PortState::Unfiltered | PortState::Unreachable | PortState::Error => {
+            0
+        }
     }
 }
 

@@ -29,6 +29,9 @@ pub enum ParsedFrame {
         src_port: u16,
         /// Destination port (our scanner's source port).
         dst_port: u16,
+        /// TCP sequence number from the target. For ACK probes this echoes the
+        /// probe's acknowledgment number and validates the cookie.
+        seq: u32,
     },
     /// An ICMP Destination Unreachable packet indicating a filtered or unreachable port.
     IcmpUnreachable {
@@ -137,6 +140,31 @@ pub fn build_ipv6_tcp_packet(
     tcp_options: &[u8],
     hop_limit: u8,
 ) -> Vec<u8> {
+    build_ipv6_tcp_packet_with(
+        src_ip,
+        dst_ip,
+        src_port,
+        dst_port,
+        seq,
+        0,
+        0x02,
+        tcp_options,
+        hop_limit,
+    )
+}
+
+#[expect(clippy::too_many_arguments)]
+fn build_ipv6_tcp_packet_with(
+    src_ip: &Ipv6Addr,
+    dst_ip: &Ipv6Addr,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    flags: u8,
+    tcp_options: &[u8],
+    hop_limit: u8,
+) -> Vec<u8> {
     let tcp_len = 20 + tcp_options.len();
     let mut packet = vec![0u8; 40 + tcp_len];
 
@@ -151,8 +179,9 @@ pub fn build_ipv6_tcp_packet(
     tcp[0..2].copy_from_slice(&src_port.to_be_bytes());
     tcp[2..4].copy_from_slice(&dst_port.to_be_bytes());
     tcp[4..8].copy_from_slice(&seq.to_be_bytes());
+    tcp[8..12].copy_from_slice(&ack.to_be_bytes());
     tcp[12] = (((20 + tcp_options.len()) / 4) as u8) << 4;
-    tcp[13] = 0x02;
+    tcp[13] = flags;
     tcp[14..16].copy_from_slice(&1024u16.to_be_bytes());
     tcp[20..].copy_from_slice(tcp_options);
 
@@ -184,6 +213,38 @@ pub fn write_ipv6_syn_packet_into(
     seq: u32,
     hop_limit: u8,
 ) {
+    write_ipv6_tcp_packet_into(
+        packet, src_ip, dst_ip, src_port, dst_port, seq, 0, 0x02, hop_limit,
+    );
+}
+
+/// Writes a 60-byte IPv6 ACK packet (no TCP options) into a caller-provided buffer.
+pub fn write_ipv6_ack_packet_into(
+    packet: &mut [u8; 60],
+    src_ip: &Ipv6Addr,
+    dst_ip: &Ipv6Addr,
+    src_port: u16,
+    dst_port: u16,
+    seq_ack: (u32, u32),
+    hop_limit: u8,
+) {
+    write_ipv6_tcp_packet_into(
+        packet, src_ip, dst_ip, src_port, dst_port, seq_ack.0, seq_ack.1, 0x10, hop_limit,
+    );
+}
+
+#[expect(clippy::too_many_arguments)]
+fn write_ipv6_tcp_packet_into(
+    packet: &mut [u8; 60],
+    src_ip: &Ipv6Addr,
+    dst_ip: &Ipv6Addr,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    flags: u8,
+    hop_limit: u8,
+) {
     packet[0..4].fill(0);
     packet[0] = 0x60;
     packet[4..6].copy_from_slice(&20u16.to_be_bytes());
@@ -196,9 +257,9 @@ pub fn write_ipv6_syn_packet_into(
     segment[0..2].copy_from_slice(&src_port.to_be_bytes());
     segment[2..4].copy_from_slice(&dst_port.to_be_bytes());
     segment[4..8].copy_from_slice(&seq.to_be_bytes());
-    segment[8..12].fill(0);
+    segment[8..12].copy_from_slice(&ack.to_be_bytes());
     segment[12] = 0x50; // Data offset 5 (20 bytes)
-    segment[13] = 0x02; // SYN
+    segment[13] = flags;
     segment[14..16].copy_from_slice(&1024u16.to_be_bytes());
     segment[16..18].fill(0);
 
@@ -219,6 +280,7 @@ pub enum ParsedV6Frame {
         src_ip: Ipv6Addr,
         src_port: u16,
         dst_port: u16,
+        seq: u32,
     },
     Other,
 }
@@ -244,6 +306,7 @@ pub fn parse_ipv6_tcp(data: &[u8], fallback_src: Option<Ipv6Addr>) -> ParsedV6Fr
     }
     let src_port = u16::from_be_bytes([tcp[0], tcp[1]]);
     let dst_port = u16::from_be_bytes([tcp[2], tcp[3]]);
+    let seq = u32::from_be_bytes([tcp[4], tcp[5], tcp[6], tcp[7]]);
     let ack = u32::from_be_bytes([tcp[8], tcp[9], tcp[10], tcp[11]]);
     let flags = tcp[13];
 
@@ -259,6 +322,7 @@ pub fn parse_ipv6_tcp(data: &[u8], fallback_src: Option<Ipv6Addr>) -> ParsedV6Fr
             src_ip,
             src_port,
             dst_port,
+            seq,
         }
     } else {
         ParsedV6Frame::Other
@@ -305,6 +369,64 @@ pub fn write_syn_frame(
     seq: u32,
     ttl: u8,
 ) {
+    write_tcp_frame(
+        frame, src_mac, dst_mac, src_ip, dst_ip, src_port, dst_port, seq, 0, 0x02, ttl,
+    );
+}
+
+/// Builds a 54-byte raw Ethernet/IPv4/TCP ACK frame used for firewall mapping.
+#[expect(clippy::too_many_arguments)]
+pub fn build_ack_frame(
+    src_mac: &[u8; 6],
+    dst_mac: &[u8; 6],
+    src_ip: u32,
+    dst_ip: u32,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    ttl: u8,
+) -> [u8; 54] {
+    let mut frame = [0u8; 54];
+    write_ack_frame(
+        &mut frame, src_mac, dst_mac, src_ip, dst_ip, src_port, dst_port, seq, ack, ttl,
+    );
+    frame
+}
+
+/// Writes a 54-byte raw Ethernet/IPv4/TCP ACK frame into a caller-provided buffer.
+#[expect(clippy::too_many_arguments)]
+pub fn write_ack_frame(
+    frame: &mut [u8; 54],
+    src_mac: &[u8; 6],
+    dst_mac: &[u8; 6],
+    src_ip: u32,
+    dst_ip: u32,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    ttl: u8,
+) {
+    write_tcp_frame(
+        frame, src_mac, dst_mac, src_ip, dst_ip, src_port, dst_port, seq, ack, 0x10, ttl,
+    );
+}
+
+#[expect(clippy::too_many_arguments)]
+fn write_tcp_frame(
+    frame: &mut [u8; 54],
+    src_mac: &[u8; 6],
+    dst_mac: &[u8; 6],
+    src_ip: u32,
+    dst_ip: u32,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    flags: u8,
+    ttl: u8,
+) {
     // 1. Ethernet Header (bytes 0..14)
     frame[0..6].copy_from_slice(dst_mac);
     frame[6..12].copy_from_slice(src_mac);
@@ -329,9 +451,9 @@ pub fn write_syn_frame(
     frame[34..36].copy_from_slice(&src_port.to_be_bytes());
     frame[36..38].copy_from_slice(&dst_port.to_be_bytes());
     frame[38..42].copy_from_slice(&seq.to_be_bytes());
-    frame[42..46].copy_from_slice(&0u32.to_be_bytes()); // Acknowledgment number (0 in initial SYN)
+    frame[42..46].copy_from_slice(&ack.to_be_bytes()); // Acknowledgment number
     frame[46] = 0x50; // Data offset: 5 (20 bytes), Reserved: 0
-    frame[47] = 0x02; // Flags: SYN
+    frame[47] = flags;
     frame[48..50].copy_from_slice(&1024u16.to_be_bytes()); // Window Size: 1024
     frame[50..52].copy_from_slice(&[0, 0]); // Zero out checksum for calculation
     frame[52..54].copy_from_slice(&[0, 0]); // Urgent Pointer: 0
@@ -443,6 +565,7 @@ pub fn parse_frame(data: &[u8]) -> ParsedFrame {
                 src_ip,
                 src_port,
                 dst_port,
+                seq,
             }
         } else {
             ParsedFrame::Other
@@ -624,6 +747,7 @@ mod tests {
         reply[26..30].copy_from_slice(&0x0a000002u32.to_be_bytes()); // src_ip
         reply[34..36].copy_from_slice(&443u16.to_be_bytes()); // src_port
         reply[36..38].copy_from_slice(&61005u16.to_be_bytes()); // dst_port
+        reply[38..42].copy_from_slice(&0x1122_3344u32.to_be_bytes()); // seq
         reply[46] = 0x50;
         reply[47] = 0x04; // RST
 
@@ -633,10 +757,12 @@ mod tests {
                 src_ip,
                 src_port,
                 dst_port,
+                seq,
             } => {
                 assert_eq!(src_ip, 0x0a000002);
                 assert_eq!(src_port, 443);
                 assert_eq!(dst_port, 61005);
+                assert_eq!(seq, 0x1122_3344);
             }
             _ => panic!("Expected Rst, got {:?}", parsed),
         }
@@ -751,6 +877,73 @@ mod tests {
         match parse_ipv6_tcp(&packet[40..], Some(src)) {
             ParsedV6Frame::SynAck { src_ip, .. } => assert_eq!(src_ip, src),
             other => panic!("expected headerless IPv6 SYN-ACK, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_ack_frame_sets_flags_ack_and_valid_checksums() {
+        let src_mac = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        let dst_mac = [0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb];
+        let src_ip = 0x0a000001;
+        let dst_ip = 0x0a000002;
+        let frame = build_ack_frame(
+            &src_mac,
+            &dst_mac,
+            src_ip,
+            dst_ip,
+            61000,
+            443,
+            0x1122_3344,
+            0x5566_7788,
+            42,
+        );
+
+        assert_eq!(&frame[0..6], &dst_mac);
+        assert_eq!(&frame[6..12], &src_mac);
+        assert_eq!(frame[22], 42);
+        assert_eq!(&frame[34..36], &61000u16.to_be_bytes());
+        assert_eq!(&frame[36..38], &443u16.to_be_bytes());
+        assert_eq!(&frame[38..42], &0x1122_3344u32.to_be_bytes());
+        assert_eq!(&frame[42..46], &0x5566_7788u32.to_be_bytes());
+        assert_eq!(frame[47], 0x10);
+        assert_eq!(tcp_checksum(src_ip, dst_ip, &frame[34..54]), 0xffff);
+        assert_eq!(ip_checksum(&frame[14..34]), 0);
+    }
+
+    #[test]
+    fn build_ipv6_ack_sets_ack_and_parses_rst_sequence() {
+        let src: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        let dst: Ipv6Addr = "2001:db8::2".parse().unwrap();
+        let mut packet = [0u8; 60];
+        write_ipv6_ack_packet_into(
+            &mut packet,
+            &src,
+            &dst,
+            61000,
+            443,
+            (0x1122_3344, 0x5566_7788),
+            64,
+        );
+        assert_eq!(packet[40], 0xee);
+        assert_eq!(packet[13 + 40], 0x10);
+        assert_eq!(&packet[44..48], &0x1122_3344u32.to_be_bytes());
+        assert_eq!(&packet[48..52], &0x5566_7788u32.to_be_bytes());
+        assert_eq!(tcp6_checksum(&src, &dst, &packet[40..]), 0xffff);
+
+        packet[40 + 13] = 0x04;
+        match parse_ipv6_tcp(&packet, Some(dst)) {
+            ParsedV6Frame::Rst {
+                src_ip,
+                src_port,
+                dst_port,
+                seq,
+            } => {
+                assert_eq!(src_ip, src);
+                assert_eq!(src_port, 61000);
+                assert_eq!(dst_port, 443);
+                assert_eq!(seq, 0x1122_3344);
+            }
+            other => panic!("expected IPv6 RST, got {other:?}"),
         }
     }
 }

@@ -69,9 +69,9 @@ In our controlled benchmark lab simulating an enterprise perimeter with tarpits 
 | `rayscan-static-musl` | Linux (x86_64 musl) | Fully static standalone binary, runs anywhere (including Alpine / scratch) |
 | `rayscan.exe` | Windows (x86_64) | Native Windows executable (TCP connect scanner + UDP probe engine) |
 
-Raw SYN discovery and active OS fingerprinting are Linux/WSL2-only because they
-require `CAP_NET_RAW`; IPv4 uses `AF_PACKET`, while IPv6 uses kernel-routed
-`AF_INET6` raw sockets. The Windows binary uses the verified connect engine plus
+Raw SYN and ACK discovery and active OS fingerprinting are Linux/WSL2-only
+because they require `CAP_NET_RAW`; IPv4 uses `AF_PACKET`, while IPv6 uses
+kernel-routed `AF_INET6` raw sockets. The Windows binary uses the verified connect engine plus
 UDP probes and cannot perform raw IPv6 scans.
 
 ## What exists today
@@ -80,7 +80,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | :--- | :--- |
 | Toolchain | `rust-toolchain.toml`, pinned Rust 1.99.1, `rustfmt`, `clippy` |
 | CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan distributed plan/serve/worker/agent`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list/search/install`, guided `rayscan interactive`, global `--theme` |
-| Discovery | Async TCP connect scanner plus Linux raw SYN for IPv4 and IPv6 (`--syn`); optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
+| Discovery | Async TCP connect scanner plus Linux raw SYN for IPv4 and IPv6 (`--syn`); raw TCP ACK firewall mapping (`--ack`, RST = `unfiltered`, timeout = `filtered`); optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
@@ -301,7 +301,7 @@ cycle results, environment caveats, and repro instructions live in
 - Linux, or WSL2 with Ubuntu 22.04+.
 - Rust 1.99.1 (the pinned toolchain is installed automatically by `rustup`).
 - Python 3.10+ for the lab and benchmark harness.
-- Root only for `make lab` and `--syn`; the other CLI paths and tests do not need root.
+- Root only for `make lab`, `--syn`, and `--ack`; the other CLI paths and tests do not need root.
 - Optional: `musl-tools` (`sudo apt-get install -y musl-tools`) for `make musl`.
 - Optional comparison tools: `nmap`, `masscan`, `rustscan`.
 
@@ -381,6 +381,34 @@ rayscan scan --target 192.168.100.37
 # Disable top-ports prioritization to preserve numeric sequence:
 rayscan scan --target 192.168.100.37 --no-top-ports-first
 ```
+
+### TCP ACK Firewall Mapping (`--ack`)
+
+`--ack` sends stateless TCP ACK probes to map firewall behavior without
+completing a handshake. A RST whose sequence number echoes the cookie placed in
+the probe's acknowledgment field means the packet reached a host or a stateless
+device that answered (`unfiltered`); no response within the timeout means the
+probe was dropped (`filtered`). ACK scanning cannot distinguish open from closed
+ports, so services, OS fingerprinting, UDP, advisories, plugins, and scripts are
+disabled automatically, and only `unfiltered` results are shown by default.
+
+```bash
+# Map unfiltered TCP ports through a firewall (Linux/WSL2, root or CAP_NET_RAW):
+sudo rayscan scan --ack --target 192.168.100.37 --ports 1-1024 --json
+
+# ACK probes honor probe shaping shared with SYN scans:
+sudo rayscan scan --ack --target 192.168.100.37 --top-ports 100 \
+    --ttl 64 --source-port-range 40000-40100
+```
+
+ACK mode is available for IPv4 and IPv6, accepts `--retries`, `--timeout`,
+`--rate`, `--ttl`, and `--source-port-range`, and rejects `--decoys`,
+`--fragment-size`, `--format port-list`, and `--format host-port` (those
+renderers expose only open/closed results). Loopback validation in a Linux
+network namespace returns `unfiltered` for both open and closed ports on
+`127.0.0.1` and `::1`, and an `iptables`/`ip6tables` INPUT `DROP` rule turns the
+result into `filtered`. Adaptive AIMD rate control is disabled in ACK mode so
+intentional firewall drops do not throttle the sweep.
 
 ### Real-Time Live Results Table & Deduplication
 
@@ -1151,16 +1179,18 @@ sockets so the kernel handles routing and neighbour discovery. SYN cookies bind
 the full 128-bit address. `--os-probes` applies to both families, sampling up to
 N distinct open ports and reporting family agreement plus hop count. IPv6 OS
 fingerprints use the SYN-ACK hop limit,
-window, and TCP options.
+window, and TCP options. IPv6 ACK probes (`--ack`) validate the echoed cookie
+against the full address and both ports.
 
 ```bash
 sudo rayscan scan -6 -t 2001:db8::10 -p 1-1024 --syn --os
 sudo rayscan scan -6 -t ::1 -p 80,443 --syn --format json
+sudo rayscan scan -6 -t 2001:db8::10 -p 1-1024 --ack
 ```
 
 Decoys and IPv4 fragmentation remain IPv4-only. Mixed IPv4/IPv6 target sets are
 partitioned automatically and merged into one report. `--ttl` sets the IPv4 TTL
-or IPv6 hop limit for raw SYN and OS fingerprint probes.
+or IPv6 hop limit for raw SYN, ACK, and OS fingerprint probes.
 
 ### Stealth, Jitter, TTL, Decoys, and Fragmentation
 
@@ -1171,8 +1201,9 @@ sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --jitter-ms 250
 # Set a custom IPv4 TTL / IPv6 hop limit for SYN and OS probes:
 sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --os --ttl 128
 
-# Restrict raw SYN source ports (retries advance within this range):
+# Restrict raw SYN/ACK source ports (retries advance within this range):
 sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --source-port-range 40000-40100
+sudo rayscan scan -t 10.0.0.5 -p 1-1024 --ack --source-port-range 40000-40100
 
 # Add up to eight IPv4 decoy source addresses:
 sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --decoys 10.0.0.101,10.0.0.102
@@ -1182,11 +1213,11 @@ sudo rayscan scan -t 10.0.0.5 -p 80,443 --syn --fragment-size 8
 ```
 
 The `stealth` profile defaults to 50 ms jitter in addition to its 20 pps rate
-limit, eight workers, and three retries. Decoys, fragmentation, and the custom
-source-port range require `--syn`; decoy source ports are chosen outside the
-configured range. Use a range with at least two ports if retransmissions need
-fresh source ports. OS fingerprint probes keep their dedicated source ports
-(62000 for IPv4, 62001 for IPv6).
+limit, eight workers, and three retries. Decoys and fragmentation require
+`--syn`; the custom source-port range applies to `--syn` and `--ack`. Decoy
+source ports are chosen outside the configured range. Use a range with at least
+two ports if retransmissions need fresh source ports. OS fingerprint probes keep
+their dedicated source ports (62000 for IPv4, 62001 for IPv6).
 
 ### Output formats
 
@@ -1230,8 +1261,8 @@ not retry already-probed ports and works for multiple targets: per-host
 progress is tracked (`hosts` entries in the state file), so each target keeps
 its own completed-port set and counts. Single-target scans saved by older
 versions resume unchanged; when resumed against the same host set, results for
-hosts no longer being scanned are preserved in the merged report. Raw SYN
-mode (`--syn`) still requires a single target for resumable scans.
+hosts no longer being scanned are preserved in the merged report. Raw SYN and
+ACK modes (`--syn`, `--ack`) still require a single target for resumable scans.
 
 ### Packaging
 

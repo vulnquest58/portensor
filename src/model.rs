@@ -16,16 +16,18 @@ pub enum PortState {
     #[default]
     Closed,
     Filtered,
+    Unfiltered,
     Silent,
     Unreachable,
     Error,
 }
 
 impl PortState {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Open,
         Self::Closed,
         Self::Filtered,
+        Self::Unfiltered,
         Self::Silent,
         Self::Unreachable,
         Self::Error,
@@ -36,9 +38,10 @@ impl PortState {
             Self::Open => 1 << 0,
             Self::Closed => 1 << 1,
             Self::Filtered => 1 << 2,
-            Self::Silent => 1 << 3,
-            Self::Unreachable => 1 << 4,
-            Self::Error => 1 << 5,
+            Self::Unfiltered => 1 << 3,
+            Self::Silent => 1 << 4,
+            Self::Unreachable => 1 << 5,
+            Self::Error => 1 << 6,
         }
     }
 
@@ -47,6 +50,7 @@ impl PortState {
             Self::Open => "open",
             Self::Closed => "closed",
             Self::Filtered => "filtered",
+            Self::Unfiltered => "unfiltered",
             Self::Silent => "silent",
             Self::Unreachable => "unreachable",
             Self::Error => "error",
@@ -73,11 +77,16 @@ impl StateSet {
         Self(PortState::Open.bit())
     }
 
+    pub const fn unfiltered() -> Self {
+        Self(PortState::Unfiltered.bit())
+    }
+
     pub const fn all() -> Self {
         Self(
             PortState::Open.bit()
                 | PortState::Closed.bit()
                 | PortState::Filtered.bit()
+                | PortState::Unfiltered.bit()
                 | PortState::Silent.bit()
                 | PortState::Unreachable.bit()
                 | PortState::Error.bit(),
@@ -107,6 +116,7 @@ pub struct StateCounts {
     pub open: u64,
     pub closed: u64,
     pub filtered: u64,
+    pub unfiltered: u64,
     pub silent: u64,
     pub unreachable: u64,
     pub error: u64,
@@ -118,10 +128,21 @@ impl StateCounts {
             PortState::Open => self.open += 1,
             PortState::Closed => self.closed += 1,
             PortState::Filtered => self.filtered += 1,
+            PortState::Unfiltered => self.unfiltered += 1,
             PortState::Silent => self.silent += 1,
             PortState::Unreachable => self.unreachable += 1,
             PortState::Error => self.error += 1,
         }
+    }
+
+    pub fn add_other(&mut self, other: Self) {
+        self.open += other.open;
+        self.closed += other.closed;
+        self.filtered += other.filtered;
+        self.unfiltered += other.unfiltered;
+        self.silent += other.silent;
+        self.unreachable += other.unreachable;
+        self.error += other.error;
     }
 
     pub fn remove(&mut self, state: PortState) {
@@ -129,6 +150,7 @@ impl StateCounts {
             PortState::Open => self.open = self.open.saturating_sub(1),
             PortState::Closed => self.closed = self.closed.saturating_sub(1),
             PortState::Filtered => self.filtered = self.filtered.saturating_sub(1),
+            PortState::Unfiltered => self.unfiltered = self.unfiltered.saturating_sub(1),
             PortState::Silent => self.silent = self.silent.saturating_sub(1),
             PortState::Unreachable => self.unreachable = self.unreachable.saturating_sub(1),
             PortState::Error => self.error = self.error.saturating_sub(1),
@@ -136,7 +158,13 @@ impl StateCounts {
     }
 
     pub const fn total(self) -> u64 {
-        self.open + self.closed + self.filtered + self.silent + self.unreachable + self.error
+        self.open
+            + self.closed
+            + self.filtered
+            + self.unfiltered
+            + self.silent
+            + self.unreachable
+            + self.error
     }
 }
 
@@ -255,4 +283,74 @@ pub struct ScanReport {
     pub partial: bool,
     /// Defense and middlebox discrepancy observations (reclassified verification drops, etc.).
     pub defense_observations: Vec<PortResult>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unfiltered_state_round_trips_and_sets_the_exclusive_bit() {
+        let encoded = serde_json::to_string(&PortState::Unfiltered).unwrap();
+        assert_eq!(encoded, "\"unfiltered\"");
+        assert_eq!(PortState::Unfiltered.as_str(), "unfiltered");
+        assert_eq!(PortState::ALL.len(), 7);
+
+        let bits: u8 = PortState::ALL.iter().map(|state| state.bit()).sum();
+        assert_eq!(bits, 0b0111_1111);
+
+        let set = StateSet::all();
+        assert!(set.contains(PortState::Unfiltered));
+        assert!(StateSet::unfiltered().contains(PortState::Unfiltered));
+        assert!(!StateSet::open().contains(PortState::Unfiltered));
+    }
+
+    #[test]
+    fn state_counts_track_unfiltered_results() {
+        let mut counts = StateCounts::default();
+        counts.add(PortState::Unfiltered);
+        counts.add(PortState::Unfiltered);
+        counts.add(PortState::Closed);
+        assert_eq!(counts.unfiltered, 2);
+        assert_eq!(counts.total(), 3);
+
+        counts.remove(PortState::Unfiltered);
+        assert_eq!(counts.unfiltered, 1);
+        counts.remove(PortState::Unfiltered);
+        counts.remove(PortState::Unfiltered);
+        assert_eq!(counts.unfiltered, 0);
+
+        let json = serde_json::to_value(counts).unwrap();
+        assert_eq!(json["unfiltered"], 0);
+    }
+
+    #[test]
+    fn add_other_merges_every_state_including_unfiltered() {
+        let mut left = StateCounts {
+            open: 1,
+            closed: 2,
+            ..StateCounts::default()
+        };
+        let right = StateCounts {
+            filtered: 3,
+            unfiltered: 4,
+            silent: 5,
+            unreachable: 6,
+            error: 7,
+            ..StateCounts::default()
+        };
+        left.add_other(right);
+        assert_eq!(
+            left,
+            StateCounts {
+                open: 1,
+                closed: 2,
+                filtered: 3,
+                unfiltered: 4,
+                silent: 5,
+                unreachable: 6,
+                error: 7,
+            }
+        );
+    }
 }

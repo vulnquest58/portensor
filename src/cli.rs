@@ -512,14 +512,14 @@ pub struct ScanArgs {
     #[arg(long, requires = "syn", value_name = "BYTES")]
     pub fragment_size: Option<usize>,
 
-    /// IP TTL / IPv6 hop limit for raw SYN and OS fingerprint probes (1-255).
-    /// Requires --syn or --os.
+    /// IP TTL / IPv6 hop limit for raw SYN, ACK, and OS fingerprint probes (1-255).
+    /// Requires --syn, --ack, or --os.
     #[arg(long, value_name = "N")]
     pub ttl: Option<u8>,
 
-    /// Source port range for raw SYN probes, as MIN-MAX (1-65535).
-    /// Requires --syn.
-    #[arg(long, requires = "syn", value_name = "MIN-MAX")]
+    /// Source port range for raw SYN/ACK probes, as MIN-MAX (1-65535).
+    /// Requires --syn or --ack.
+    #[arg(long, value_name = "MIN-MAX")]
     pub source_port_range: Option<String>,
 
     /// Scan most common ports first to minimize time-to-first-result.
@@ -598,6 +598,26 @@ pub struct ScanArgs {
     /// Use raw SYN discovery, then verify responsive ports (root/CAP_NET_RAW, Linux only).
     #[arg(long)]
     pub syn: bool,
+
+    /// TCP ACK scan to map firewall filtering (root/CAP_NET_RAW, Linux only).
+    /// Unfiltered ports answer with RST; filtered ports stay silent.
+    #[arg(
+        long,
+        conflicts_with_all = [
+            "syn",
+            "os",
+            "udp",
+            "tls",
+            "verify",
+            "connect_only",
+            "discover_only",
+            "decoys",
+            "plugins",
+            "scripts",
+            "scripts_library",
+        ]
+    )]
+    pub ack: bool,
 
     /// Disable AIMD adaptive rate control during raw SYN scanning.
     #[arg(long)]
@@ -767,6 +787,8 @@ pub struct ResolvedConfig {
     pub show: StateSet,
     pub family: AddressFamily,
     pub syn_mode: bool,
+    /// Raw TCP ACK scan for firewall filtered/unfiltered mapping.
+    pub ack_mode: bool,
     /// Enable AIMD adaptive rate control during SYN scan.
     pub aimd: bool,
     /// AIMD minimum rate floor in packets per second.
@@ -896,6 +918,27 @@ impl ScanArgs {
             ));
         }
 
+        if self.ack {
+            let conflicts = [
+                (self.syn, "--syn"),
+                (self.os, "--os"),
+                (self.udp, "--udp"),
+                (self.verify, "--verify"),
+                (self.connect_only, "--connect-only"),
+                (self.discover_only, "--discover-only"),
+                (self.tls, "--tls"),
+                (self.decoys.is_some(), "--decoys"),
+                (self.plugins.is_some(), "--plugins"),
+                (!self.scripts.is_empty(), "--scripts"),
+                (self.scripts_library, "--scripts-library"),
+            ];
+            if let Some((_, flag)) = conflicts.iter().find(|(enabled, _)| *enabled) {
+                return Err(AppError::usage(format!(
+                    "--ack cannot be combined with {flag}"
+                )));
+            }
+        }
+
         let rate = self.rate.or(file.rate).unwrap_or(defaults.rate);
         if rate > 1_000_000 {
             return Err(AppError::usage("--rate must be at most 1000000"));
@@ -922,8 +965,8 @@ impl ScanArgs {
         if ttl == Some(0) {
             return Err(AppError::usage("--ttl must be between 1 and 255"));
         }
-        if self.ttl.is_some() && !self.syn && !self.os {
-            return Err(AppError::usage("--ttl requires --syn or --os"));
+        if self.ttl.is_some() && !self.syn && !self.ack && !self.os {
+            return Err(AppError::usage("--ttl requires --syn, --ack, or --os"));
         }
 
         let source_port_range = parse_source_port_range(
@@ -931,8 +974,10 @@ impl ScanArgs {
                 .as_deref()
                 .or(file.source_port_range.as_deref()),
         )?;
-        if self.source_port_range.is_some() && !self.syn {
-            return Err(AppError::usage("--source-port-range requires --syn"));
+        if self.source_port_range.is_some() && !self.syn && !self.ack {
+            return Err(AppError::usage(
+                "--source-port-range requires --syn or --ack",
+            ));
         }
 
         let workers = self.workers.or(file.workers).unwrap_or(defaults.workers);
@@ -955,31 +1000,39 @@ impl ScanArgs {
             file.randomize.unwrap_or(false)
         };
 
-        let connect_only = if self.discover_only || self.connect_only {
-            true
-        } else if self.verify {
-            false
-        } else {
-            file.connect_only.unwrap_or(false)
-        };
+        let connect_only = !self.ack
+            && if self.discover_only || self.connect_only {
+                true
+            } else if self.verify {
+                false
+            } else {
+                file.connect_only.unwrap_or(false)
+            };
 
         let service_detection = if self.discover_only || self.no_service_detection {
             false
         } else {
             file.service_detection.unwrap_or(true)
-        } && !connect_only;
+        } && !connect_only
+            && !self.ack;
 
         let udp_detection = if self.no_udp_probe {
             false
         } else {
             file.udp_probe.unwrap_or(true)
-        } && self.udp;
+        } && self.udp
+            && !self.ack;
 
         let format = if self.json {
             OutputFormat::Json
         } else {
             self.format.or(file.format).unwrap_or(OutputFormat::Table)
         };
+        if self.ack && matches!(format, OutputFormat::PortList | OutputFormat::HostPort) {
+            return Err(AppError::usage(
+                "--ack cannot be used with --format port-list or host-port",
+            ));
+        }
 
         let show = if self.all_states {
             StateSet::all()
@@ -987,6 +1040,8 @@ impl ScanArgs {
             config::state_set(&self.show)
         } else if let Some(filters) = file.show.as_deref() {
             config::state_set(filters)
+        } else if self.ack {
+            StateSet::unfiltered()
         } else if format == OutputFormat::PortList {
             // Discovery stage: silent means the TCP handshake completed but
             // the listener held mute, so the port still belongs in the list.
@@ -1046,7 +1101,7 @@ impl ScanArgs {
         if jitter_ms > 5_000 {
             return Err(AppError::usage("--jitter-ms must be at most 5000"));
         }
-        let tls_mode = if self.no_tls {
+        let tls_mode = if self.ack || self.no_tls {
             TlsMode::Disabled
         } else if self.tls {
             TlsMode::Force
@@ -1083,13 +1138,14 @@ impl ScanArgs {
             connect_only,
             service_detection,
             udp_detection,
-            os_detection: self.os,
+            os_detection: self.os && !self.ack,
             os_probes,
             format,
             show,
             family,
             syn_mode: self.syn,
-            aimd: !self.no_aimd,
+            ack_mode: self.ack,
+            aimd: !self.no_aimd && !self.ack,
             aimd_min_pps: self.aimd_min_rate.unwrap_or(100),
             rate_auto: self.rate_auto,
             host_concurrency,
@@ -1102,16 +1158,22 @@ impl ScanArgs {
             min_confidence: self.min_confidence,
             explain: self.explain,
             defense: self.defense,
-            advisories: self.advisories || self.kev_only || self.min_epss.is_some(),
+            advisories: (self.advisories || self.kev_only || self.min_epss.is_some()) && !self.ack,
             no_db_update: self.no_db_update,
             diff_file: self.diff.clone(),
-            plugins: self.plugins.clone().or_else(|| file.plugins.clone()),
-            scripts: if self.scripts.is_empty() {
+            plugins: if self.ack {
+                None
+            } else {
+                self.plugins.clone().or_else(|| file.plugins.clone())
+            },
+            scripts: if self.ack {
+                Vec::new()
+            } else if self.scripts.is_empty() {
                 file.scripts.clone().into_iter().collect()
             } else {
                 self.scripts.clone()
             },
-            scripts_library: self.scripts_library,
+            scripts_library: self.scripts_library && !self.ack,
             allow_intrusive: self.allow_intrusive || file.allow_intrusive.unwrap_or(false),
             min_severity: self
                 .min_severity
@@ -1123,7 +1185,7 @@ impl ScanArgs {
             ndp_timeout: Duration::from_millis(ndp_timeout_ms),
             jitter: Duration::from_millis(jitter_ms),
             decoys,
-            fragment_size: self.fragment_size,
+            fragment_size: if self.ack { None } else { self.fragment_size },
             ttl,
             source_port_range,
             tls_mode,
@@ -1293,6 +1355,7 @@ mod tests {
             ipv6: false,
             quiet: false,
             syn: false,
+            ack: false,
             no_aimd: false,
             rate_auto: false,
             host_concurrency: None,
@@ -1523,6 +1586,58 @@ mod tests {
         let mut synless = args();
         synless.source_port_range = Some("40000-40100".to_string());
         assert_eq!(synless.resolve().unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
+    fn ack_mode_uses_unfiltered_defaults_and_shaping_flags() {
+        let mut ack = args();
+        ack.ack = true;
+        ack.ttl = Some(37);
+        ack.source_port_range = Some("40000-40100".to_string());
+        ack.fragment_size = Some(8);
+        let resolved = ack.resolve().unwrap();
+        assert!(resolved.ack_mode);
+        assert!(!resolved.syn_mode);
+        assert!(!resolved.connect_only);
+        assert!(!resolved.service_detection);
+        assert!(!resolved.udp_detection);
+        assert!(!resolved.os_detection);
+        assert!(!resolved.advisories);
+        assert!(!resolved.aimd);
+        assert_eq!(resolved.fragment_size, None);
+        assert_eq!(resolved.tls_mode, TlsMode::Disabled);
+        assert_eq!(resolved.ttl, Some(37));
+        assert_eq!(resolved.source_port_range, Some((40000, 40100)));
+        assert!(resolved.show.contains(crate::model::PortState::Unfiltered));
+        assert!(!resolved.show.contains(crate::model::PortState::Open));
+    }
+
+    #[test]
+    fn ack_mode_rejects_incompatible_flags_and_formats() {
+        let mut with_syn = args();
+        with_syn.ack = true;
+        with_syn.syn = true;
+        assert_eq!(with_syn.resolve().unwrap_err().exit_code(), 2);
+
+        let mut with_os = args();
+        with_os.ack = true;
+        with_os.os = true;
+        assert_eq!(with_os.resolve().unwrap_err().exit_code(), 2);
+
+        let mut with_udp = args();
+        with_udp.ack = true;
+        with_udp.udp = true;
+        assert_eq!(with_udp.resolve().unwrap_err().exit_code(), 2);
+
+        let mut with_scripts = args();
+        with_scripts.ack = true;
+        with_scripts.scripts_library = true;
+        assert_eq!(with_scripts.resolve().unwrap_err().exit_code(), 2);
+
+        let mut port_list = args();
+        port_list.ack = true;
+        port_list.format = Some(OutputFormat::PortList);
+        assert_eq!(port_list.resolve().unwrap_err().exit_code(), 2);
     }
 
     #[test]

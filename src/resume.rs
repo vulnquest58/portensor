@@ -27,6 +27,8 @@ pub struct SavedCounts {
     pub open: u64,
     pub closed: u64,
     pub filtered: u64,
+    #[serde(default)]
+    pub unfiltered: u64,
     pub silent: u64,
     pub unreachable: u64,
     pub error: u64,
@@ -38,6 +40,7 @@ impl From<StateCounts> for SavedCounts {
             open: c.open,
             closed: c.closed,
             filtered: c.filtered,
+            unfiltered: c.unfiltered,
             silent: c.silent,
             unreachable: c.unreachable,
             error: c.error,
@@ -51,6 +54,7 @@ impl From<SavedCounts> for StateCounts {
             open: c.open,
             closed: c.closed,
             filtered: c.filtered,
+            unfiltered: c.unfiltered,
             silent: c.silent,
             unreachable: c.unreachable,
             error: c.error,
@@ -238,6 +242,7 @@ pub fn restore_results(state: &ScanState) -> (Vec<PortResult>, StateCounts) {
                 "open" => PortState::Open,
                 "closed" => PortState::Closed,
                 "filtered" => PortState::Filtered,
+                "unfiltered" => PortState::Unfiltered,
                 "silent" => PortState::Silent,
                 "unreachable" => PortState::Unreachable,
                 _ => PortState::Error,
@@ -272,6 +277,10 @@ pub fn restore_results(state: &ScanState) -> (Vec<PortResult>, StateCounts) {
     counts.filtered = results
         .iter()
         .filter(|r| r.state == PortState::Filtered)
+        .count() as u64;
+    counts.unfiltered = results
+        .iter()
+        .filter(|r| r.state == PortState::Unfiltered)
         .count() as u64;
     counts.silent = results
         .iter()

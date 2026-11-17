@@ -259,10 +259,10 @@ pub(crate) async fn run_scan(
     }
     if (resolved.resume_file.is_some() || resolved.save_state_file.is_some())
         && targets.len() > 1
-        && resolved.syn_mode
+        && (resolved.syn_mode || resolved.ack_mode)
     {
         return Err(AppError::usage(
-            "resumable scans with multiple targets are not supported in raw SYN mode",
+            "resumable scans with multiple targets are not supported in raw probe mode",
         ));
     }
 
@@ -459,7 +459,9 @@ pub(crate) async fn run_scan(
     };
     let target_label = args.target_label();
     let profile_name = args.profile.map(|p| p.as_str()).unwrap_or("balanced");
-    let scan_mode = if resolved.syn_mode {
+    let scan_mode = if resolved.ack_mode {
+        "ACK (raw)"
+    } else if resolved.syn_mode {
         if resolved.connect_only {
             "SYN (raw)"
         } else {
@@ -514,6 +516,7 @@ pub(crate) async fn run_scan(
         let opens = Arc::new(AtomicU64::new(0));
         let closed = Arc::new(AtomicU64::new(0));
         let filtered = Arc::new(AtomicU64::new(0));
+        let unfiltered = Arc::new(AtomicU64::new(0));
         let silent = Arc::new(AtomicU64::new(0));
         let header_printed = Arc::new(AtomicBool::new(false));
         let seen_ports = Arc::new(Mutex::new(HashSet::<(IpAddr, u16)>::new()));
@@ -536,6 +539,9 @@ pub(crate) async fn run_scan(
                     }
                     crate::model::PortState::Filtered => {
                         filtered.fetch_add(1, Ordering::Relaxed);
+                    }
+                    crate::model::PortState::Unfiltered => {
+                        unfiltered.fetch_add(1, Ordering::Relaxed);
                     }
                     crate::model::PortState::Silent => {
                         silent.fetch_add(1, Ordering::Relaxed);
@@ -580,13 +586,17 @@ pub(crate) async fn run_scan(
                 let position = bar.position();
                 if position % 16 == 0
                     || position == jobs
-                    || event.state == Some(crate::model::PortState::Open)
+                    || matches!(
+                        event.state,
+                        Some(crate::model::PortState::Open | crate::model::PortState::Unfiltered)
+                    )
                 {
                     bar.set_message(format!(
-                        "Open: {}  Closed: {}  Filtered: {}  Silent: {}",
+                        "Open: {}  Closed: {}  Filtered: {}  Unfiltered: {}  Silent: {}",
                         opens.load(Ordering::Relaxed),
                         closed.load(Ordering::Relaxed),
                         filtered.load(Ordering::Relaxed),
+                        unfiltered.load(Ordering::Relaxed),
                         silent.load(Ordering::Relaxed)
                     ));
                 }
@@ -640,12 +650,7 @@ pub(crate) async fn run_scan(
             }
             match scanner::scan(&[host], &remaining, &scan_options, callback.clone()).await {
                 Ok(part) => {
-                    combined.counts.open += part.counts.open;
-                    combined.counts.closed += part.counts.closed;
-                    combined.counts.filtered += part.counts.filtered;
-                    combined.counts.silent += part.counts.silent;
-                    combined.counts.unreachable += part.counts.unreachable;
-                    combined.counts.error += part.counts.error;
+                    combined.counts.add_other(part.counts);
                     combined.results.extend(part.results);
                     combined.elapsed += part.elapsed;
                     combined.partial |= part.partial;
@@ -670,10 +675,15 @@ pub(crate) async fn run_scan(
             bar.finish_and_clear();
         }
         combined
-    } else if resolved.syn_mode {
+    } else if resolved.syn_mode || resolved.ack_mode {
         let syn_opts = syn::SynScanOptions {
             targets: targets.clone(),
             ports: ports.clone(),
+            mode: if resolved.ack_mode {
+                syn::ProbeMode::Ack
+            } else {
+                syn::ProbeMode::Syn
+            },
             rate_pps: resolved.rate,
             retry_rate_pps: 0, // auto: rate / 4
             sport_range: resolved.source_port_range.unwrap_or((61000, 61999)),
@@ -684,7 +694,11 @@ pub(crate) async fn run_scan(
             aimd: resolved.aimd,
             aimd_min_pps: resolved.aimd_min_pps,
             jitter_ms: resolved.jitter.as_millis().min(u128::from(u64::MAX)) as u64,
-            decoys: resolved.decoys.clone(),
+            decoys: if resolved.ack_mode {
+                Vec::new()
+            } else {
+                resolved.decoys.clone()
+            },
             fragment_size: resolved.fragment_size,
             ttl: resolved.ttl.unwrap_or(syn::DEFAULT_PROBE_TTL),
         };
@@ -707,7 +721,7 @@ pub(crate) async fn run_scan(
                 }
             };
 
-        if !resolved.connect_only {
+        if !resolved.connect_only && !resolved.ack_mode {
             let started = std::time::Instant::now();
             // Run anomaly detection before verification to avoid verifying
             // tens of thousands of ports on a tarpit host.
@@ -740,9 +754,11 @@ pub(crate) async fn run_scan(
     // Recheck every open one connection at a time — a lone connection cannot
     // pair with anything — and drop the ones that refuse.  Remote targets are
     // skipped inside the recheck, so external scans send no extra packets.
-    let recheck_started = std::time::Instant::now();
-    verify::recheck_local_opens(&mut report, &scan_options).await;
-    report.elapsed += recheck_started.elapsed();
+    if !resolved.ack_mode {
+        let recheck_started = std::time::Instant::now();
+        verify::recheck_local_opens(&mut report, &scan_options).await;
+        report.elapsed += recheck_started.elapsed();
+    }
 
     // Phase 4: UDP detection — probe open TCP ports with UDP to surface
     // co-located UDP services (e.g., DNS on 53, NTP on 123, SNMP on 161).
@@ -976,12 +992,7 @@ pub(crate) async fn run_scan(
             // the just-scanned remaining pairs, so prior results and counts
             // merge without overlap.
             report.results.extend(prior_results);
-            report.counts.open += prior_counts.open;
-            report.counts.closed += prior_counts.closed;
-            report.counts.filtered += prior_counts.filtered;
-            report.counts.silent += prior_counts.silent;
-            report.counts.unreachable += prior_counts.unreachable;
-            report.counts.error += prior_counts.error;
+            report.counts.add_other(prior_counts);
             report.jobs += resume_state
                 .as_ref()
                 .map(|state| {
@@ -1005,12 +1016,7 @@ pub(crate) async fn run_scan(
         } else {
             // Append prior retained results and add their counts.
             report.results.extend(prior_results);
-            report.counts.open += prior_counts.open;
-            report.counts.closed += prior_counts.closed;
-            report.counts.filtered += prior_counts.filtered;
-            report.counts.silent += prior_counts.silent;
-            report.counts.unreachable += prior_counts.unreachable;
-            report.counts.error += prior_counts.error;
+            report.counts.add_other(prior_counts);
             report.jobs += (targets.len() as u64) * ((all_ports.len() - ports.len()) as u64);
         }
         report.ports = all_ports.len();
@@ -1061,12 +1067,7 @@ pub(crate) async fn run_scan(
                         .find(|entry| entry.host.parse::<IpAddr>().ok().as_ref() == Some(host))
                 }) {
                     done.extend(saved.ports_scanned.iter().copied());
-                    counts.open += saved.counts.open;
-                    counts.closed += saved.counts.closed;
-                    counts.filtered += saved.counts.filtered;
-                    counts.silent += saved.counts.silent;
-                    counts.unreachable += saved.counts.unreachable;
-                    counts.error += saved.counts.error;
+                    counts.add_other(saved.counts.clone().into());
                 }
                 if let Some(progress) = report.host_progress.get(host) {
                     for port in &progress.ports_scanned {
@@ -1074,12 +1075,7 @@ pub(crate) async fn run_scan(
                             done.push(*port);
                         }
                     }
-                    counts.open += progress.counts.open;
-                    counts.closed += progress.counts.closed;
-                    counts.filtered += progress.counts.filtered;
-                    counts.silent += progress.counts.silent;
-                    counts.unreachable += progress.counts.unreachable;
-                    counts.error += progress.counts.error;
+                    counts.add_other(progress.counts);
                 }
                 hosts.push(resume::SavedHostProgress {
                     host: host.to_string(),
@@ -1106,20 +1102,22 @@ pub(crate) async fn run_scan(
         eprintln!("[rayscan] partial results — scan was interrupted before completion");
     }
 
-    plugins
-        .apply(&mut report.results, resolved.probe_timeout, progress_quiet)
-        .await;
-    if let Some(scripts) = &scripts {
-        scripts
-            .apply(
-                &mut report.results,
-                resolved.allow_intrusive,
-                progress_quiet,
-            )
+    if !resolved.ack_mode {
+        plugins
+            .apply(&mut report.results, resolved.probe_timeout, progress_quiet)
             .await;
-        script::retain_findings(&mut report.results, resolved.min_severity);
+        if let Some(scripts) = &scripts {
+            scripts
+                .apply(
+                    &mut report.results,
+                    resolved.allow_intrusive,
+                    progress_quiet,
+                )
+                .await;
+            script::retain_findings(&mut report.results, resolved.min_severity);
+        }
+        accuracy::score_report(&mut report);
     }
-    accuracy::score_report(&mut report);
     if resolved.advisories {
         advisory::apply_advisories_with(&mut report, local_index.as_ref());
         advisory::filter_advisories(&mut report, resolved.kev_only, resolved.min_epss);

@@ -119,6 +119,7 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
                 explain: options.explain,
                 defense: options.defense,
                 advisories: options.advisories,
+                show: options.show,
                 diff: options.diff,
             },
         ),
@@ -134,7 +135,9 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
         OutputFormat::NmapXml => render_nmap_xml(report, target, &selected),
         OutputFormat::Greppable => render_greppable(target, &selected),
         OutputFormat::Sarif => render_sarif(&selected)?,
-        OutputFormat::Markdown => render_markdown(report, target, &selected, options.diff),
+        OutputFormat::Markdown => {
+            render_markdown(report, target, &selected, options.show, options.diff)
+        }
         OutputFormat::HostPort => render_host_port(&selected),
         OutputFormat::PortList => render_port_list(&selected),
     };
@@ -187,7 +190,7 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
         let has_non_direct = defenses
             .values()
             .any(|d| d.defense_type != crate::defense::DefenseType::DirectHost);
-        if options.defense || has_non_direct {
+        if !options.show.contains(PortState::Unfiltered) && (options.defense || has_non_direct) {
             println!("Defense & Middlebox Intelligence:");
             println!("{}", "─".repeat(70));
             for (host, assess) in &defenses {
@@ -293,6 +296,7 @@ pub struct TableOptions<'a> {
     pub explain: Option<u16>,
     pub defense: bool,
     pub advisories: bool,
+    pub show: StateSet,
     pub diff: Option<&'a crate::diff::ScanDiff>,
 }
 
@@ -458,7 +462,7 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
     let has_non_direct = defenses
         .values()
         .any(|d| d.defense_type != crate::defense::DefenseType::DirectHost);
-    if opts.defense || has_non_direct {
+    if !opts.show.contains(PortState::Unfiltered) && (opts.defense || has_non_direct) {
         output.push_str("\nDefense & Middlebox Intelligence:\n");
         output.push_str(&"─".repeat(70));
         output.push('\n');
@@ -864,10 +868,11 @@ fn service_label(result: &PortResult) -> String {
 
 fn format_summary(counts: StateCounts, elapsed: std::time::Duration) -> String {
     format!(
-        "open {}  closed {}  filtered {}  silent {}  unreachable {}  error {}  elapsed {:.2}s\n",
+        "open {}  closed {}  filtered {}  unfiltered {}  silent {}  unreachable {}  error {}  elapsed {:.2}s\n",
         counts.open,
         counts.closed,
         counts.filtered,
+        counts.unfiltered,
         counts.silent,
         counts.unreachable,
         counts.error,
@@ -1001,10 +1006,14 @@ fn render_json(
             .iter()
             .map(|(ip, guess)| (ip.to_string(), guess))
             .collect(),
-        defense: crate::defense::analyze_defenses(report)
-            .into_iter()
-            .map(|(ip, d)| (ip.to_string(), d))
-            .collect(),
+        defense: if show.contains(PortState::Unfiltered) {
+            HashMap::new()
+        } else {
+            crate::defense::analyze_defenses(report)
+                .into_iter()
+                .map(|(ip, d)| (ip.to_string(), d))
+                .collect()
+        },
         diff,
         summary: report.counts,
         elapsed_ms: (report.elapsed.as_secs_f64() * 1000.0 * 1000.0).round() / 1000.0,
@@ -1160,6 +1169,7 @@ fn render_nmap_xml(report: &ScanReport, target: &str, results: &[&PortResult]) -
                 PortState::Open => "syn-ack",
                 PortState::Closed => "rst",
                 PortState::Filtered => "no-response",
+                PortState::Unfiltered => "reset",
                 PortState::Silent => "no-response",
                 PortState::Unreachable => "host-unreach",
                 PortState::Error => "unknown",
@@ -1424,6 +1434,7 @@ fn render_markdown(
     report: &ScanReport,
     target: &str,
     results: &[&PortResult],
+    show: StateSet,
     diff: Option<&crate::diff::ScanDiff>,
 ) -> String {
     let mut out = String::new();
@@ -1437,13 +1448,16 @@ fn render_markdown(
     ));
 
     out.push_str("## Summary\n\n");
-    out.push_str("| Open | Closed | Filtered | Silent | Unreachable | Error | Total |\n");
-    out.push_str("|---:|---:|---:|---:|---:|---:|---:|\n");
+    out.push_str(
+        "| Open | Closed | Filtered | Unfiltered | Silent | Unreachable | Error | Total |\n",
+    );
+    out.push_str("|---:|---:|---:|---:|---:|---:|---:|---:|\n");
     out.push_str(&format!(
-        "| {} | {} | {} | {} | {} | {} | {} |\n\n",
+        "| {} | {} | {} | {} | {} | {} | {} | {} |\n\n",
         report.counts.open,
         report.counts.closed,
         report.counts.filtered,
+        report.counts.unfiltered,
         report.counts.silent,
         report.counts.unreachable,
         report.counts.error,
@@ -1632,7 +1646,7 @@ fn render_markdown(
     }
 
     let defenses = crate::defense::analyze_defenses(report);
-    if !defenses.is_empty() {
+    if !show.contains(PortState::Unfiltered) && !defenses.is_empty() {
         out.push_str("## Defense Posture\n\n");
         out.push_str("| Host | Posture | Confidence | Summary |\n");
         out.push_str("|---|---|---:|---|\n");
@@ -2137,7 +2151,7 @@ mod tests {
         crate::advisory::apply_advisories(&mut report);
 
         let results: Vec<&PortResult> = report.results.iter().collect();
-        let output = render_markdown(&report, "192.0.2.1", &results, None);
+        let output = render_markdown(&report, "192.0.2.1", &results, StateSet::all(), None);
         assert!(output.contains("# rayscan scan report"));
         assert!(output.contains("## Services"));
         assert!(output.contains("CVE-2011-2523"));
@@ -2172,7 +2186,7 @@ mod tests {
             .filter(|result| result.state == PortState::Open)
             .collect();
 
-        let output = render_markdown(&report, "192.0.2.1", &open, None);
+        let output = render_markdown(&report, "192.0.2.1", &open, StateSet::all(), None);
 
         assert!(
             output.contains("| Host | Family | Detail | Confidence | Probes | Hops | Evidence |")
@@ -2226,7 +2240,7 @@ mod tests {
             "lab/container-check"
         );
 
-        let markdown = render_markdown(&report, "192.0.2.1", &results, None);
+        let markdown = render_markdown(&report, "192.0.2.1", &results, StateSet::all(), None);
         assert!(markdown.contains("## Script Findings"));
         assert!(markdown.contains("lab/container-check"));
         assert!(markdown.contains("CVE-2024-1234"));
@@ -2382,5 +2396,37 @@ mod tests {
         );
         let mixed = render_host_port(&[&v6, &closed]);
         assert_eq!(mixed, "[2001:db8::5]:443\n");
+    }
+
+    #[test]
+    fn summary_and_markdown_include_unfiltered_counts() {
+        let counts = StateCounts {
+            open: 1,
+            closed: 1,
+            unfiltered: 2,
+            filtered: 3,
+            ..StateCounts::default()
+        };
+        let summary = format_summary(counts, Duration::from_millis(250));
+        assert!(summary.contains("unfiltered 2"));
+        assert!(summary.contains("filtered 3"));
+
+        let mut report = sample_report();
+        report.counts = counts;
+        let results: Vec<&PortResult> = report.results.iter().collect();
+        let markdown =
+            render_markdown(&report, "192.0.2.1", &results, StateSet::unfiltered(), None);
+        assert!(markdown.contains("| Open | Closed | Filtered | Unfiltered |"));
+        assert!(markdown.contains("| 1 | 1 | 3 | 2 |"));
+        assert!(!markdown.contains("## Defense Posture"));
+    }
+
+    #[test]
+    fn ack_json_omits_defense_assessments() {
+        let report = sample_report();
+        let json = render_json(&report, "192.0.2.1", StateSet::unfiltered(), None, None).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(payload.get("defense").is_none());
+        assert_eq!(payload["summary"]["unfiltered"], 0);
     }
 }
