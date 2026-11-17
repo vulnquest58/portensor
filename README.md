@@ -89,7 +89,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353) via `--udp` flag, including IPv6 (`src/udp.rs`) |
-| OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` (`src/fingerprint.rs`); Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
+| OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8) and reports consensus family, port agreement, sample count, and hop count; Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
 | Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
 | Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
@@ -1148,7 +1148,9 @@ failures.
 `--syn --os` now covers both address families when run as root on Linux. IPv4
 continues to use `AF_PACKET` with BPF filtering; IPv6 uses `AF_INET6` raw
 sockets so the kernel handles routing and neighbour discovery. SYN cookies bind
-the full 128-bit address. IPv6 OS fingerprints use the SYN-ACK hop limit,
+the full 128-bit address. `--os-probes` applies to both families, sampling up to
+N distinct open ports and reporting family agreement plus hop count. IPv6 OS
+fingerprints use the SYN-ACK hop limit,
 window, and TCP options.
 
 ```bash
@@ -1252,6 +1254,7 @@ probe_timeout_ms = 300
 rate = 1000
 workers = 0
 host_concurrency = 0
+os_probes = 3
 retries = 2
 randomize = false
 connect_only = false

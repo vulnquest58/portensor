@@ -6,6 +6,12 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Multi-probe OS consensus**: `--os-probes N` (config key `os_probes`,
+  default 3, range 1-8) samples up to N distinct open ports per host and
+  combines the SYN-ACK fingerprints with a family majority vote. Confidence is
+  reduced when ports disagree, Unknown samples are ignored for the vote, and
+  human/JSON output now carries `samples`, port `agreement`, and estimated
+  `hops` alongside the existing family and evidence fields.
 - **RTT-driven SYN retransmission**: raw SYN probes now carry per-host
   retransmission deadlines derived from the RFC 6298 estimator (`MIN_RTO` 200
   ms, capped by `--connect-timeout-ms`). Retries are interleaved with the

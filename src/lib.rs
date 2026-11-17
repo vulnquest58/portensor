@@ -880,29 +880,40 @@ pub(crate) async fn run_scan(
     if resolved.os_detection {
         let probe_timeout = resolved.probe_timeout;
 
-        // Collect one open port per unique host.
-        let mut host_ports: HashMap<std::net::IpAddr, u16> = HashMap::new();
+        // Collect up to `--os-probes` distinct open ports per unique host.
+        let mut host_ports: HashMap<std::net::IpAddr, Vec<u16>> = HashMap::new();
         for result in &report.results {
             if result.state == crate::model::PortState::Open {
-                host_ports.entry(result.host).or_insert(result.port);
+                host_ports.entry(result.host).or_default().push(result.port);
             }
+        }
+        for ports in host_ports.values_mut() {
+            ports.sort_unstable();
+            ports.dedup();
+            ports.truncate(resolved.os_probes);
         }
 
         if !progress_quiet && !host_ports.is_empty() {
-            eprintln!("[os] fingerprinting {} host(s) .", host_ports.len());
+            eprintln!(
+                "[os] fingerprinting {} host(s), up to {} probe(s) each",
+                host_ports.len(),
+                resolved.os_probes
+            );
         }
 
         // Fingerprint hosts concurrently in bounded chunks.
         let mut os_map = HashMap::new();
-        let host_list: Vec<(IpAddr, u16)> = host_ports.into_iter().collect();
+        let host_list: Vec<(IpAddr, Vec<u16>)> = host_ports.into_iter().collect();
         for chunk in host_list.chunks(16) {
             let mut tasks = tokio::task::JoinSet::new();
-            for &(host, port) in chunk {
+            for (host, ports) in chunk {
+                let host = *host;
+                let ports = ports.clone();
                 tasks.spawn(async move {
-                    (
-                        host,
-                        fingerprint::probe_fingerprint_async(host, port, probe_timeout).await,
-                    )
+                    let guess =
+                        fingerprint::probe_fingerprint_ports_async(host, ports, probe_timeout)
+                            .await;
+                    (host, guess)
                 });
             }
             while let Some(joined) = tasks.join_next().await {
@@ -913,13 +924,18 @@ pub(crate) async fn run_scan(
                             .as_deref()
                             .map(|e| format!(" | Evidence: {e}"))
                             .unwrap_or_default();
+                        let probes = guess
+                            .probe_summary()
+                            .map(|summary| format!(" | {summary}"))
+                            .unwrap_or_default();
                         eprintln!(
-                            "[os] {} → {} ({}) confidence={:.0}%{}",
+                            "[os] {} → {} ({}) confidence={:.0}%{}{}",
                             host,
                             guess.detail,
                             guess.family,
                             guess.confidence * 100.0,
-                            ev
+                            ev,
+                            probes
                         );
                     }
                     os_map.insert(host, guess);

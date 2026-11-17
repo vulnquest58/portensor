@@ -326,6 +326,48 @@ fn invalid_ports_exit_with_usage_status() {
 }
 
 #[test]
+fn os_probes_requires_os_and_is_bounded() {
+    let missing_os = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--os-probes",
+            "3",
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scan");
+    assert_eq!(missing_os.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&missing_os.stderr).contains("--os-probes")
+            || String::from_utf8_lossy(&missing_os.stderr).contains("requires")
+    );
+
+    let out_of_range = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--os",
+            "--os-probes",
+            "0",
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scan");
+    assert_eq!(out_of_range.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&out_of_range.stderr)
+            .contains("--os-probes must be between 1 and 8")
+    );
+}
+
+#[test]
 fn omitted_ports_defaults_to_well_known_range() {
     let output = rayscan()
         .args([

@@ -252,6 +252,10 @@ mod tests {
             detail: "Linux 5.x".to_string(),
             confidence: 0.95,
             initial_ttl: Some(64),
+            hops: None,
+            samples: None,
+            agreement: None,
+            ports: Vec::new(),
             evidence: None,
         };
 
@@ -301,6 +305,10 @@ mod tests {
             detail: "Linux 2.6.x".to_string(),
             confidence: 0.95,
             initial_ttl: Some(64),
+            hops: None,
+            samples: None,
+            agreement: None,
+            ports: Vec::new(),
             evidence: None,
         };
         let score = AccuracyScore::calculate(&result, Some(&guess));

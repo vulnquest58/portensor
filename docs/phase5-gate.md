@@ -14,6 +14,13 @@ observed in SYN-ACK replies. It runs as a post-scan stage, requiring
 `CAP_NET_RAW` / root; it is opt-in with `--os` and silently skips if
 permissions are unavailable.
 
+The Q4 enhancement samples up to `--os-probes N` distinct open ports per host
+(default 3, range 1-8), probes each port concurrently, and combines the samples
+with a family majority vote. Unknown samples do not vote; port disagreement
+dilutes the winning confidence and can leave the family Unknown. Results record
+`samples`, `agreement`, `hops`, and the sampled `ports` in addition to the
+Phase 5 family/evidence fields.
+
 ---
 
 ## Architecture
@@ -25,7 +32,7 @@ run_scan()
   └── OS stage  (Phase 5, --os)
         │
         ├── collect unique hosts from open results
-        ├── for each host: probe_fingerprint_async(host, open_port, timeout)
+        ├── for each host: probe_fingerprint_ports_async(host, open_ports, timeout)
         │     └── probe_fingerprint_linux()          [blocking thread]
         │           ├── route_for(target)            [/proc/net/route]
         │           ├── iface_mac() + arp_resolve()  [ARP cache / probe]
@@ -42,7 +49,7 @@ run_scan()
 |------|---------|
 | `TcpFingerprint` | Raw features: TTL, hops, window, MSS, WScale, SACK, TS, DF, options order |
 | `OsFamily` | Enum: Linux / Windows / MacOS / Bsd / Cisco / Unknown |
-| `OsGuess` | Classified result with family, detail string, confidence, initial_ttl |
+| `OsGuess` | Classified result with family, detail, confidence, initial_ttl, sampled ports, samples, agreement, and hops |
 | `WinMatch` | Window-size matcher (Any / Exact / Range / Set) |
 | `OsSig` | One signature entry with per-feature weights |
 | `SIGNATURES` | 11-entry const signature DB covering 7 OS families |
@@ -52,6 +59,7 @@ run_scan()
 | `fingerprint_from_frame()` | Parse SYN-ACK Ethernet frame → `TcpFingerprint` |
 | `probe_fingerprint()` | Linux-only raw SYN probe, returns `Option<OsGuess>` |
 | `probe_fingerprint_async()` | Tokio wrapper (spawn_blocking) |
+| `probe_fingerprint_ports_async()` | Concurrent multi-port sampling plus `aggregate_os_samples()` consensus |
 | `build_fingerprint_syn()` | 74-byte SYN frame with full TCP options section |
 
 ---

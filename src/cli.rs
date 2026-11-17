@@ -557,9 +557,13 @@ pub struct ScanArgs {
     pub no_tls: bool,
 
     /// Enable OS fingerprinting via TCP/IP stack analysis (requires root/CAP_NET_RAW).
-    /// Sends one raw SYN probe per discovered host and classifies the SYN-ACK reply.
+    /// Probes up to --os-probes open ports per host and classifies the SYN-ACK replies.
     #[arg(long)]
     pub os: bool,
+
+    /// Open-port samples per host for the OS fingerprint consensus (1-8, default: 3).
+    #[arg(long, value_name = "N", requires = "os")]
+    pub os_probes: Option<usize>,
 
     /// Show every port state.
     #[arg(long)]
@@ -747,6 +751,8 @@ pub struct ResolvedConfig {
     pub udp_detection: bool,
     /// Enable OS fingerprinting stage (Phase 5).
     pub os_detection: bool,
+    /// Open-port samples per host for the OS fingerprint consensus.
+    pub os_probes: usize,
     pub format: OutputFormat,
     pub show: StateSet,
     pub family: AddressFamily,
@@ -884,6 +890,17 @@ impl ScanArgs {
         if host_concurrency > MAX_WORKERS {
             return Err(AppError::usage(format!(
                 "--host-concurrency must be at most {MAX_WORKERS}"
+            )));
+        }
+
+        let os_probes = self
+            .os_probes
+            .or(file.os_probes)
+            .unwrap_or(crate::fingerprint::DEFAULT_OS_PROBES);
+        if !(1..=crate::fingerprint::MAX_OS_PROBES).contains(&os_probes) {
+            return Err(AppError::usage(format!(
+                "--os-probes must be between 1 and {}",
+                crate::fingerprint::MAX_OS_PROBES
             )));
         }
 
@@ -1036,6 +1053,7 @@ impl ScanArgs {
             service_detection,
             udp_detection,
             os_detection: self.os,
+            os_probes,
             format,
             show,
             family,
@@ -1212,6 +1230,7 @@ mod tests {
             udp: false,
             no_udp_probe: false,
             os: false,
+            os_probes: None,
             all_states: false,
             show: Vec::new(),
             ipv4: false,
@@ -1390,6 +1409,25 @@ mod tests {
         args.host_concurrency = Some(64);
         assert_eq!(args.resolve().unwrap().host_concurrency, 64);
         args.host_concurrency = Some(crate::limits::MAX_WORKERS + 1);
+        assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
+    fn os_probes_are_optional_and_bounded() {
+        let mut args = args();
+        args.os = true;
+        assert_eq!(
+            args.resolve().unwrap().os_probes,
+            crate::fingerprint::DEFAULT_OS_PROBES
+        );
+        args.os_probes = Some(crate::fingerprint::MAX_OS_PROBES);
+        assert_eq!(
+            args.resolve().unwrap().os_probes,
+            crate::fingerprint::MAX_OS_PROBES
+        );
+        args.os_probes = Some(0);
+        assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
+        args.os_probes = Some(crate::fingerprint::MAX_OS_PROBES + 1);
         assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
     }
 

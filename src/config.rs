@@ -127,6 +127,7 @@ pub struct FileConfig {
     pub rate: Option<u64>,
     pub workers: Option<usize>,
     pub host_concurrency: Option<usize>,
+    pub os_probes: Option<usize>,
     pub retries: Option<u32>,
     pub randomize: Option<bool>,
     pub connect_only: Option<bool>,
@@ -175,6 +176,7 @@ probe_timeout_ms = 400
 rate = 500
 workers = 64
 host_concurrency = 32
+os_probes = 4
 retries = 1
 randomize = true
 connect_only = false
@@ -190,6 +192,7 @@ theme = "hacker"
         assert_eq!(config.profile, Some(Profile::Careful));
         assert_eq!(config.timeout, Some(3.5));
         assert_eq!(config.host_concurrency, Some(32));
+        assert_eq!(config.os_probes, Some(4));
         assert_eq!(config.service_detection, Some(true));
         assert_eq!(config.udp_probe, Some(true));
         assert_eq!(config.format, Some(OutputFormat::Jsonl));

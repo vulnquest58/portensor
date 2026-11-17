@@ -122,6 +122,7 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         udp,
         no_udp_probe: false,
         os,
+        os_probes: None,
         all_states: false,
         show: Vec::new(),
         ipv4: false,

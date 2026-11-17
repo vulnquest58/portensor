@@ -29,6 +29,11 @@ use serde::Serialize;
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
+/// Default number of open-port samples used per host.
+pub const DEFAULT_OS_PROBES: usize = 3;
+/// Hard upper bound for per-host OS samples.
+pub const MAX_OS_PROBES: usize = 8;
+
 /// OS family inferred from TCP/IP stack behaviour.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -166,9 +171,43 @@ pub struct OsGuess {
     /// Inferred initial TTL (rounded to nearest of 64 / 128 / 255).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_ttl: Option<u8>,
+    /// Estimated network hops to the target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hops: Option<u8>,
+    /// Number of successful SYN-ACK samples contributing to this guess.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub samples: Option<u32>,
+    /// Fraction of named-family samples that agreed on the winning family.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agreement: Option<f32>,
+    /// Open ports used for the consensus fingerprint.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<u16>,
     /// Evidence string extracted from observed TCP/IP stack options.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
+}
+
+impl OsGuess {
+    /// Compact sample/consensus detail for human-readable output.
+    pub fn probe_summary(&self) -> Option<String> {
+        if self.samples.is_none() && self.hops.is_none() {
+            return None;
+        }
+        let mut parts = Vec::new();
+        if let Some(samples) = self.samples {
+            parts.push(format!("samples={samples}"));
+            if let Some(agreement) = self.agreement
+                && samples > 1
+            {
+                parts.push(format!("agreement={:.0}%", agreement * 100.0));
+            }
+        }
+        if let Some(hops) = self.hops {
+            parts.push(format!("hops={hops}"));
+        }
+        Some(parts.join(", "))
+    }
 }
 
 // ── Signature database ────────────────────────────────────────────────────────
@@ -660,6 +699,10 @@ pub fn classify(fp: &TcpFingerprint) -> OsGuess {
             detail: sig.detail.to_string(),
             confidence,
             initial_ttl: Some(initial_ttl),
+            hops: None,
+            samples: None,
+            agreement: None,
+            ports: Vec::new(),
             evidence,
         },
         _ => OsGuess {
@@ -671,9 +714,22 @@ pub fn classify(fp: &TcpFingerprint) -> OsGuess {
             ),
             confidence,
             initial_ttl: Some(initial_ttl),
+            hops: None,
+            samples: None,
+            agreement: None,
+            ports: Vec::new(),
             evidence,
         },
     }
+}
+
+fn guess_from_fingerprint(fingerprint: &TcpFingerprint, port: u16) -> OsGuess {
+    let mut guess = classify(fingerprint);
+    guess.hops = Some(fingerprint.hops);
+    guess.samples = Some(1);
+    guess.agreement = Some(1.0);
+    guess.ports = vec![port];
+    guess
 }
 
 /// Infer a Windows host role from the set of open service ports.
@@ -1027,7 +1083,7 @@ fn probe_fingerprint_v4(target_v4: Ipv4Addr, port: u16, timeout: Duration) -> Op
             // Estimate hops: for LAN targets (direct route), hops = 1 when TTL
             // is exactly one less than a standard initial TTL; otherwise 0.
             fp.hops = estimate_hops(fp.ttl);
-            result = Some(classify(&fp));
+            result = Some(guess_from_fingerprint(&fp, port));
             break;
         }
     }
@@ -1174,7 +1230,7 @@ fn probe_fingerprint_v6(
         }
         if let Some(mut fp) = fingerprint_from_ipv6_tcp(tcp, hop_limit, 0) {
             fp.hops = estimate_hops(fp.ttl);
-            result = Some(classify(&fp));
+            result = Some(guess_from_fingerprint(&fp, port));
             break;
         }
     }
@@ -1281,6 +1337,130 @@ pub async fn probe_fingerprint_async(
         .await
         .ok()
         .flatten()
+}
+
+#[derive(Clone, Debug)]
+struct OsSample {
+    port: u16,
+    guess: OsGuess,
+}
+
+/// Combine per-port guesses into a consensus result.
+///
+/// Named families vote; the best-confidence sample in the winning family is
+/// used as the representative fingerprint. Diluted agreement and averaging
+/// across winning samples reduce confidence when ports disagree.
+fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
+    if samples.is_empty() {
+        return None;
+    }
+
+    let total = samples.len() as u32;
+    let mut ports: Vec<u16> = samples.iter().map(|sample| sample.port).collect();
+    ports.sort_unstable();
+    ports.dedup();
+
+    let named: Vec<&OsSample> = samples
+        .iter()
+        .filter(|sample| sample.guess.family != OsFamily::Unknown)
+        .collect();
+
+    if named.is_empty() {
+        let best = samples
+            .iter()
+            .max_by(|a, b| a.guess.confidence.total_cmp(&b.guess.confidence))?;
+        let mut guess = best.guess.clone();
+        guess.hops = best.guess.hops;
+        guess.samples = Some(total);
+        guess.agreement = Some(0.0);
+        guess.ports = ports;
+        return Some(guess);
+    }
+
+    let mut families: Vec<(OsFamily, usize, f32)> = Vec::new();
+    for sample in &named {
+        if let Some(entry) = families
+            .iter_mut()
+            .find(|(family, _, _)| *family == sample.guess.family)
+        {
+            entry.1 += 1;
+            entry.2 += sample.guess.confidence;
+        } else {
+            families.push((sample.guess.family.clone(), 1, sample.guess.confidence));
+        }
+    }
+
+    let (family, votes, _) = families
+        .into_iter()
+        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| a.2.total_cmp(&b.2)))?;
+    let winners: Vec<&OsSample> = named
+        .iter()
+        .copied()
+        .filter(|sample| sample.guess.family == family)
+        .collect();
+    let base = winners
+        .iter()
+        .copied()
+        .max_by(|a, b| a.guess.confidence.total_cmp(&b.guess.confidence))?;
+    let average_confidence = winners
+        .iter()
+        .map(|sample| sample.guess.confidence)
+        .sum::<f32>()
+        / winners.len() as f32;
+    let agreement = votes as f32 / named.len() as f32;
+    let confidence = (average_confidence * agreement).clamp(0.0, 1.0);
+
+    let mut guess = base.guess.clone();
+    guess.role = None;
+    guess.hops = base.guess.hops;
+    guess.samples = Some(total);
+    guess.agreement = Some(agreement);
+    guess.ports = ports;
+
+    if confidence >= 0.20 {
+        guess.family = family;
+        guess.confidence = confidence;
+    } else {
+        guess.family = OsFamily::Unknown;
+        guess.detail = format!("{total} probes disagreed; insufficient evidence");
+        guess.confidence = confidence;
+    }
+
+    Some(guess)
+}
+
+/// Probe several open ports on one host and return a consensus OS guess.
+///
+/// Each successful SYN-ACK becomes an independent sample. This tolerates a
+/// single filtered/middleboxed port and makes the reported confidence reflect
+/// port-to-port agreement rather than one packet.
+pub async fn probe_fingerprint_ports_async(
+    host: IpAddr,
+    ports: Vec<u16>,
+    timeout: Duration,
+) -> Option<OsGuess> {
+    let mut ports = ports;
+    ports.sort_unstable();
+    ports.dedup();
+    ports.truncate(MAX_OS_PROBES);
+    if ports.is_empty() {
+        return None;
+    }
+
+    let mut tasks = tokio::task::JoinSet::new();
+    for port in ports {
+        tasks.spawn(async move { (port, probe_fingerprint_async(host, port, timeout).await) });
+    }
+
+    let mut samples = Vec::new();
+    while let Some(joined) = tasks.join_next().await {
+        if let Ok((port, Some(guess))) = joined {
+            samples.push(OsSample { port, guess });
+        }
+    }
+    samples.sort_by_key(|sample| sample.port);
+
+    aggregate_os_samples(samples)
 }
 
 // ── Conversion for `Ipv4Addr` ─────────────────────────────────────────────────
@@ -1588,5 +1768,100 @@ mod tests {
         let guess = classify(&fp);
         assert!(guess.evidence.is_some());
         assert_eq!(guess.evidence.as_deref(), Some(ev.as_str()));
+    }
+
+    fn sample(port: u16, family: OsFamily, confidence: f32, hops: u8) -> OsSample {
+        OsSample {
+            port,
+            guess: OsGuess {
+                family,
+                role: None,
+                detail: format!("sample-{port}"),
+                confidence,
+                initial_ttl: Some(64),
+                hops: Some(hops),
+                samples: None,
+                agreement: None,
+                ports: vec![port],
+                evidence: None,
+            },
+        }
+    }
+
+    #[test]
+    fn aggregate_prefers_majority_family() {
+        let guess = aggregate_os_samples(vec![
+            sample(80, OsFamily::Linux, 0.80, 3),
+            sample(443, OsFamily::Linux, 0.60, 4),
+            sample(22, OsFamily::Windows, 0.95, 2),
+        ])
+        .unwrap();
+
+        assert_eq!(guess.family, OsFamily::Linux);
+        assert_eq!(guess.samples, Some(3));
+        assert_eq!(guess.ports, vec![22, 80, 443]);
+        assert_eq!(guess.agreement, Some(2.0 / 3.0));
+        assert!((guess.confidence - 0.70 * (2.0 / 3.0)).abs() < 0.001);
+        assert_eq!(guess.detail, "sample-80");
+    }
+
+    #[test]
+    fn aggregate_ignores_unknown_samples_in_vote() {
+        let guess = aggregate_os_samples(vec![
+            sample(80, OsFamily::Unknown, 0.90, 1),
+            sample(443, OsFamily::Bsd, 0.75, 1),
+            sample(22, OsFamily::Unknown, 0.10, 1),
+        ])
+        .unwrap();
+
+        assert_eq!(guess.family, OsFamily::Bsd);
+        assert_eq!(guess.samples, Some(3));
+        assert_eq!(guess.agreement, Some(1.0));
+        assert!((guess.confidence - 0.75).abs() < 0.001);
+    }
+
+    #[test]
+    fn aggregate_all_unknown_stays_unknown() {
+        let guess = aggregate_os_samples(vec![
+            sample(80, OsFamily::Unknown, 0.10, 1),
+            sample(443, OsFamily::Unknown, 0.40, 2),
+        ])
+        .unwrap();
+
+        assert_eq!(guess.family, OsFamily::Unknown);
+        assert_eq!(guess.samples, Some(2));
+        assert_eq!(guess.agreement, Some(0.0));
+        assert_eq!(guess.hops, Some(2));
+    }
+
+    #[test]
+    fn aggregate_disagreement_lowers_confidence() {
+        let guess = aggregate_os_samples(vec![
+            sample(80, OsFamily::Linux, 0.90, 1),
+            sample(443, OsFamily::Linux, 0.80, 1),
+            sample(22, OsFamily::Windows, 0.85, 1),
+            sample(3389, OsFamily::Bsd, 0.70, 1),
+        ])
+        .unwrap();
+
+        assert_eq!(guess.family, OsFamily::Linux);
+        assert_eq!(guess.agreement, Some(0.5));
+        assert!((guess.confidence - 0.85 * 0.5).abs() < 0.001);
+        assert!(guess.confidence < 0.5);
+    }
+
+    #[test]
+    fn probe_summary_reports_samples_agreement_and_hops() {
+        let mut guess = sample(80, OsFamily::Linux, 0.9, 2).guess;
+        assert_eq!(guess.probe_summary(), Some("hops=2".to_string()));
+        guess.samples = Some(1);
+        guess.agreement = Some(1.0);
+        assert_eq!(guess.probe_summary(), Some("samples=1, hops=2".to_string()));
+        guess.samples = Some(3);
+        guess.agreement = Some(2.0 / 3.0);
+        assert_eq!(
+            guess.probe_summary(),
+            Some("samples=3, agreement=67%, hops=2".to_string())
+        );
     }
 }

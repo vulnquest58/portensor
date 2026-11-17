@@ -166,14 +166,19 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
                     .as_ref()
                     .map(|r| format!(" [{}]", r.as_str()))
                     .unwrap_or_default();
+                let probes = guess
+                    .probe_summary()
+                    .map(|summary| format!(" | {summary}"))
+                    .unwrap_or_default();
                 println!(
-                    "  {} → {} ({}) confidence={:.0}%{}{}",
+                    "  {} → {} ({}) confidence={:.0}%{}{}{}",
                     host,
                     guess.detail,
                     guess.family,
                     guess.confidence * 100.0,
                     role,
-                    ev
+                    ev,
+                    probes
                 );
             }
             println!();
@@ -432,14 +437,19 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
                 .as_ref()
                 .map(|r| format!(" [{}]", r.as_str()))
                 .unwrap_or_default();
+            let probes = guess
+                .probe_summary()
+                .map(|summary| format!(" | {summary}"))
+                .unwrap_or_default();
             output.push_str(&format!(
-                "  {} → {} ({}) confidence={:.0}%{}{}\n",
+                "  {} → {} ({}) confidence={:.0}%{}{}{}\n",
                 host,
                 guess.detail,
                 guess.family,
                 guess.confidence * 100.0,
                 role,
-                ev
+                ev,
+                probes
             ));
         }
     }
@@ -1442,17 +1452,30 @@ fn render_markdown(
 
     if !report.os_fingerprints.is_empty() {
         out.push_str("## Operating Systems\n\n");
-        out.push_str("| Host | Family | Detail | Confidence | Evidence |\n");
-        out.push_str("|---|---|---|---:|---|\n");
+        out.push_str("| Host | Family | Detail | Confidence | Probes | Hops | Evidence |\n");
+        out.push_str("|---|---|---|---:|---:|---:|---|\n");
         let mut hosts: Vec<_> = report.os_fingerprints.iter().collect();
         hosts.sort_by_key(|(host, _)| *host);
         for (host, guess) in hosts {
+            let probes = match (guess.samples, guess.agreement) {
+                (Some(count), Some(agreement)) if count > 1 => {
+                    format!("{count} ({:.0}%)", agreement * 100.0)
+                }
+                (Some(count), _) => count.to_string(),
+                (None, _) => "-".to_string(),
+            };
+            let hops = guess
+                .hops
+                .map(|hops| hops.to_string())
+                .unwrap_or_else(|| "-".to_string());
             out.push_str(&format!(
-                "| {} | {} | {} | {:.0}% | {} |\n",
+                "| {} | {} | {} | {:.0}% | {} | {} | {} |\n",
                 host,
                 md_cell(&guess.family.to_string()),
                 md_cell(&guess.detail),
                 guess.confidence * 100.0,
+                probes,
+                hops,
                 md_cell(guess.evidence.as_deref().unwrap_or(""))
             ));
         }
@@ -2122,6 +2145,40 @@ mod tests {
         assert!(output.contains("TLSv1.3"));
         assert!(output.contains("self-signed"));
         assert!(output.contains("hostname-mismatch"));
+    }
+
+    #[test]
+    fn markdown_os_table_includes_consensus_metadata() {
+        let mut report = sample_report();
+        let host: IpAddr = "192.0.2.1".parse().unwrap();
+        report.os_fingerprints.insert(
+            host,
+            OsGuess {
+                family: crate::fingerprint::OsFamily::Linux,
+                role: None,
+                detail: "Linux 3.x-6.x".to_string(),
+                confidence: 0.60,
+                initial_ttl: Some(64),
+                hops: Some(2),
+                samples: Some(3),
+                agreement: Some(2.0 / 3.0),
+                ports: vec![80, 443, 8080],
+                evidence: Some("TTL=62 Window=29200".to_string()),
+            },
+        );
+        let open: Vec<&PortResult> = report
+            .results
+            .iter()
+            .filter(|result| result.state == PortState::Open)
+            .collect();
+
+        let output = render_markdown(&report, "192.0.2.1", &open, None);
+
+        assert!(
+            output.contains("| Host | Family | Detail | Confidence | Probes | Hops | Evidence |")
+        );
+        assert!(output.contains("| 3 (67%) | 2 |"));
+        assert!(output.contains("TTL=62 Window=29200"));
     }
 
     fn script_finding() -> crate::script::PluginFinding {
