@@ -19,7 +19,9 @@ The Q4 enhancement samples up to `--os-probes N` distinct open ports per host
 with a family majority vote. Unknown samples do not vote; port disagreement
 dilutes the winning confidence and can leave the family Unknown. Results record
 `samples`, `agreement`, `hops`, and the sampled `ports` in addition to the
-Phase 5 family/evidence fields.
+Phase 5 family/evidence fields. `--ttl` also applies to fingerprint probes;
+OS probes keep their dedicated source ports (62000 IPv4, 62001 IPv6), so
+`--source-port-range` only shapes the SYN scan.
 
 ---
 
@@ -32,7 +34,7 @@ run_scan()
   └── OS stage  (Phase 5, --os)
         │
         ├── collect unique hosts from open results
-        ├── for each host: probe_fingerprint_ports_async(host, open_ports, timeout)
+        ├──         for each host: probe_fingerprint_ports_async(host, open_ports, timeout, ttl)
         │     └── probe_fingerprint_linux()          [blocking thread]
         │           ├── route_for(target)            [/proc/net/route]
         │           ├── iface_mac() + arp_resolve()  [ARP cache / probe]

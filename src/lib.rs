@@ -676,7 +676,7 @@ pub(crate) async fn run_scan(
             ports: ports.clone(),
             rate_pps: resolved.rate,
             retry_rate_pps: 0, // auto: rate / 4
-            sport_range: (61000, 61999),
+            sport_range: resolved.source_port_range.unwrap_or((61000, 61999)),
             timeout_ms: (resolved.timeout.as_millis() as u64).clamp(500, 10000),
             batch_size: 4096,
             retries: resolved.retries,
@@ -686,6 +686,7 @@ pub(crate) async fn run_scan(
             jitter_ms: resolved.jitter.as_millis().min(u128::from(u64::MAX)) as u64,
             decoys: resolved.decoys.clone(),
             fragment_size: resolved.fragment_size,
+            ttl: resolved.ttl.unwrap_or(syn::DEFAULT_PROBE_TTL),
         };
         let mut report =
             match tokio::task::spawn_blocking(move || syn::syn_scan(syn_opts, callback))
@@ -910,9 +911,13 @@ pub(crate) async fn run_scan(
                 let host = *host;
                 let ports = ports.clone();
                 tasks.spawn(async move {
-                    let guess =
-                        fingerprint::probe_fingerprint_ports_async(host, ports, probe_timeout)
-                            .await;
+                    let guess = fingerprint::probe_fingerprint_ports_async(
+                        host,
+                        ports,
+                        probe_timeout,
+                        resolved.ttl.unwrap_or(syn::DEFAULT_PROBE_TTL),
+                    )
+                    .await;
                     (host, guess)
                 });
             }

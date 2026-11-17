@@ -157,6 +157,10 @@ shard by destination address and port.
    attempt is allowed, which bounds the end-of-scan wait. Hosts that have never
    answered are not retried during the initial sweep, and a path that answered
    under 1% of probes stops retrying after the initial timeout.
+6. `--ttl` overrides the IPv4 TTL and IPv6 hop limit on real, decoy, fragmented,
+   and OS fingerprint probes. `--source-port-range MIN-MAX` replaces the
+   default 61000-61999 SYN source-port range; initial probes and retries stay
+   inside it, and the BPF filter is generated from the same range.
 
 **RX thread:**
 1. Receives frames on the `AF_PACKET` socket filtered by a classic BPF program

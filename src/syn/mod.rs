@@ -3,6 +3,9 @@
 //! Provides high-speed raw TCP SYN scanning using Linux `AF_PACKET` sockets,
 //! kernel BPF filtering, SipHash-1-3 SYN cookies, and BlackRock permutation.
 
+/// Default IPv4 TTL and IPv6 hop limit for raw probes.
+pub const DEFAULT_PROBE_TTL: u8 = 64;
+
 #[cfg(target_os = "linux")]
 pub mod aimd;
 #[cfg(target_os = "linux")]
@@ -65,6 +68,7 @@ pub struct SynScanOptions {
     pub jitter_ms: u64,
     pub decoys: Vec<std::net::Ipv4Addr>,
     pub fragment_size: Option<usize>,
+    pub ttl: u8,
 }
 
 #[cfg(not(target_os = "linux"))]

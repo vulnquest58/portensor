@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH rayscan-scan 1  "scan " 
+.TH rayscan-scan 1  "scan "
 .SH NAME
 rayscan\-scan \- Scan TCP ports on one or more targets
 .SH SYNOPSIS
-\fBscan\fR [\fB\-t\fR|\fB\-\-target\fR] [\fB\-\-target\-file\fR] [\fB\-\-exclude\fR] [\fB\-p\fR|\fB\-\-ports\fR] [\fB\-\-top\-ports\fR] [\fB\-\-preset\fR] [\fB\-\-exclude\-ports\fR] [\fB\-\-json\fR] [\fB\-\-format\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-\-profile\fR] [\fB\-\-stealth\fR] [\fB\-\-config\fR] [\fB\-\-timeout\fR] [\fB\-\-probe\-timeout\-ms\fR] [\fB\-\-connect\-timeout\-ms\fR] [\fB\-\-rate\fR] [\fB\-\-workers\fR] [\fB\-\-retries\fR] [\fB\-\-randomize\fR] [\fB\-\-sequential\fR] [\fB\-\-jitter\-ms\fR] [\fB\-\-decoys\fR] [\fB\-\-fragment\-size\fR] [\fB\-\-top\-ports\-first\fR] [\fB\-\-no\-top\-ports\-first\fR] [\fB\-\-discover\-only\fR] [\fB\-\-no\-live\fR] [\fB\-\-connect\-only\fR] [\fB\-\-verify\fR] [\fB\-\-no\-service\-detection\fR] [\fB\-\-udp\fR] [\fB\-\-no\-udp\-probe\fR] [\fB\-\-tls\fR] [\fB\-\-no\-tls\fR] [\fB\-\-os\fR] [\fB\-\-os\-probes\fR] [\fB\-\-all\-states\fR] [\fB\-\-show\fR] [\fB\-4\fR|\fB\-\-ipv4\fR] [\fB\-6\fR|\fB\-\-ipv6\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-syn\fR] [\fB\-\-no\-aimd\fR] [\fB\-\-rate\-auto\fR] [\fB\-\-host\-concurrency\fR] [\fB\-\-aimd\-min\-rate\fR] [\fB\-\-retry\-rate\fR] [\fB\-\-anomaly\-threshold\fR] [\fB\-\-resume\fR] [\fB\-\-save\-state\fR] [\fB\-\-min\-confidence\fR] [\fB\-\-explain\fR] [\fB\-\-defense\fR] [\fB\-\-advisories\fR] [\fB\-\-no\-db\-update\fR] [\fB\-\-diff\fR] [\fB\-\-save\-baseline\fR] [\fB\-\-alert\-file\fR] [\fB\-\-fail\-on\-change\fR] [\fB\-\-ping\-sweep\fR] [\fB\-\-ping\-count\fR] [\fB\-\-ping\-timeout\-ms\fR] [\fB\-\-ndp\fR] [\fB\-\-ndp\-timeout\-ms\fR] [\fB\-\-plugins\fR] [\fB\-\-scripts\fR] [\fB\-\-scripts\-library\fR] [\fB\-\-allow\-intrusive\fR] [\fB\-\-min\-severity\fR] [\fB\-\-scope\fR] [\fB\-\-force\-out\-of\-scope\fR] [\fB\-\-kev\-only\fR] [\fB\-\-min\-epss\fR] [\fB\-\-stream\fR] [\fB\-\-shard\-index\fR] [\fB\-\-shard\-count\fR] [\fB\-h\fR|\fB\-\-help\fR]
+\fBscan\fR [\fB\-t\fR|\fB\-\-target\fR] [\fB\-\-target\-file\fR] [\fB\-\-exclude\fR] [\fB\-p\fR|\fB\-\-ports\fR] [\fB\-\-top\-ports\fR] [\fB\-\-preset\fR] [\fB\-\-exclude\-ports\fR] [\fB\-\-json\fR] [\fB\-\-format\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-\-profile\fR] [\fB\-\-stealth\fR] [\fB\-\-config\fR] [\fB\-\-timeout\fR] [\fB\-\-probe\-timeout\-ms\fR] [\fB\-\-connect\-timeout\-ms\fR] [\fB\-\-rate\fR] [\fB\-\-workers\fR] [\fB\-\-retries\fR] [\fB\-\-randomize\fR] [\fB\-\-sequential\fR] [\fB\-\-jitter\-ms\fR] [\fB\-\-decoys\fR] [\fB\-\-fragment\-size\fR] [\fB\-\-ttl\fR] [\fB\-\-source\-port\-range\fR] [\fB\-\-top\-ports\-first\fR] [\fB\-\-no\-top\-ports\-first\fR] [\fB\-\-discover\-only\fR] [\fB\-\-no\-live\fR] [\fB\-\-connect\-only\fR] [\fB\-\-verify\fR] [\fB\-\-no\-service\-detection\fR] [\fB\-\-udp\fR] [\fB\-\-no\-udp\-probe\fR] [\fB\-\-tls\fR] [\fB\-\-no\-tls\fR] [\fB\-\-os\fR] [\fB\-\-os\-probes\fR] [\fB\-\-all\-states\fR] [\fB\-\-show\fR] [\fB\-4\fR|\fB\-\-ipv4\fR] [\fB\-6\fR|\fB\-\-ipv6\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-syn\fR] [\fB\-\-no\-aimd\fR] [\fB\-\-rate\-auto\fR] [\fB\-\-host\-concurrency\fR] [\fB\-\-aimd\-min\-rate\fR] [\fB\-\-retry\-rate\fR] [\fB\-\-anomaly\-threshold\fR] [\fB\-\-resume\fR] [\fB\-\-save\-state\fR] [\fB\-\-min\-confidence\fR] [\fB\-\-explain\fR] [\fB\-\-defense\fR] [\fB\-\-advisories\fR] [\fB\-\-no\-db\-update\fR] [\fB\-\-diff\fR] [\fB\-\-save\-baseline\fR] [\fB\-\-alert\-file\fR] [\fB\-\-fail\-on\-change\fR] [\fB\-\-ping\-sweep\fR] [\fB\-\-ping\-count\fR] [\fB\-\-ping\-timeout\-ms\fR] [\fB\-\-ndp\fR] [\fB\-\-ndp\-timeout\-ms\fR] [\fB\-\-plugins\fR] [\fB\-\-scripts\fR] [\fB\-\-scripts\-library\fR] [\fB\-\-allow\-intrusive\fR] [\fB\-\-min\-severity\fR] [\fB\-\-scope\fR] [\fB\-\-force\-out\-of\-scope\fR] [\fB\-\-kev\-only\fR] [\fB\-\-min\-epss\fR] [\fB\-\-stream\fR] [\fB\-\-shard\-index\fR] [\fB\-\-shard\-count\fR] [\fB\-h\fR|\fB\-\-help\fR]
 .SH DESCRIPTION
 Scan TCP ports on one or more targets
 .SH OPTIONS
@@ -138,6 +138,12 @@ Spoofed source addresses for decoy probes, comma\-separated (max 8). Requires \-
 .TP
 \fB\-\-fragment\-size\fR \fI<BYTES>\fR
 Fragment raw SYN probes into IP fragments of this payload size (multiple of 8, 8\-1480). Requires \-\-syn
+.TP
+\fB\-\-ttl\fR \fI<N>\fR
+IP TTL / IPv6 hop limit for raw SYN and OS fingerprint probes (1\-255). Requires \-\-syn or \-\-os
+.TP
+\fB\-\-source\-port\-range\fR \fI<MIN\-MAX>\fR
+Source port range for raw SYN probes, as MIN\-MAX (1\-65535). Requires \-\-syn
 .TP
 \fB\-\-top\-ports\-first\fR
 Scan most common ports first to minimize time\-to\-first\-result

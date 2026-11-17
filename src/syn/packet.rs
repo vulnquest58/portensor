@@ -135,6 +135,7 @@ pub fn build_ipv6_tcp_packet(
     dst_port: u16,
     seq: u32,
     tcp_options: &[u8],
+    hop_limit: u8,
 ) -> Vec<u8> {
     let tcp_len = 20 + tcp_options.len();
     let mut packet = vec![0u8; 40 + tcp_len];
@@ -142,7 +143,7 @@ pub fn build_ipv6_tcp_packet(
     packet[0] = 0x60;
     packet[4..6].copy_from_slice(&(tcp_len as u16).to_be_bytes());
     packet[6] = 6;
-    packet[7] = 64;
+    packet[7] = hop_limit;
     packet[8..24].copy_from_slice(&src_ip.octets());
     packet[24..40].copy_from_slice(&dst_ip.octets());
 
@@ -167,8 +168,9 @@ pub fn build_ipv6_syn_packet(
     src_port: u16,
     dst_port: u16,
     seq: u32,
+    hop_limit: u8,
 ) -> Vec<u8> {
-    build_ipv6_tcp_packet(src_ip, dst_ip, src_port, dst_port, seq, &[])
+    build_ipv6_tcp_packet(src_ip, dst_ip, src_port, dst_port, seq, &[], hop_limit)
 }
 
 /// Writes a 60-byte IPv6 SYN packet (no TCP options) into a caller-provided
@@ -180,12 +182,13 @@ pub fn write_ipv6_syn_packet_into(
     src_port: u16,
     dst_port: u16,
     seq: u32,
+    hop_limit: u8,
 ) {
     packet[0..4].fill(0);
     packet[0] = 0x60;
     packet[4..6].copy_from_slice(&20u16.to_be_bytes());
     packet[6] = 6;
-    packet[7] = 64;
+    packet[7] = hop_limit;
     packet[8..24].copy_from_slice(&src_ip.octets());
     packet[24..40].copy_from_slice(&dst_ip.octets());
 
@@ -266,8 +269,9 @@ pub fn parse_ipv6_tcp(data: &[u8], fallback_src: Option<Ipv6Addr>) -> ParsedV6Fr
 ///
 /// Header structure:
 /// - Ethernet II: 14 bytes (destination MAC, source MAC, EtherType 0x0800)
-/// - IPv4 Header: 20 bytes (Version 4, IHL 5, Total Length 40, DF set, TTL 64, Protocol 6, Checksum)
+/// - IPv4 Header: 20 bytes (Version 4, IHL 5, Total Length 40, DF set, TTL, Protocol 6, Checksum)
 /// - TCP Header: 20 bytes (Data Offset 5, SYN flag set, Window Size 1024, Checksum)
+#[expect(clippy::too_many_arguments)]
 pub fn build_syn_frame(
     src_mac: &[u8; 6],
     dst_mac: &[u8; 6],
@@ -276,10 +280,11 @@ pub fn build_syn_frame(
     src_port: u16,
     dst_port: u16,
     seq: u32,
+    ttl: u8,
 ) -> [u8; 54] {
     let mut frame = [0u8; 54];
     write_syn_frame(
-        &mut frame, src_mac, dst_mac, src_ip, dst_ip, src_port, dst_port, seq,
+        &mut frame, src_mac, dst_mac, src_ip, dst_ip, src_port, dst_port, seq, ttl,
     );
     frame
 }
@@ -298,6 +303,7 @@ pub fn write_syn_frame(
     src_port: u16,
     dst_port: u16,
     seq: u32,
+    ttl: u8,
 ) {
     // 1. Ethernet Header (bytes 0..14)
     frame[0..6].copy_from_slice(dst_mac);
@@ -310,7 +316,7 @@ pub fn write_syn_frame(
     frame[16..18].copy_from_slice(&40u16.to_be_bytes()); // Total Length: 40 bytes (20 IP + 20 TCP)
     frame[18..20].copy_from_slice(&(seq as u16).to_be_bytes()); // Identification
     frame[20..22].copy_from_slice(&0x4000u16.to_be_bytes()); // Flags: Don't Fragment (DF), Offset 0
-    frame[22] = 64; // TTL
+    frame[22] = ttl;
     frame[23] = 6; // Protocol: TCP
     frame[24..26].copy_from_slice(&[0, 0]); // Zero out checksum for calculation
     frame[26..30].copy_from_slice(&src_ip.to_be_bytes());
@@ -497,6 +503,7 @@ mod tests {
             61234,
             80,
             0x1234_5678,
+            64,
         );
         let mut written = [0u8; 54];
         write_syn_frame(
@@ -508,17 +515,44 @@ mod tests {
             61234,
             80,
             0x1234_5678,
+            64,
         );
         assert_eq!(written, built);
+    }
+
+    #[test]
+    fn ipv4_builder_sets_configured_ttl() {
+        let frame = build_syn_frame(
+            &[1, 2, 3, 4, 5, 6],
+            &[7, 8, 9, 10, 11, 12],
+            0x0a000001,
+            0x0a000002,
+            61234,
+            80,
+            0x12345678,
+            37,
+        );
+        assert_eq!(frame[22], 37);
+        assert_eq!(ip_checksum(&frame[14..34]), 0);
+    }
+
+    #[test]
+    fn ipv6_builder_sets_configured_hop_limit() {
+        let src: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        let dst: Ipv6Addr = "2001:db8::2".parse().unwrap();
+        let packet = build_ipv6_syn_packet(&src, &dst, 61000, 443, 0x1234_5678, 37);
+        assert_eq!(packet[7], 37);
+        assert_eq!(&packet[8..24], &src.octets());
+        assert_eq!(&packet[24..40], &dst.octets());
     }
 
     #[test]
     fn ipv6_write_variant_matches_builder() {
         let src: Ipv6Addr = "2001:db8::1".parse().unwrap();
         let dst: Ipv6Addr = "2001:db8::2".parse().unwrap();
-        let built = build_ipv6_syn_packet(&src, &dst, 61000, 443, 0x1234_5678);
+        let built = build_ipv6_syn_packet(&src, &dst, 61000, 443, 0x1234_5678, 64);
         let mut written = [0u8; 60];
-        write_ipv6_syn_packet_into(&mut written, &src, &dst, 61000, 443, 0x1234_5678);
+        write_ipv6_syn_packet_into(&mut written, &src, &dst, 61000, 443, 0x1234_5678, 64);
         assert_eq!(written.as_slice(), built.as_slice());
     }
 
@@ -532,7 +566,9 @@ mod tests {
         let dst_port = 80;
         let seq = 0x12345678;
 
-        let frame = build_syn_frame(&src_mac, &dst_mac, src_ip, dst_ip, src_port, dst_port, seq);
+        let frame = build_syn_frame(
+            &src_mac, &dst_mac, src_ip, dst_ip, src_port, dst_port, seq, 64,
+        );
         assert_eq!(frame.len(), 54);
 
         // Verify IP checksum validates to 0
@@ -645,6 +681,7 @@ mod tests {
             61234,
             80,
             0x12345678,
+            64,
         );
         let fragments = fragment_syn_frame(&frame, 8);
         assert_eq!(fragments.len(), 3); // 20-byte TCP segment -> 8 + 8 + 4
@@ -666,7 +703,7 @@ mod tests {
 
     #[test]
     fn tiny_or_unaligned_fragment_sizes_are_ignored() {
-        let frame = build_syn_frame(&[1; 6], &[2; 6], 0x0a000001, 0x0a000002, 61234, 80, 1);
+        let frame = build_syn_frame(&[1; 6], &[2; 6], 0x0a000001, 0x0a000002, 61234, 80, 1, 64);
         assert_eq!(fragment_syn_frame(&frame, 0).len(), 1);
         assert_eq!(fragment_syn_frame(&frame, 7).len(), 1);
         assert_eq!(fragment_syn_frame(&frame, 64).len(), 1);
@@ -676,7 +713,7 @@ mod tests {
     fn ipv6_packet_has_valid_lengths_and_checksum() {
         let src: Ipv6Addr = "2001:db8::1".parse().unwrap();
         let dst: Ipv6Addr = "2001:db8::2".parse().unwrap();
-        let packet = build_ipv6_syn_packet(&src, &dst, 61000, 443, 0x1234_5678);
+        let packet = build_ipv6_syn_packet(&src, &dst, 61000, 443, 0x1234_5678, 64);
         assert_eq!(packet.len(), 60);
         assert_eq!(packet[0] >> 4, 6);
         assert_eq!(u16::from_be_bytes([packet[4], packet[5]]), 20);
@@ -692,7 +729,7 @@ mod tests {
     fn parses_ipv6_syn_ack_with_and_without_header() {
         let src: Ipv6Addr = "2001:db8::2".parse().unwrap();
         let dst: Ipv6Addr = "2001:db8::1".parse().unwrap();
-        let mut packet = build_ipv6_syn_packet(&src, &dst, 443, 61000, 99);
+        let mut packet = build_ipv6_syn_packet(&src, &dst, 443, 61000, 99, 64);
         packet[40 + 13] = 0x12;
         packet[40 + 8..40 + 12].copy_from_slice(&100u32.to_be_bytes());
 

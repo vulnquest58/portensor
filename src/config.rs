@@ -140,6 +140,8 @@ pub struct FileConfig {
     pub scripts: Option<PathBuf>,
     pub allow_intrusive: Option<bool>,
     pub jitter_ms: Option<u64>,
+    pub ttl: Option<u8>,
+    pub source_port_range: Option<String>,
 }
 
 pub fn load(path: Option<&Path>) -> Result<FileConfig, AppError> {
@@ -185,6 +187,8 @@ udp_probe = true
 format = "jsonl"
 show = ["open", "closed"]
 theme = "hacker"
+ttl = 64
+source_port_range = "40000-40100"
 "#,
         )
         .unwrap();
@@ -198,6 +202,8 @@ theme = "hacker"
         assert_eq!(config.format, Some(OutputFormat::Jsonl));
         assert_eq!(config.show.unwrap().len(), 2);
         assert_eq!(config.theme, Some(Theme::Hacker));
+        assert_eq!(config.ttl, Some(64));
+        assert_eq!(config.source_port_range.as_deref(), Some("40000-40100"));
     }
 
     #[test]

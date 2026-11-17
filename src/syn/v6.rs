@@ -80,7 +80,15 @@ impl BatchV6 {
     }
 
     /// Append an IPv6 SYN probe; the packet buffer is reused across probes.
-    fn push(&mut self, target: Ipv6Addr, source: Ipv6Addr, src_port: u16, dst_port: u16, seq: u32) {
+    fn push(
+        &mut self,
+        target: Ipv6Addr,
+        source: Ipv6Addr,
+        src_port: u16,
+        dst_port: u16,
+        seq: u32,
+        hop_limit: u8,
+    ) {
         if self.len >= self.packets.len() {
             self.packets.push((
                 Vec::with_capacity(60),
@@ -98,6 +106,7 @@ impl BatchV6 {
             src_port,
             dst_port,
             seq,
+            hop_limit,
         );
         buffer.extend_from_slice(&packet_buf);
         *dest = sockaddr_v6_raw(target);
@@ -374,10 +383,11 @@ fn push_v6_probe(
     target: Ipv6Addr,
     port: u16,
     source_port: u16,
+    hop_limit: u8,
 ) {
     let sequence = cookie_key.encode_v6(&target.octets(), port, source_port);
     let source = sources[&target];
-    batch.push(target, source, source_port, port, sequence);
+    batch.push(target, source, source_port, port, sequence, hop_limit);
 }
 
 /// Execute a raw IPv6 SYN scan for the supplied targets.
@@ -533,6 +543,7 @@ pub(super) fn scan_v6(
                 entry.key.0,
                 entry.key.1,
                 src_port,
+                opts.ttl,
             );
             pending_retry.push((entry.key, src_port, attempt));
             retry_probes += 1;
@@ -551,6 +562,7 @@ pub(super) fn scan_v6(
                 target,
                 port,
                 source_port,
+                opts.ttl,
             );
             pending_initial.push(((target, port), source_port, 0));
             initial_cursor += 1;

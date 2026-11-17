@@ -59,6 +59,8 @@ pub struct SynScanOptions {
     pub decoys: Vec<Ipv4Addr>,
     /// Maximum IPv4 payload bytes per fragment (multiple of 8). `None` disables.
     pub fragment_size: Option<usize>,
+    /// IPv4 TTL / IPv6 hop limit for raw probes.
+    pub ttl: u8,
 }
 
 impl Default for SynScanOptions {
@@ -78,6 +80,7 @@ impl Default for SynScanOptions {
             jitter_ms: 0,
             decoys: Vec::new(),
             fragment_size: None,
+            ttl: super::DEFAULT_PROBE_TTL,
         }
     }
 }
@@ -832,6 +835,7 @@ fn push_probe(
         src_port,
         target_port,
         seq,
+        opts.ttl,
     );
 
     let real_frames = match opts.fragment_size {
@@ -857,6 +861,7 @@ fn push_probe(
             decoy_port,
             target_port,
             seq.wrapping_add(decoy_index as u32 + 1),
+            opts.ttl,
         );
         let decoy_frames = match opts.fragment_size {
             Some(size) => packet::fragment_syn_frame(&decoy_frame, size),

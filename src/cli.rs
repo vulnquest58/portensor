@@ -512,6 +512,16 @@ pub struct ScanArgs {
     #[arg(long, requires = "syn", value_name = "BYTES")]
     pub fragment_size: Option<usize>,
 
+    /// IP TTL / IPv6 hop limit for raw SYN and OS fingerprint probes (1-255).
+    /// Requires --syn or --os.
+    #[arg(long, value_name = "N")]
+    pub ttl: Option<u8>,
+
+    /// Source port range for raw SYN probes, as MIN-MAX (1-65535).
+    /// Requires --syn.
+    #[arg(long, requires = "syn", value_name = "MIN-MAX")]
+    pub source_port_range: Option<String>,
+
     /// Scan most common ports first to minimize time-to-first-result.
     #[arg(long, conflicts_with = "randomize")]
     pub top_ports_first: bool,
@@ -816,6 +826,10 @@ pub struct ResolvedConfig {
     pub decoys: Vec<Ipv4Addr>,
     /// IPv4 payload size per fragment for raw SYN scans.
     pub fragment_size: Option<usize>,
+    /// IP TTL / IPv6 hop limit for raw probes.
+    pub ttl: Option<u8>,
+    /// Source port range for raw SYN probes.
+    pub source_port_range: Option<(u16, u16)>,
     /// TLS inspection policy.
     pub tls_mode: TlsMode,
     /// Optional `(index, count)` target shard selection.
@@ -902,6 +916,23 @@ impl ScanArgs {
                 "--os-probes must be between 1 and {}",
                 crate::fingerprint::MAX_OS_PROBES
             )));
+        }
+
+        let ttl = self.ttl.or(file.ttl);
+        if ttl == Some(0) {
+            return Err(AppError::usage("--ttl must be between 1 and 255"));
+        }
+        if self.ttl.is_some() && !self.syn && !self.os {
+            return Err(AppError::usage("--ttl requires --syn or --os"));
+        }
+
+        let source_port_range = parse_source_port_range(
+            self.source_port_range
+                .as_deref()
+                .or(file.source_port_range.as_deref()),
+        )?;
+        if self.source_port_range.is_some() && !self.syn {
+            return Err(AppError::usage("--source-port-range requires --syn"));
         }
 
         let workers = self.workers.or(file.workers).unwrap_or(defaults.workers);
@@ -1093,6 +1124,8 @@ impl ScanArgs {
             jitter: Duration::from_millis(jitter_ms),
             decoys,
             fragment_size: self.fragment_size,
+            ttl,
+            source_port_range,
             tls_mode,
             shard,
             scope: self.scope.clone(),
@@ -1194,6 +1227,29 @@ fn parse_decoy_addresses(spec: Option<&str>) -> Result<Vec<Ipv4Addr>, AppError> 
     Ok(addresses)
 }
 
+fn parse_source_port_range(spec: Option<&str>) -> Result<Option<(u16, u16)>, AppError> {
+    let Some(spec) = spec else {
+        return Ok(None);
+    };
+    let (low, high) = spec
+        .split_once('-')
+        .ok_or_else(|| AppError::usage("--source-port-range must use the form MIN-MAX"))?;
+    let low: u16 = low
+        .trim()
+        .parse()
+        .map_err(|_| AppError::usage("--source-port-range MIN must be between 1 and 65535"))?;
+    let high: u16 = high
+        .trim()
+        .parse()
+        .map_err(|_| AppError::usage("--source-port-range MAX must be between 1 and 65535"))?;
+    if low == 0 || low > high {
+        return Err(AppError::usage(
+            "--source-port-range requires 1 <= MIN <= MAX <= 65535",
+        ));
+    }
+    Ok(Some((low, high)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1264,6 +1320,8 @@ mod tests {
             jitter_ms: None,
             decoys: None,
             fragment_size: None,
+            ttl: None,
+            source_port_range: None,
             tls: false,
             no_tls: false,
             shard_index: None,
@@ -1429,6 +1487,42 @@ mod tests {
         assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
         args.os_probes = Some(crate::fingerprint::MAX_OS_PROBES + 1);
         assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
+    fn ttl_and_source_port_range_are_validated() {
+        let mut shaped = args();
+        shaped.syn = true;
+        shaped.ttl = Some(37);
+        shaped.source_port_range = Some("40000-40100".to_string());
+        let resolved = shaped.resolve().unwrap();
+        assert_eq!(resolved.ttl, Some(37));
+        assert_eq!(resolved.source_port_range, Some((40000, 40100)));
+
+        let mut bad_ttl = args();
+        bad_ttl.syn = true;
+        bad_ttl.ttl = Some(0);
+        assert_eq!(bad_ttl.resolve().unwrap_err().exit_code(), 2);
+
+        let mut no_raw = args();
+        no_raw.ttl = Some(64);
+        assert_eq!(no_raw.resolve().unwrap_err().exit_code(), 2);
+
+        let mut os_only = args();
+        os_only.os = true;
+        os_only.ttl = Some(64);
+        assert_eq!(os_only.resolve().unwrap().ttl, Some(64));
+
+        for spec in ["", "1", "0-100", "100-50", "1-65536", "a-b"] {
+            let mut invalid = args();
+            invalid.syn = true;
+            invalid.source_port_range = Some(spec.to_string());
+            assert_eq!(invalid.resolve().unwrap_err().exit_code(), 2, "{spec}");
+        }
+
+        let mut synless = args();
+        synless.source_port_range = Some("40000-40100".to_string());
+        assert_eq!(synless.resolve().unwrap_err().exit_code(), 2);
     }
 
     #[test]

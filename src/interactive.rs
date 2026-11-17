@@ -161,6 +161,8 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         jitter_ms: None,
         decoys: None,
         fragment_size: None,
+        ttl: None,
+        source_port_range: None,
         tls: false,
         no_tls: false,
         shard_index: None,

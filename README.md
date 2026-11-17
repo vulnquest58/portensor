@@ -95,7 +95,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
 | Per-host concurrency | Optional cap on simultaneous connect attempts per target host (`--host-concurrency N`, 0 = unlimited); also applied to SYN-open verification |
 | Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes (`rayscan distributed`) |
-| Evasion | Random delay jitter, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--decoys`, `--fragment-size`) |
+| Evasion | Random delay jitter, configurable TTL/hop limit, custom SYN source-port range, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--ttl`, `--source-port-range`, `--decoys`, `--fragment-size`) |
 | Resumable scans | Smart `--resume FILE` with pre-scan gap analysis audit + `--save-state FILE` (`src/resume.rs`) |
 | Signal handling | Graceful Ctrl-C: workers stop, partial results printed, state saved |
 | Output formats | `table`, `json`, `jsonl`, `csv`, `host-port`, `nmap-xml`, `greppable`, `sarif`, `markdown`; dark/light/hacker/minimal themes |
@@ -1159,13 +1159,20 @@ sudo rayscan scan -6 -t ::1 -p 80,443 --syn --format json
 ```
 
 Decoys and IPv4 fragmentation remain IPv4-only. Mixed IPv4/IPv6 target sets are
-partitioned automatically and merged into one report.
+partitioned automatically and merged into one report. `--ttl` sets the IPv4 TTL
+or IPv6 hop limit for raw SYN and OS fingerprint probes.
 
-### Stealth, Jitter, Decoys, and Fragmentation
+### Stealth, Jitter, TTL, Decoys, and Fragmentation
 
 ```bash
 # 0-250 ms random delay before probes:
 sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --jitter-ms 250
+
+# Set a custom IPv4 TTL / IPv6 hop limit for SYN and OS probes:
+sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --os --ttl 128
+
+# Restrict raw SYN source ports (retries advance within this range):
+sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --source-port-range 40000-40100
 
 # Add up to eight IPv4 decoy source addresses:
 sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --decoys 10.0.0.101,10.0.0.102
@@ -1175,8 +1182,11 @@ sudo rayscan scan -t 10.0.0.5 -p 80,443 --syn --fragment-size 8
 ```
 
 The `stealth` profile defaults to 50 ms jitter in addition to its 20 pps rate
-limit, eight workers, and three retries. Decoys and fragmentation require
-`--syn`; decoy source ports are chosen outside the configured source-port range.
+limit, eight workers, and three retries. Decoys, fragmentation, and the custom
+source-port range require `--syn`; decoy source ports are chosen outside the
+configured range. Use a range with at least two ports if retransmissions need
+fresh source ports. OS fingerprint probes keep their dedicated source ports
+(62000 for IPv4, 62001 for IPv6).
 
 ### Output formats
 
@@ -1264,6 +1274,8 @@ theme = "dark"
 plugins = "probes.toml"  # optional declarative probe pack
 scripts = "scripts/"     # optional script pack manifest or directory
 jitter_ms = 50           # optional random delay before each probe
+ttl = 64                 # optional raw SYN / OS probe TTL or hop limit
+source_port_range = "40000-40100"  # optional raw SYN source ports
 ```
 
 ### Result semantics

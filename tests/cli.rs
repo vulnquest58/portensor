@@ -368,6 +368,79 @@ fn os_probes_requires_os_and_is_bounded() {
 }
 
 #[test]
+fn probe_shaping_flags_are_validated() {
+    let zero_ttl = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--syn",
+            "--ttl",
+            "0",
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scan");
+    assert_eq!(zero_ttl.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&zero_ttl.stderr).contains("--ttl must be between 1 and 255"));
+
+    let ttl_without_raw = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--ttl",
+            "64",
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scan");
+    assert_eq!(ttl_without_raw.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&ttl_without_raw.stderr).contains("--ttl requires --syn or --os")
+    );
+
+    let reversed_range = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--syn",
+            "--source-port-range",
+            "40001-40000",
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scan");
+    assert_eq!(reversed_range.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&reversed_range.stderr)
+            .contains("--source-port-range requires 1 <= MIN <= MAX <= 65535")
+    );
+
+    let range_without_syn = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--source-port-range",
+            "40000-40100",
+            "--json",
+        ])
+        .output()
+        .expect("run rayscan scan");
+    assert_eq!(range_without_syn.status.code(), Some(2));
+}
+
+#[test]
 fn omitted_ports_defaults_to_well_known_range() {
     let output = rayscan()
         .args([

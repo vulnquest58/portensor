@@ -928,7 +928,8 @@ pub fn fingerprint_from_ipv6_tcp(tcp: &[u8], hop_limit: u8, hops: u8) -> Option<
 /// Probe a live host and return an `OsGuess`.
 ///
 /// Sends a raw SYN frame to `host:port` via AF_PACKET, waits up to `timeout`
-/// for the SYN-ACK, parses the fingerprint, and runs `classify()`.
+/// for the SYN-ACK, parses the fingerprint, and runs `classify()`. `ttl` sets
+/// the IPv4 TTL or IPv6 hop limit on the probe.
 ///
 /// # Returns
 ///
@@ -940,28 +941,33 @@ pub fn fingerprint_from_ipv6_tcp(tcp: &[u8], hop_limit: u8, hops: u8) -> Option<
 ///
 /// Uses `unsafe` FFI to call libc raw-socket functions (AF_PACKET).  All
 /// buffer accesses are bounds-checked.  Requires `CAP_NET_RAW` or root.
-pub fn probe_fingerprint(host: IpAddr, port: u16, timeout: Duration) -> Option<OsGuess> {
+pub fn probe_fingerprint(host: IpAddr, port: u16, timeout: Duration, ttl: u8) -> Option<OsGuess> {
     // AF_PACKET is Linux-only.
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = (host, port, timeout);
+        let _ = (host, port, timeout, ttl);
         return None;
     }
 
     #[cfg(target_os = "linux")]
-    probe_fingerprint_linux(host, port, timeout)
+    probe_fingerprint_linux(host, port, timeout, ttl)
 }
 
 #[cfg(target_os = "linux")]
-fn probe_fingerprint_linux(host: IpAddr, port: u16, timeout: Duration) -> Option<OsGuess> {
+fn probe_fingerprint_linux(host: IpAddr, port: u16, timeout: Duration, ttl: u8) -> Option<OsGuess> {
     match host {
-        IpAddr::V4(v4) => probe_fingerprint_v4(v4, port, timeout),
-        IpAddr::V6(v6) => probe_fingerprint_v6(v6, port, timeout),
+        IpAddr::V4(v4) => probe_fingerprint_v4(v4, port, timeout, ttl),
+        IpAddr::V6(v6) => probe_fingerprint_v6(v6, port, timeout, ttl),
     }
 }
 
 #[cfg(target_os = "linux")]
-fn probe_fingerprint_v4(target_v4: Ipv4Addr, port: u16, timeout: Duration) -> Option<OsGuess> {
+fn probe_fingerprint_v4(
+    target_v4: Ipv4Addr,
+    port: u16,
+    timeout: Duration,
+    ttl: u8,
+) -> Option<OsGuess> {
     use crate::syn::route;
 
     // Resolve route: source IP, interface, gateway MAC.
@@ -985,7 +991,7 @@ fn probe_fingerprint_v4(target_v4: Ipv4Addr, port: u16, timeout: Duration) -> Op
 
     // Build a SYN frame with TCP options (MSS, NOP, WScale, NOP, NOP, SACK-OK,
     // Timestamps) so the reply SYN-ACK carries the target's options.
-    let frame = build_fingerprint_syn(&src_mac, &dst_mac, src_ip, dst_ip, src_port, port, seq);
+    let frame = build_fingerprint_syn(&src_mac, &dst_mac, src_ip, dst_ip, src_port, port, seq, ttl);
 
     // Open raw AF_PACKET socket bound to ETH_P_IP.
     let if_idx = route::iface_index(&route_info.iface).ok()?;
@@ -1099,6 +1105,7 @@ fn probe_fingerprint_v6(
     target: std::net::Ipv6Addr,
     port: u16,
     timeout: Duration,
+    ttl: u8,
 ) -> Option<OsGuess> {
     use crate::syn::v6::source_for;
 
@@ -1116,6 +1123,7 @@ fn probe_fingerprint_v6(
         port,
         seq,
         &tcp_options,
+        ttl,
     );
 
     // SAFETY: create IPv6 raw TCP receive socket.
@@ -1246,6 +1254,7 @@ fn probe_fingerprint_v6(
 /// This matches a modern Linux client profile and maximises the chance that
 /// the peer echoes its own options.
 #[cfg(target_os = "linux")]
+#[expect(clippy::too_many_arguments)]
 fn build_fingerprint_syn(
     src_mac: &[u8; 6],
     dst_mac: &[u8; 6],
@@ -1254,6 +1263,7 @@ fn build_fingerprint_syn(
     src_port: u16,
     dst_port: u16,
     seq: u32,
+    ttl: u8,
 ) -> Vec<u8> {
     use crate::syn::packet::{ip_checksum, tcp_checksum};
 
@@ -1286,7 +1296,7 @@ fn build_fingerprint_syn(
     frame[16..18].copy_from_slice(&total_len.to_be_bytes());
     frame[18..20].copy_from_slice(&(seq as u16).to_be_bytes()); // Identification
     frame[20..22].copy_from_slice(&0x4000u16.to_be_bytes()); // DF=1
-    frame[22] = 64; // TTL
+    frame[22] = ttl;
     frame[23] = 6; // TCP
     frame[26..30].copy_from_slice(&src_ip.to_be_bytes());
     frame[30..34].copy_from_slice(&dst_ip.to_be_bytes());
@@ -1332,8 +1342,9 @@ pub async fn probe_fingerprint_async(
     host: IpAddr,
     port: u16,
     timeout: Duration,
+    ttl: u8,
 ) -> Option<OsGuess> {
-    tokio::task::spawn_blocking(move || probe_fingerprint(host, port, timeout))
+    tokio::task::spawn_blocking(move || probe_fingerprint(host, port, timeout, ttl))
         .await
         .ok()
         .flatten()
@@ -1433,11 +1444,13 @@ fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
 ///
 /// Each successful SYN-ACK becomes an independent sample. This tolerates a
 /// single filtered/middleboxed port and makes the reported confidence reflect
-/// port-to-port agreement rather than one packet.
+/// port-to-port agreement rather than one packet. `ttl` is applied to every
+/// probe in the sample set.
 pub async fn probe_fingerprint_ports_async(
     host: IpAddr,
     ports: Vec<u16>,
     timeout: Duration,
+    ttl: u8,
 ) -> Option<OsGuess> {
     let mut ports = ports;
     ports.sort_unstable();
@@ -1449,7 +1462,12 @@ pub async fn probe_fingerprint_ports_async(
 
     let mut tasks = tokio::task::JoinSet::new();
     for port in ports {
-        tasks.spawn(async move { (port, probe_fingerprint_async(host, port, timeout).await) });
+        tasks.spawn(async move {
+            (
+                port,
+                probe_fingerprint_async(host, port, timeout, ttl).await,
+            )
+        });
     }
 
     let mut samples = Vec::new();

@@ -6,6 +6,13 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Probe shaping controls**: `--ttl N` (config key `ttl`) sets the IPv4 TTL
+  or IPv6 hop limit on raw SYN, decoy, fragment, and OS fingerprint probes.
+  `--source-port-range MIN-MAX` (config key `source_port_range`) selects the
+  raw SYN source-port range; the BPF filter follows the chosen range and
+  retransmissions continue to advance to fresh source ports. Both flags use
+  the same defaults as before (TTL 64, ports 61000-61999), and invalid values
+  fail with a usage error before any raw socket is opened.
 - **Multi-probe OS consensus**: `--os-probes N` (config key `os_probes`,
   default 3, range 1-8) samples up to N distinct open ports per host and
   combines the SYN-ACK fingerprints with a family majority vote. Confidence is
