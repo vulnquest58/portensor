@@ -114,9 +114,19 @@ jobs:
           printf '%s' "$COSIGN_PRIVATE_KEY" > /tmp/cosign.key
           cosign sign-blob --yes --key /tmp/cosign.key \
             --bundle dist/SHA256SUMS.cosign.bundle dist/SHA256SUMS
+      - name: Extract release notes
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: release-notes.md
           fail_on_unmatched_files: true
