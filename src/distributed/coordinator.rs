@@ -647,14 +647,31 @@ fn spawn_push_loop(coordinator: Arc<Coordinator>, index: usize, agent: String) {
                 continue;
             };
             let job_id = job.job_id;
+            let lease_secs = job.lease_secs;
             let timeout = Duration::from_secs(job.timeout_secs.saturating_add(60).max(60));
             let token = coordinator.token.clone();
             let agent_url = agent.clone();
             let body = json!({ "job": job });
+            let heartbeat_coordinator = coordinator.clone();
+            let heartbeat_worker = worker_id.clone();
+            let heartbeat = tokio::spawn(async move {
+                let interval = Duration::from_secs((lease_secs / 3).clamp(1, 30));
+                loop {
+                    tokio::time::sleep(interval).await;
+                    if !heartbeat_coordinator.heartbeat(&heartbeat_worker, job_id) {
+                        eprintln!(
+                            "[distributed] push job {job_id} is no longer leased; a late result will be discarded"
+                        );
+                        break;
+                    }
+                }
+            });
             let response = tokio::task::spawn_blocking(move || {
                 post_json(&agent_url, &token, "/v1/execute", &body, timeout)
             })
             .await;
+            heartbeat.abort();
+            let _ = heartbeat.await;
             let mut stale = false;
             match response {
                 Ok(Ok(value)) => {
