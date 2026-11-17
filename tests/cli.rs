@@ -100,6 +100,71 @@ fn no_arguments_shows_help() {
 }
 
 #[test]
+fn empty_shard_emits_a_valid_report() {
+    let count = 64;
+    let owner = rayscan::shard::shard_for("127.0.0.1".parse().unwrap(), count);
+    let empty = (owner + 1) % count;
+    let output = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            "9",
+            "--shard-index",
+            &empty.to_string(),
+            "--shard-count",
+            &count.to_string(),
+            "--json",
+            "--no-db-update",
+            "--no-service-detection",
+            "--timeout",
+            "1",
+            "--quiet",
+        ])
+        .output()
+        .expect("run empty shard");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("empty shard JSON");
+    assert_eq!(payload["targets"], 0);
+    assert_eq!(payload["open"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn distributed_plan_prints_shards_and_merge() {
+    let output = rayscan()
+        .args([
+            "distributed",
+            "plan",
+            "--shards",
+            "3",
+            "--shell",
+            "bash",
+            "--",
+            "scan",
+            "--target",
+            "192.0.2.0/30",
+            "--ports",
+            "80",
+        ])
+        .output()
+        .expect("run distributed plan");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let script = String::from_utf8(output.stdout).expect("utf-8 script");
+    assert!(script.contains("--shard-index 0"));
+    assert!(script.contains("--shard-index 2"));
+    assert!(script.contains("rayscan merge shards/shard-*.json"));
+}
+
+#[test]
 fn json_scan_reports_an_open_port() {
     let server = banner_server();
     let port = server.port();

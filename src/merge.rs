@@ -6,7 +6,7 @@
 //! can feed `--diff`, SIEM ingestion, or the Markdown/SARIF renderers.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 
@@ -86,32 +86,7 @@ impl StateTotals {
 }
 
 pub fn run_cli(args: MergeArgs) -> Result<(), AppError> {
-    if args.inputs.is_empty() {
-        return Err(AppError::usage("merge requires at least one input report"));
-    }
-
-    let mut merged = MergedReport::default();
-    for path in &args.inputs {
-        merge_file(path, &mut merged)?;
-    }
-
-    let output = if args.jsonl {
-        let mut lines = String::new();
-        for value in merged.results.values() {
-            lines.push_str(
-                &serde_json::to_string(value)
-                    .map_err(|error| AppError::runtime(format!("cannot encode JSON: {error}")))?,
-            );
-            lines.push('\n');
-        }
-        lines
-    } else {
-        let mut json = serde_json::to_string_pretty(&render_report(&merged))
-            .map_err(|error| AppError::runtime(format!("cannot encode JSON: {error}")))?;
-        json.push('\n');
-        json
-    };
-
+    let output = merge_files(&args.inputs, args.jsonl)?;
     match args.output.as_deref() {
         Some(path) if path.as_os_str() != "-" => {
             if let Some(parent) = path.parent()
@@ -134,6 +109,35 @@ pub fn run_cli(args: MergeArgs) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+/// Merge report files and return the serialized result.
+pub fn merge_files(inputs: &[PathBuf], jsonl: bool) -> Result<String, AppError> {
+    if inputs.is_empty() {
+        return Err(AppError::usage("merge requires at least one input report"));
+    }
+
+    let mut merged = MergedReport::default();
+    for path in inputs {
+        merge_file(path, &mut merged)?;
+    }
+
+    if jsonl {
+        let mut lines = String::new();
+        for value in merged.results.values() {
+            lines.push_str(
+                &serde_json::to_string(value)
+                    .map_err(|error| AppError::runtime(format!("cannot encode JSON: {error}")))?,
+            );
+            lines.push('\n');
+        }
+        Ok(lines)
+    } else {
+        let mut json = serde_json::to_string_pretty(&render_report(&merged))
+            .map_err(|error| AppError::runtime(format!("cannot encode JSON: {error}")))?;
+        json.push('\n');
+        Ok(json)
+    }
 }
 
 fn merge_file(path: &Path, merged: &mut MergedReport) -> Result<(), AppError> {

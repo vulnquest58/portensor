@@ -79,7 +79,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Area | Current capability |
 | :--- | :--- |
 | Toolchain | `rust-toolchain.toml`, pinned Rust 1.99.1, `rustfmt`, `clippy` |
-| CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list/search/install`, guided `rayscan interactive`, global `--theme` |
+| CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan distributed plan/serve/worker/agent`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list/search/install`, guided `rayscan interactive`, global `--theme` |
 | Discovery | Async TCP connect scanner plus Linux raw SYN for IPv4 and IPv6 (`--syn`); optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
@@ -93,7 +93,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
 | Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
-| Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`) and `rayscan merge` for JSON/JSONL reports |
+| Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes (`rayscan distributed`) |
 | Evasion | Random delay jitter, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--decoys`, `--fragment-size`) |
 | Resumable scans | Smart `--resume FILE` with pre-scan gap analysis audit + `--save-state FILE` (`src/resume.rs`) |
 | Signal handling | Graceful Ctrl-C: workers stop, partial results printed, state saved |
@@ -731,7 +731,49 @@ rayscan merge --jsonl shard-0.jsonl shard-1.jsonl -o merged.jsonl
 
 `--shard-index` and `--shard-count` must be supplied together; the count ranges
 from 1 to 1024. Resume/progress state is per shard, so each parallel invocation
-must use its own `--save-state` file.
+must use its own `--save-state` file. A shard that owns no targets (when there
+are fewer resolved targets than shards) emits a valid empty JSON report, so
+merging does not fail.
+
+### Distributed Orchestration (`distributed plan|serve|worker|agent`)
+
+Three orchestration shapes share the same deterministic shards and merge path:
+
+```bash
+# 1. Local plan: print (or write) a script that runs every shard and merges.
+rayscan distributed plan --shards 16 --shell bash --output run.sh -- \
+  scan -t 10.0.0.0/16 -p 22,80,443 --no-db-update
+
+# 2. Pull mode: coordinator plus any number of polling workers.
+export RAYSCAN_DISTRIBUTED_TOKEN="$(openssl rand -hex 24)"
+rayscan distributed serve --listen 0.0.0.0:9090 --shards 16 \
+  --out merged.json -- scan -t 10.0.0.0/16 -p 22,80,443
+# On each worker host (same binary and target-file paths):
+rayscan distributed worker --coordinator http://10.0.0.5:9090 --max-jobs 0
+
+# 3. Push mode: coordinator dispatches to inbound agents.
+rayscan distributed agent --listen 0.0.0.0:9091 --concurrency 2
+rayscan distributed serve --listen 0.0.0.0:9090 --shards 16 \
+  --agents http://10.0.0.11:9091,http://10.0.0.12:9091 \
+  --out merged.json -- scan -t 10.0.0.0/16 -p 22,80,443
+```
+
+The coordinator forces `--format json`, owns `--output`/`--shard-*`, and
+rejects job-local side effects (`--resume`, `--save-state`, `--diff`,
+`--stream`, alert flags). Workers heartbeat while scanning; expired leases are
+requeued up to `--max-attempts` (default 3), and finished shards merge with the
+same open-wins/advisory-union rules as `rayscan merge`. The coordinator writes
+`--out` and exits nonzero if any shard ultimately failed. Empty shards are
+reported as empty merges rather than errors.
+
+Authentication is a shared bearer token (`--token` or
+`RAYSCAN_DISTRIBUTED_TOKEN`, minimum 16 characters). The control plane is
+HTTP/JSON and **does not terminate TLS**: bind to loopback or a trusted network,
+or put a TLS reverse proxy in front of it. Raw jobs (`--syn`, `--os`, `--ndp`)
+are claimed only by workers that report raw capability (Linux with
+`CAP_NET_RAW`/root); with no capable worker those jobs remain queued. Workers
+and agents execute the current binary, so install the same build on every node
+and keep `--target-file` paths available locally.
 
 ### Ping Sweep, ARP, and IPv6 Discovery (ARP & ICMP & NDP)
 
@@ -1419,6 +1461,10 @@ src/script.rs               script plugin runner (sidecar + sandboxed WASM, JSON
 src/discovery.rs            ICMP/TCP ping sweep
 src/shard.rs                stable FNV-1a target sharding
 src/merge.rs                JSON/JSONL shard report merger
+src/distributed/mod.rs      distributed protocol, shard planning, job execution
+src/distributed/coordinator.rs  token-authenticated coordinator (pull/push)
+src/distributed/worker.rs   polling worker client
+src/distributed/agent.rs    inbound push agent
 src/verify.rs               connect verification and reclassification of SYN opens
 src/anomaly.rs              anomaly detection for hosts with large SYN-open counts
 src/classify.rs             error taxonomy

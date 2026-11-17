@@ -4,6 +4,24 @@ All notable changes to rayscan are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Distributed orchestration**: `rayscan distributed plan` emits a Bash or
+  PowerShell script that runs every deterministic shard and merges the reports;
+  `distributed serve` runs a token-authenticated HTTP/JSON coordinator in pull
+  mode for polling `distributed worker` clients or in push mode for
+  `distributed agent` endpoints. Jobs carry forced JSON output, stable
+  `--shard-index`/`--shard-count`, per-job timeouts, heartbeats, lease-based
+  requeueing, and bounded attempts. The coordinator merges finished shards with
+  the normal open-wins/advisory-union rules, writes `--out`, and exits nonzero
+  on failed shards. Shared bearer tokens come from `--token` or
+  `RAYSCAN_DISTRIBUTED_TOKEN` (minimum 16 characters); the cleartext HTTP
+  control plane warns on non-loopback binds. Raw jobs are reserved for workers
+  with raw-scan capability.
+- **Empty shard reports**: sharded scans whose target hash selects no targets
+  now emit a valid empty JSON report instead of failing, so distributed plans
+  and coordinators can merge them normally.
+
 ## [0.6.0] - 2026-11-17
 
 ### Added

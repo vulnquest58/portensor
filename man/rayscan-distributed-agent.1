@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH rayscan-distributed-agent 1  "agent " 
+.SH NAME
+rayscan\-distributed\-agent \- Listen for jobs pushed by a coordinator (inbound mode)
+.SH SYNOPSIS
+\fBagent\fR [\fB\-\-listen\fR] [\fB\-\-token\fR] [\fB\-\-concurrency\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Listen for jobs pushed by a coordinator (inbound mode)
+.SH OPTIONS
+.TP
+\fB\-\-listen\fR \fI<ADDR>\fR [default: 127.0.0.1:9091]
+Agent listen address
+.TP
+\fB\-\-token\fR \fI<TOKEN>\fR
+Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters
+.TP
+\fB\-\-concurrency\fR \fI<N>\fR [default: 1]
+Maximum scans executed concurrently on this agent
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help

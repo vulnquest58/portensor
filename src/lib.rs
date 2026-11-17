@@ -8,6 +8,7 @@ pub mod db;
 pub mod defense;
 pub mod diff;
 pub mod discovery;
+pub mod distributed;
 pub mod doctor;
 pub mod error;
 pub mod fingerprint;
@@ -64,6 +65,7 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         }
         Command::Diff(args) => diff::run_cli(args, theme),
         Command::Merge(args) => merge::run_cli(args),
+        Command::Distributed(args) => distributed::run_cli(args).await,
         Command::Doctor(args) => doctor::run(args, theme),
         Command::Db(args) => db::run_cli(args, db_dir.as_deref(), theme),
         Command::Probes(args) => match args.action {
@@ -196,6 +198,43 @@ pub(crate) async fn run_scan(
                 targets.len()
             );
         }
+    }
+    // An empty shard is a valid distributed work unit: emit an empty report so
+    // the coordinator can merge it instead of treating the shard as failed.
+    if resolved.shard.is_some() && targets.is_empty() {
+        let report = crate::model::ScanReport {
+            targets: 0,
+            ports: all_ports.len(),
+            jobs: 0,
+            workers: resolved.workers,
+            elapsed: std::time::Duration::ZERO,
+            counts: crate::model::StateCounts::default(),
+            results: Vec::new(),
+            os_fingerprints: HashMap::new(),
+            probed_ports: all_ports.clone(),
+            host_progress: HashMap::new(),
+            partial: false,
+            defense_observations: Vec::new(),
+        };
+        output::emit(
+            &report,
+            &args.target_label(),
+            output::EmitOptions {
+                format: resolved.format,
+                show: resolved.show,
+                destination: args.output.as_deref(),
+                quiet: args.quiet,
+                theme: resolved.theme,
+                streamed: false,
+                min_confidence: resolved.min_confidence,
+                explain: resolved.explain,
+                defense: resolved.defense,
+                advisories: resolved.advisories,
+                stream: resolved.stream,
+                diff: None,
+            },
+        )?;
+        return Ok(());
     }
     if resolved.ping_sweep && !targets.is_empty() {
         let before = targets.len();

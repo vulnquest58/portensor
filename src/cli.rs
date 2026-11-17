@@ -2,7 +2,7 @@ use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::{ArgGroup, Args, Parser, Subcommand};
+use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 
 use crate::config::{self, Profile, StateFilter};
 use crate::error::AppError;
@@ -57,6 +57,8 @@ pub enum Command {
     Diff(DiffArgs),
     /// Merge reports from distributed/sharded scans into one report.
     Merge(MergeArgs),
+    /// Plan, coordinate, or execute distributed scans across multiple hosts.
+    Distributed(DistributedArgs),
     /// Check permissions, terminal support, and scan capabilities.
     Doctor(DoctorArgs),
     /// Manage the local NVD CVE advisory database.
@@ -262,6 +264,139 @@ pub struct MergeArgs {
     /// Emit one JSON result per line instead of a single report object.
     #[arg(long)]
     pub jsonl: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DistributedArgs {
+    #[command(subcommand)]
+    pub action: DistributedAction,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DistributedAction {
+    /// Print a shell script that runs every shard locally and merges the reports.
+    Plan(DistributedPlanArgs),
+    /// Serve a coordinator that assigns shard jobs to polling workers or push agents.
+    Serve(DistributedServeArgs),
+    /// Poll a coordinator, execute assigned shard scans, and submit the reports.
+    Worker(DistributedWorkerArgs),
+    /// Listen for jobs pushed by a coordinator (inbound mode).
+    Agent(DistributedAgentArgs),
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum DistributedShell {
+    Bash,
+    Powershell,
+}
+
+#[derive(Debug, Args)]
+pub struct DistributedPlanArgs {
+    /// Number of deterministic target shards.
+    #[arg(long, default_value_t = 8, value_name = "N")]
+    pub shards: usize,
+
+    /// Shell syntax for the generated script.
+    #[arg(long, value_enum, default_value_t = DistributedShell::Bash)]
+    pub shell: DistributedShell,
+
+    /// Write the script to FILE instead of stdout.
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+
+    /// Scan command and arguments, prefixed with `scan`.
+    #[arg(
+        last = true,
+        required = true,
+        num_args = 1..,
+        allow_hyphen_values = true,
+        value_name = "SCAN_ARGS"
+    )]
+    pub scan_args: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct DistributedServeArgs {
+    /// Coordinator listen address. Non-loopback binds carry the token in
+    /// cleartext HTTP, so terminate TLS in front of it for untrusted networks.
+    #[arg(long, default_value = "127.0.0.1:9090", value_name = "ADDR")]
+    pub listen: String,
+
+    /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
+    #[arg(long, value_name = "TOKEN")]
+    pub token: Option<String>,
+
+    /// Number of deterministic target shards/jobs.
+    #[arg(long, default_value_t = 8, value_name = "N")]
+    pub shards: usize,
+
+    /// Write the merged report to FILE.
+    #[arg(long, default_value = "rayscan-distributed.json", value_name = "FILE")]
+    pub out: PathBuf,
+
+    /// Seconds a worker may hold a job without a heartbeat before it is requeued.
+    #[arg(long, default_value_t = 300, value_name = "SECS")]
+    pub lease_secs: u64,
+
+    /// Attempts per shard before it is marked failed.
+    #[arg(long, default_value_t = 3, value_name = "N")]
+    pub max_attempts: u32,
+
+    /// Per-job execution timeout in seconds.
+    #[arg(long, default_value_t = 3600, value_name = "SECS")]
+    pub job_timeout_secs: u64,
+
+    /// Agent base URLs for push mode. Omit for polling-worker mode.
+    #[arg(long, value_delimiter = ',', value_name = "URL,URL")]
+    pub agents: Vec<String>,
+
+    /// Scan command and arguments, prefixed with `scan`.
+    #[arg(
+        last = true,
+        required = true,
+        num_args = 1..,
+        allow_hyphen_values = true,
+        value_name = "SCAN_ARGS"
+    )]
+    pub scan_args: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct DistributedWorkerArgs {
+    /// Coordinator base URL, for example http://10.0.0.5:9090.
+    #[arg(long, value_name = "URL")]
+    pub coordinator: String,
+
+    /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
+    #[arg(long, value_name = "TOKEN")]
+    pub token: Option<String>,
+
+    /// Worker display name (defaults to the hostname).
+    #[arg(long, value_name = "NAME")]
+    pub name: Option<String>,
+
+    /// Claim and run a single job, then exit.
+    #[arg(long)]
+    pub once: bool,
+
+    /// Stop after N jobs (0 means unlimited).
+    #[arg(long, default_value_t = 0, value_name = "N")]
+    pub max_jobs: u64,
+}
+
+#[derive(Debug, Args)]
+pub struct DistributedAgentArgs {
+    /// Agent listen address.
+    #[arg(long, default_value = "127.0.0.1:9091", value_name = "ADDR")]
+    pub listen: String,
+
+    /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
+    #[arg(long, value_name = "TOKEN")]
+    pub token: Option<String>,
+
+    /// Maximum scans executed concurrently on this agent.
+    #[arg(long, default_value_t = 1, value_name = "N")]
+    pub concurrency: usize,
 }
 
 #[derive(Debug, Args)]
