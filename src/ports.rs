@@ -133,8 +133,9 @@ pub fn top_ports(count: usize) -> Result<Vec<u16>, AppError> {
 /// individual ports.  `dc|ad` focuses on Active Directory / Domain
 /// Controller services, `win|ws` on Windows workstation/server,
 /// `web|http` on HTTP(S) admin surfaces, `linux|lx` on common Linux
-/// daemons, `full|all` on the complete TCP range, and `q|top` on
-/// the top 1000 ports from the nmap frequency table.
+/// daemons, `ot|ics|scada` on industrial control systems, `full|all` on
+/// the complete TCP range, and `q|top` on the top 1000 ports from the
+/// nmap frequency table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum PortPreset {
     /// Active Directory / Domain Controller core services.
@@ -149,6 +150,9 @@ pub enum PortPreset {
     /// Common Linux daemons (SSH, SMTP, DNS, NFS, DBs, etc.).
     #[value(name = "linux", alias = "lx")]
     LinuxLx,
+    /// Industrial control and SCADA control-plane services.
+    #[value(name = "ot", alias = "ics", alias = "scada")]
+    OtIcs,
     /// Full TCP range 1-65535.
     #[value(name = "full", alias = "all")]
     FullAll,
@@ -165,6 +169,7 @@ impl PortPreset {
             Self::WinWs => "win",
             Self::WebHttp => "web",
             Self::LinuxLx => "linux",
+            Self::OtIcs => "ot",
             Self::FullAll => "full",
             Self::QTop => "q",
         }
@@ -185,6 +190,10 @@ impl PortPreset {
             Self::LinuxLx => vec![
                 21, 22, 25, 53, 111, 139, 445, 631, 2049, 3306, 5432, 5900, 6379, 9200, 27017,
             ],
+            Self::OtIcs => vec![
+                80, 102, 161, 443, 502, 789, 1911, 1962, 2222, 2404, 4840, 4911, 5006, 5007, 5094,
+                8080, 9600, 18245, 20000, 20547, 44818, 47808,
+            ],
             Self::FullAll => crate::ports::parse_ports("1-65535").unwrap_or_default(),
             Self::QTop => top_ports(1000).unwrap_or_default(),
         }
@@ -199,6 +208,7 @@ impl PortPreset {
             Self::WinWs => "preset:win".to_string(),
             Self::WebHttp => "preset:web".to_string(),
             Self::LinuxLx => "preset:linux".to_string(),
+            Self::OtIcs => "preset:ot".to_string(),
             Self::FullAll => "1-65535".to_string(),
             Self::QTop => "top-1000".to_string(),
         }
@@ -389,12 +399,17 @@ mod tests {
         assert!(linux.contains(&22));
         assert!(linux.contains(&3306));
         assert!(linux.contains(&27017));
+        let ot = PortPreset::OtIcs.ports();
+        for port in [102, 502, 2404, 4840, 20000, 44818, 47808] {
+            assert!(ot.contains(&port), "OT preset is missing {port}");
+        }
         assert_eq!(PortPreset::FullAll.ports().len(), 65_535);
         assert_eq!(PortPreset::QTop.ports().len(), 1000);
     }
 
     #[test]
     fn preset_spec_is_parseable() {
+        assert_eq!(PortPreset::OtIcs.spec(), "preset:ot");
         assert_eq!(PortPreset::FullAll.spec(), "1-65535");
         assert_eq!(PortPreset::QTop.spec(), "top-1000");
         assert!(PortPreset::DcAd.spec().starts_with("preset:"));

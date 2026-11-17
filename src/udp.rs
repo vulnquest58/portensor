@@ -86,9 +86,14 @@ const MDNS_QUERY_PTR: &[u8] = &[
     0x00, 0x01, // QCLASS=IN
 ];
 
+/// BACnet/IP global Who-Is broadcast (port 47808).
+const BACNET_WHO_IS: &[u8] = &[
+    0x81, 0x0B, 0x00, 0x0C, 0x01, 0x20, 0xFF, 0xFF, 0x00, 0xFF, 0x10, 0x08,
+];
+
 /// UDP ports probed by `--udp` even when the TCP port is not open.
 pub const COMMON_UDP_PORTS: &[u16] = &[
-    53, 67, 68, 69, 111, 123, 137, 138, 161, 162, 500, 514, 520, 631, 1900, 4500, 5060, 5353,
+    53, 67, 68, 69, 111, 123, 137, 138, 161, 162, 500, 514, 520, 631, 1900, 4500, 47808, 5060, 5353,
 ];
 
 /// A service identified from a UDP response.
@@ -245,6 +250,19 @@ pub fn inspect_udp_port(port: u16, data: &[u8]) -> UdpDetection {
         };
     }
 
+    // BACnet/IP I-Am response: BVLL header plus an Unconfirmed-Request /
+    // I-Am APDU carrying a device object identifier and vendor ID.
+    if port == 47808
+        && let Some((instance, vendor)) = extract_bacnet_iam(data)
+    {
+        return UdpDetection {
+            service: Some(
+                UdpServiceInfo::new("bacnet").with_product(Some("BACnet Device".to_string())),
+            ),
+            banner: Some(format!("BACnet device {instance} (vendor {vendor})")),
+        };
+    }
+
     // Generic: preserve printable text banner (first line only, max 128 chars)
     let text = std::str::from_utf8(data).unwrap_or("");
     let first_line = text
@@ -263,6 +281,35 @@ pub fn inspect_udp_port(port: u16, data: &[u8]) -> UdpDetection {
     } else {
         UdpDetection::default()
     }
+}
+
+/// Parse a BACnet/IP I-Am APDU from a BVLL frame.
+///
+/// Returns `(device_instance, vendor_id)`. The APDU may follow optional NPDU
+/// destination/source specifiers, so the parser scans for the
+/// Unconfirmed-Request / I-Am service bytes and validates the object type.
+fn extract_bacnet_iam(data: &[u8]) -> Option<(u32, u16)> {
+    if data.len() < 12 || data[0] != 0x81 || !(0x0A..=0x0D).contains(&data[1]) {
+        return None;
+    }
+
+    let mut offset = 4;
+    while let Some(pos) = data[offset..].windows(2).position(|w| w == [0x10, 0x00]) {
+        let apdu = offset + pos;
+        if let Some(object) = data.get(apdu + 2..apdu + 6) {
+            let object_id = u32::from_be_bytes(object.try_into().ok()?);
+            if object_id >> 22 == 8
+                && let Some(vendor) = data.get(apdu + 10..apdu + 12)
+            {
+                return Some((
+                    object_id & 0x003F_FFFF,
+                    u16::from_be_bytes(vendor.try_into().ok()?),
+                ));
+            }
+        }
+        offset = apdu + 2;
+    }
+    None
 }
 
 fn contains_slice(data: &[u8], needle: &[u8]) -> bool {
@@ -357,7 +404,8 @@ fn extract_dns_server_field(data: &[u8]) -> Option<(String, Option<String>)> {
 
 /// Send a UDP probe to the given host:port and read the response.
 ///
-/// Sends a targeted probe based on port (137 = NetBIOS, 5060 = SIP, others = DNS).
+/// Sends a targeted probe based on port (137 = NetBIOS, 5060 = SIP,
+/// 47808 = BACnet/IP, others = DNS).
 /// Waits up to `probe_timeout` for a response.
 pub async fn probe_udp(
     host: IpAddr,
@@ -384,8 +432,9 @@ pub async fn probe_udp(
         137 => NETBIOS_QUERY,
         161 => SNMP_GET_SYSDESCR,
         1900 => SSDP_MSEARCH,
-        5353 => MDNS_QUERY_PTR,
         5060 => SIP_OPTIONS_PROBE,
+        5353 => MDNS_QUERY_PTR,
+        47808 => BACNET_WHO_IS,
         _ => DNS_QUERY,
     };
 
@@ -532,6 +581,41 @@ mod tests {
             detection.banner.as_deref(),
             Some("NetBIOS name: METASPLOITABLE")
         );
+    }
+
+    #[test]
+    fn inspect_bacnet_iam_response() {
+        // BVLL Original-Unicast, NPDU version 1, Unconfirmed-Request I-Am,
+        // device instance 5, max APDU 1476, no segmentation, vendor 1.
+        let data = [
+            0x81, 0x0A, 0x00, 0x12, 0x01, 0x00, 0x10, 0x00, 0x02, 0x00, 0x00, 0x05, 0x00, 0x05,
+            0xC4, 0x00, 0x00, 0x01,
+        ];
+        let detection = inspect_udp_port(47808, &data);
+        assert_eq!(
+            detection.service.as_ref().map(|s| s.name.as_str()),
+            Some("bacnet")
+        );
+        assert_eq!(
+            detection
+                .service
+                .as_ref()
+                .and_then(|s| s.product.as_deref()),
+            Some("BACnet Device")
+        );
+        assert_eq!(
+            detection.banner.as_deref(),
+            Some("BACnet device 5 (vendor 1)")
+        );
+    }
+
+    #[test]
+    fn bacnet_ignores_non_device_i_am_objects() {
+        let data = [
+            0x81, 0x0A, 0x00, 0x12, 0x01, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x05,
+            0xC4, 0x00, 0x00, 0x01,
+        ];
+        assert!(inspect_udp_port(47808, &data).service.is_none());
     }
 
     #[test]

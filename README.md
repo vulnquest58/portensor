@@ -85,12 +85,12 @@ UDP probes and cannot perform raw IPv6 scans.
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
 | Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`) |
-| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 45 embedded probes (12 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
+| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 46 embedded probes (12 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
 | Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
-| UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353) via `--udp` flag, including IPv6 (`src/udp.rs`) |
+| UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353), and BACnet/IP Who-Is (47808) via `--udp` flag, including IPv6 (`src/udp.rs`) |
 | OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8) and reports consensus family, port agreement, sample count, and hop count; Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
-| Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
+| Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `ot|ics|scada`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
 | Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
 | Per-host concurrency | Optional cap on simultaneous connect attempts per target host (`--host-concurrency N`, 0 = unlimited); also applied to SYN-open verification |
@@ -865,7 +865,7 @@ grace read, and never retried beyond the scan timeout:
 Deep coverage for services that never speak first comes from the built-in
 probe library below: PostgreSQL startup, Elasticsearch/OpenSearch root,
 Cassandra OPTIONS, Docker Engine and registry, Kubernetes API server and
-kubelet, etcd, Consul, Vault, Modbus, S7, DNP3, EtherNet/IP, VNC, WinRM,
+kubelet, etcd, Consul, Vault, Modbus, S7, DNP3, EtherNet/IP, OPC UA, VNC, WinRM,
 Jenkins, Grafana, Prometheus, Kibana, RabbitMQ management, Portainer, and
 SonarQube. TLS-fronted endpoints are covered by TLS-aware probes for the
 Kubernetes API server and kubelet, Docker API, etcd, Elasticsearch/OpenSearch,
@@ -915,13 +915,13 @@ extra corroborating step, capped at `0.99`). Probes may also populate
 ### Probe Engine: Built-ins and Declarative Packs (`--plugins`)
 
 Service identification is driven by a declarative probe engine. Six packs
-(45 probes, 12 TLS-aware) are compiled into the binary and always available:
+(46 probes, 12 TLS-aware) are compiled into the binary and always available:
 
 | Pack | Coverage |
 | :--- | :--- |
 | `databases` | PostgreSQL startup, Redis `INFO`, Cassandra `OPTIONS`, Elasticsearch/OpenSearch root (HTTP and HTTPS), memcached stats, CouchDB root, MySQL/MariaDB greeting (passive), MongoDB `isMaster` OP_QUERY (TCP and TLS) |
 | `containers` | Docker Engine `/version`/`_ping` (HTTP and TLS), Docker registry v2, Kubernetes API server and kubelet (HTTP and TLS), etcd (HTTP and TLS), Consul agent, Vault health (HTTP and TLS) |
-| `industrial` | Modbus device identification, S7 COTP, DNP3 link status, EtherNet/IP ListServices |
+| `industrial` | Modbus device identification, S7 COTP, DNP3 link status, EtherNet/IP ListServices, OPC UA HEL/ACK |
 | `remote` | VNC handshake + version, WinRM WSMan (HTTP and HTTPS) |
 | `appliances` | Jenkins, Grafana, Prometheus, Kibana, RabbitMQ management, Portainer (HTTP and HTTPS), SonarQube |
 | `messaging` | MQTT CONNECT/CONNACK (TCP and TLS), Kafka ApiVersions (TCP and TLS) |

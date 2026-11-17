@@ -1713,6 +1713,7 @@ expect = "HELLO"
             "s7",
             "dnp3",
             "ethernet-ip",
+            "opcua",
             "vnc",
             "mqtt",
             "kafka",

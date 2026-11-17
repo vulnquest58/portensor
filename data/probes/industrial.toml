@@ -58,3 +58,16 @@ timeout_ms = 1500
 
 [probe.info]
 service_name = '(Communications)'
+
+[[probe]]
+name = "opcua-hello"
+service = "opcua"
+ports = [4840]
+product = "OPC UA Server"
+confidence = 0.90
+
+[[probe.step]]
+name = "hello-ack"
+send_hex = "48 45 4C 46 20 00 00 00 00 00 00 00 00 00 01 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00"
+expect_hex = "41 43 4B 46"
+timeout_ms = 1500

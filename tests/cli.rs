@@ -517,6 +517,36 @@ fn omitted_ports_defaults_to_well_known_range() {
 }
 
 #[test]
+fn ot_preset_alias_expands_to_the_control_plane_port_set() {
+    let output = rayscan()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--preset",
+            "ics",
+            "--rate",
+            "10000",
+            "--workers",
+            "50",
+            "--timeout",
+            "0.1",
+            "--json",
+            "--quiet",
+        ])
+        .output()
+        .expect("run rayscan scan");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("valid JSON output");
+    assert_eq!(payload["ports"], 22);
+}
+
+#[test]
 fn stealth_flag_runs_scan() {
     let server = banner_server();
     let port = server.port();

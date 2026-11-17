@@ -434,7 +434,7 @@ pub struct ScanArgs {
     #[arg(long, value_name = "N", conflicts_with = "ports")]
     pub top_ports: Option<usize>,
 
-    /// Port preset bundle (e.g. dc, win, web, linux, full, q).
+    /// Port preset bundle (e.g. dc, win, web, linux, ot, full, q).
     #[arg(long, value_enum, conflicts_with_all = ["ports", "top_ports"], value_name = "PRESET")]
     pub preset: Option<PortPreset>,
 

@@ -25,7 +25,7 @@ Ports to scan, for example 80,443,8000\-8100. Defaults to 1\-1024 if omitted
 Scan the top N most common ports (e.g. 10, 100, 1000)
 .TP
 \fB\-\-preset\fR \fI<PRESET>\fR
-Port preset bundle (e.g. dc, win, web, linux, full, q)
+Port preset bundle (e.g. dc, win, web, linux, ot, full, q)
 .br
 
 .br
@@ -39,6 +39,8 @@ win: Windows workstation/server typical services
 web: HTTP(S) admin and alternate web ports
 .IP \(bu 2
 linux: Common Linux daemons (SSH, SMTP, DNS, NFS, DBs, etc.)
+.IP \(bu 2
+ot: Industrial control and SCADA control\-plane services
 .IP \(bu 2
 full: Full TCP range 1\-65535
 .IP \(bu 2
