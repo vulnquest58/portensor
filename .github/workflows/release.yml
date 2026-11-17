@@ -72,6 +72,9 @@ jobs:
     name: publish
     runs-on: ubuntu-latest
     needs: [linux, windows]
+    env:
+      HAS_GPG: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+      HAS_COSIGN: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -81,7 +84,7 @@ jobs:
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS
       - name: Sign checksums (GPG, optional)
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        if: env.HAS_GPG == 'true'
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -97,7 +100,7 @@ jobs:
               --output dist/SHA256SUMS.asc dist/SHA256SUMS
           fi
       - name: Sign checksums (cosign, optional)
-        if: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
+        if: env.HAS_COSIGN == 'true'
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
