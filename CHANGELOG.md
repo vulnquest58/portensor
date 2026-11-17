@@ -4,6 +4,8 @@ All notable changes to rayscan are documented here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-17
+
 ### Added
 
 - **Remote script marketplace**: `rayscan scripts search [QUERY] --registry
