@@ -14,8 +14,10 @@ use std::time::{Duration, Instant};
 use super::engine::{Pacer, SynScanOptions};
 use super::packet;
 use super::permute::BlackRock;
+use super::retry::{Retry, RetryQueue, next_source_port, retry_window};
 use crate::error::AppError;
 use crate::model::{HostProgress, PortResult, PortState, ScanReport, StateCounts};
+use crate::rtt::RttEstimator;
 use crate::scanner::{ProgressCallback, ProgressEvent};
 
 struct RawSocket(i32);
@@ -336,14 +338,19 @@ fn record_response(
     tx_times: &HashMap<(Ipv6Addr, u16), Instant>,
     responses: &mut HashMap<(Ipv6Addr, u16), (PortState, Duration)>,
     fallback: Instant,
+    rtt: &mut HashMap<Ipv6Addr, RttEstimator>,
+    answered: &mut HashMap<Ipv6Addr, u32>,
 ) {
     let key = (response.host, response.port);
-    if matches!(responses.get(&key), Some((PortState::Open, _))) {
-        return;
-    }
     let latency = response
         .timestamp
         .saturating_duration_since(tx_times.get(&key).copied().unwrap_or(fallback));
+    rtt.entry(response.host).or_default().observe(latency);
+    *answered.entry(response.host).or_default() += 1;
+
+    if matches!(responses.get(&key), Some((PortState::Open, _))) {
+        return;
+    }
     responses.insert(key, (response.state, latency));
 }
 
@@ -352,32 +359,25 @@ fn drain_responses(
     tx_times: &HashMap<(Ipv6Addr, u16), Instant>,
     responses: &mut HashMap<(Ipv6Addr, u16), (PortState, Duration)>,
     fallback: Instant,
+    rtt: &mut HashMap<Ipv6Addr, RttEstimator>,
+    answered: &mut HashMap<Ipv6Addr, u32>,
 ) {
     while let Ok(response) = receiver.try_recv() {
-        record_response(response, tx_times, responses, fallback);
+        record_response(response, tx_times, responses, fallback, rtt, answered);
     }
 }
 
-fn wait_for_responses(
-    receiver: &crossbeam_channel::Receiver<RxResponse>,
-    tx_times: &HashMap<(Ipv6Addr, u16), Instant>,
-    responses: &mut HashMap<(Ipv6Addr, u16), (PortState, Duration)>,
-    fallback: Instant,
-    total_probes: u64,
-    timeout: Duration,
+fn push_v6_probe(
+    batch: &mut BatchV6,
+    sources: &HashMap<Ipv6Addr, Ipv6Addr>,
+    cookie_key: super::cookie::CookieKey,
+    target: Ipv6Addr,
+    port: u16,
+    source_port: u16,
 ) {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if responses.len() >= total_probes as usize {
-            break;
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        match receiver.recv_timeout(remaining.min(Duration::from_millis(50))) {
-            Ok(response) => record_response(response, tx_times, responses, fallback),
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
-        }
-    }
+    let sequence = cookie_key.encode_v6(&target.octets(), port, source_port);
+    let source = sources[&target];
+    batch.push(target, source, source_port, port, sequence);
 }
 
 /// Execute a raw IPv6 SYN scan for the supplied targets.
@@ -475,17 +475,7 @@ pub(super) fn scan_v6(
         .map_err(|error| AppError::runtime(format!("failed to spawn IPv6 RX thread: {error}")))?;
 
     let blackrock = BlackRock::new(total_probes);
-    let mut pacer = Pacer::new(opts.rate_pps);
-    let mut tx_times: HashMap<(Ipv6Addr, u16), Instant> = HashMap::new();
-    let mut responses: HashMap<(Ipv6Addr, u16), (PortState, Duration)> = HashMap::new();
-
-    let sport_lo = opts.sport_range.0;
-    let sport_hi = opts.sport_range.1;
-    let range_len = (sport_hi - sport_lo + 1) as u64;
-    let ports_len = opts.ports.len() as u64;
-    let start_time = Instant::now();
-    let timeout_duration = Duration::from_millis(opts.timeout_ms);
-    let attempts = opts.retries.saturating_add(1);
+    let mut initial_pacer = Pacer::new(opts.rate_pps);
     let retry_rate = if opts.retry_rate_pps > 0 {
         opts.retry_rate_pps
     } else if opts.rate_pps > 0 {
@@ -493,69 +483,189 @@ pub(super) fn scan_v6(
     } else {
         0
     };
+    let mut retry_pacer = Pacer::new(retry_rate);
+    let mut tx_times: HashMap<(Ipv6Addr, u16), Instant> = HashMap::new();
+    let mut responses: HashMap<(Ipv6Addr, u16), (PortState, Duration)> = HashMap::new();
+    let mut rtt: HashMap<Ipv6Addr, RttEstimator> = HashMap::new();
+    let mut answered: HashMap<Ipv6Addr, u32> = HashMap::new();
+    let mut retries: RetryQueue<(Ipv6Addr, u16)> = RetryQueue::new();
+    let mut pending_initial: Vec<((Ipv6Addr, u16), u16, u32)> = Vec::new();
+    let mut pending_retry: Vec<((Ipv6Addr, u16), u16, u32)> = Vec::new();
+
+    let sport_lo = opts.sport_range.0;
+    let sport_hi = opts.sport_range.1;
+    let range_len = (sport_hi - sport_lo + 1) as u64;
+    let ports_len = opts.ports.len() as u64;
+    let start_time = Instant::now();
+    let timeout_duration = Duration::from_millis(opts.timeout_ms);
+    let mut initial_cursor = 0u64;
+    let mut initial_done = false;
+    let mut retries_allowed = true;
+    let mut last_initial_send: Option<Instant> = None;
 
     let batch_size = opts.batch_size.max(1);
-    let mut v6_batch = BatchV6::new(batch_size);
+    let mut initial_batch = BatchV6::new(batch_size);
+    let mut retry_batch = BatchV6::new(batch_size);
 
-    for attempt in 0..attempts {
-        if attempt > 0 {
-            pacer = Pacer::new(retry_rate);
-        }
-        let mut sent_any = false;
+    loop {
+        let now = Instant::now();
+        let mut retry_probes = 0u64;
 
-        for index in 0..total_probes {
-            let perm_index = blackrock.encrypt(index);
-            let target = targets[(perm_index / ports_len) as usize];
-            let port = opts.ports[(perm_index % ports_len) as usize];
-            if attempt > 0 && responses.contains_key(&(target, port)) {
+        while retry_batch.len() < batch_size {
+            let Some(entry) = retries.pop_due(now) else {
+                break;
+            };
+            if responses.contains_key(&entry.key)
+                || !retries_allowed
+                || entry.attempt >= opts.retries
+            {
                 continue;
             }
+            if !initial_done && answered.get(&entry.key.0).copied().unwrap_or(0) == 0 {
+                continue;
+            }
+            let attempt = entry.attempt + 1;
+            let src_port = next_source_port(entry.src_port, sport_lo, total_probes, range_len);
+            push_v6_probe(
+                &mut retry_batch,
+                &sources,
+                cookie_key,
+                entry.key.0,
+                entry.key.1,
+                src_port,
+            );
+            pending_retry.push((entry.key, src_port, attempt));
+            retry_probes += 1;
+        }
 
-            let sport_offset = perm_index.wrapping_add((attempt as u64).wrapping_mul(total_probes));
-            let source_port = sport_lo + (sport_offset % range_len) as u16;
-            let sequence = cookie_key.encode_v6(&target.octets(), port, source_port);
-            let source = sources[&target];
+        let mut initial_probes = 0u64;
+        while initial_batch.len() < batch_size && initial_cursor < total_probes {
+            let perm_index = blackrock.encrypt(initial_cursor);
+            let target = targets[(perm_index / ports_len) as usize];
+            let port = opts.ports[(perm_index % ports_len) as usize];
+            let source_port = sport_lo + (perm_index % range_len) as u16;
+            push_v6_probe(
+                &mut initial_batch,
+                &sources,
+                cookie_key,
+                target,
+                port,
+                source_port,
+            );
+            pending_initial.push(((target, port), source_port, 0));
+            initial_cursor += 1;
+            initial_probes += 1;
+        }
 
-            v6_batch.push(target, source, source_port, port, sequence);
-            sent_any = true;
-
-            if v6_batch.len() >= batch_size {
-                flush_v6_batch(tx_fd, &mut pacer, &mut v6_batch, &mut tx_times)
-                    .map_err(|error| AppError::runtime(format!("IPv6 TX send failed: {error}")))?;
-                drain_responses(&result_rx, &tx_times, &mut responses, start_time);
-                if attempt == 0
-                    && let Some(callback) = progress
-                {
-                    callback(ProgressEvent::default());
-                }
+        if !retry_batch.is_empty() {
+            flush_v6_batch(tx_fd, &mut retry_pacer, &mut retry_batch, &mut tx_times)
+                .map_err(|error| AppError::runtime(format!("IPv6 TX send failed: {error}")))?;
+            let sent_at = Instant::now();
+            drain_responses(
+                &result_rx,
+                &tx_times,
+                &mut responses,
+                start_time,
+                &mut rtt,
+                &mut answered,
+            );
+            for (key, src_port, attempt) in pending_retry.drain(..) {
+                let deadline = sent_at + retry_window(rtt.get(&key.0), timeout_duration);
+                retries.schedule(Retry {
+                    deadline,
+                    key,
+                    src_port,
+                    attempt,
+                });
             }
         }
 
-        flush_v6_batch(tx_fd, &mut pacer, &mut v6_batch, &mut tx_times)
-            .map_err(|error| AppError::runtime(format!("IPv6 TX send failed: {error}")))?;
+        if !initial_batch.is_empty() {
+            flush_v6_batch(tx_fd, &mut initial_pacer, &mut initial_batch, &mut tx_times)
+                .map_err(|error| AppError::runtime(format!("IPv6 TX send failed: {error}")))?;
+            let sent_at = Instant::now();
+            last_initial_send = Some(sent_at);
+            drain_responses(
+                &result_rx,
+                &tx_times,
+                &mut responses,
+                start_time,
+                &mut rtt,
+                &mut answered,
+            );
+            for (key, src_port, attempt) in pending_initial.drain(..) {
+                let deadline = sent_at + retry_window(rtt.get(&key.0), timeout_duration);
+                retries.schedule(Retry {
+                    deadline,
+                    key,
+                    src_port,
+                    attempt,
+                });
+            }
+            if initial_cursor >= total_probes {
+                initial_done = true;
+            }
+            if let Some(callback) = progress {
+                callback(ProgressEvent::default());
+            }
+        }
 
-        wait_for_responses(
-            &result_rx,
-            &tx_times,
-            &mut responses,
-            start_time,
-            total_probes,
-            timeout_duration,
-        );
+        if initial_done
+            && retries_allowed
+            && last_initial_send.is_some_and(|sent| sent.elapsed() >= timeout_duration)
+            && (responses.len() as u64).saturating_mul(100) < total_probes
+        {
+            retries_allowed = false;
+            retries.clear();
+        }
 
-        if !sent_any || responses.len() >= total_probes as usize {
+        if initial_cursor >= total_probes
+            && initial_batch.is_empty()
+            && retry_batch.is_empty()
+            && retries.is_empty()
+        {
             break;
         }
 
-        // Skip retransmits on a silent path (see the IPv4 shard worker).
-        if attempt == 0 && responses.len() * 100 < total_probes as usize {
-            break;
+        if retry_probes == 0 && initial_probes == 0 {
+            while retries
+                .peek()
+                .is_some_and(|entry| responses.contains_key(&entry.key))
+            {
+                retries.pop();
+            }
+            if let Some(deadline) = retries.next_deadline() {
+                let wait = deadline
+                    .saturating_duration_since(Instant::now())
+                    .min(Duration::from_millis(50));
+                if !wait.is_zero() {
+                    match result_rx.recv_timeout(wait) {
+                        Ok(response) => record_response(
+                            response,
+                            &tx_times,
+                            &mut responses,
+                            start_time,
+                            &mut rtt,
+                            &mut answered,
+                        ),
+                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+            }
         }
     }
 
     running.store(false, Ordering::Release);
     let _ = rx_handle.join();
-    drain_responses(&result_rx, &tx_times, &mut responses, start_time);
+    drain_responses(
+        &result_rx,
+        &tx_times,
+        &mut responses,
+        start_time,
+        &mut rtt,
+        &mut answered,
+    );
 
     let mut counts = StateCounts::default();
     let mut results = Vec::new();

@@ -1,7 +1,7 @@
 # SYN Loss-Resilience Gate
 
-**Date:** 2026-11-16
-**Status:** Verified; retransmission passes reclaim lossy opens.
+**Date:** 2026-11-17
+**Status:** Verified; per-probe RTT retransmission reclaims lossy opens.
 **Toolchain:** Rust 1.99.1, edition 2024. Evidence host: 12-core WSL VM,
 debug binary (`target/debug/rayscan`). Reproduce with
 `scripts/syn-loss-lab.sh`.
@@ -45,30 +45,29 @@ Linux, root, iproute2, python3.
 
 ## Evidence
 
-Single matrix pass (`make loss-lab`):
+Single matrix pass after the per-probe scheduler (`make loss-lab`):
 
 | loss | retries | open | elapsed |
 | ---: | ---: | ---: | ---: |
-| 0% | 0 | 20/20 | 150 ms |
-| 0% | 2 | 20/20 | 221 ms |
-| 5% | 0 | 18/20 | 1546 ms |
-| 5% | 2 | 20/20 | 3218 ms |
-| 20% | 0 | 12/20 | 2042 ms |
-| 20% | 2 | 20/20 | 4859 ms |
+| 0% | 0 | 20/20 | 152 ms |
+| 0% | 2 | 20/20 | 210 ms |
+| 5% | 0 | 17/20 | 1533 ms |
+| 5% | 2 | 20/20 | 2413 ms |
+| 20% | 0 | 12/20 | 2033 ms |
+| 20% | 2 | 20/20 | 4753 ms |
 
-Repeated runs (retries `2` = three full passes, the default):
+Repeated 20% loss runs with retries `2`:
 
-| case | runs | open (per run) | median |
+| binary | runs | open (per run) | median |
 | :--- | ---: | :--- | ---: |
-| 20% loss, retries 2 | 10 | 19, 20, 20, 19, 16, 20, 20, 18, 19, 20 | 19.5/20 |
-| 5% loss, retries 2 | 5 | 20, 20, 20, 20, 20 | 20/20 |
-| 5% loss, retries 0 | 5 | 19, 17, 20, 20, 17 | 19/20 |
+| pre-scheduler release | 8 | 19, 20, 20, 19, 20, 20, 20, 19 | 20/20 |
+| per-probe scheduler | 8 | 19, 19, 20, 19, 19, 20, 20, 20 | 19.5/20 |
 
-Retransmission is the difference: at 20% bidirectional loss a single-pass scan
-answers for roughly a third to two thirds of the live ports depending on the
-run, while the default two retries recover all but zero to four. The slowest
-cases are scans where verification has to wait out its full ceiling; recall,
-not wall-clock, is the point of the knob.
+The two medians differ by half a port across 20-port runs; both recover 19-20
+of 20. The new scheduler also matches the single-pass recall (12/20 at 20%
+loss) while interleaving retries earlier. The slowest cases are scans where
+verification has to wait out its full ceiling; recall, not wall-clock, is the
+point of the knob.
 
 Residual misses match the arithmetic: a raw probe is answered only when both
 its SYN and its SYN-ACK survive (0.8 x 0.8 = 64% per pass), so three passes
@@ -76,6 +75,16 @@ still miss `0.36^3 = 4.7%` of live ports, about one port in twenty. More
 `--retries` closes that further at the cost of another wait per pass.
 
 ## The bugs this gate found
+
+### Reusing a source port suppressed retries
+
+The first per-probe scheduler reused the original source port for every
+retransmission. One 20% run recovered only 14/20 ports, and a paired batch
+missed 13/160 probes versus 3/160 for the pre-scheduler binary. Reusing the
+4-tuple lets the target TCP stack coalesce a duplicate SYN into the existing
+SYN_RECV request and rely on its own delayed SYN-ACK retransmission, which can
+outlast the scan window. Advancing each retry to a fresh source port (and
+recomputing the cookie for it) restored recall to 19-20/20.
 
 ### Lossy retries demoted verified-open ports
 

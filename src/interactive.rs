@@ -130,6 +130,7 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         syn,
         no_aimd: false,
         rate_auto: false,
+        host_concurrency: None,
         aimd_min_rate: None,
         retry_rate: None,
         anomaly_threshold: None,

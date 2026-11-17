@@ -93,6 +93,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
 | Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
+| Per-host concurrency | Optional cap on simultaneous connect attempts per target host (`--host-concurrency N`, 0 = unlimited); also applied to SYN-open verification |
 | Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes (`rayscan distributed`) |
 | Evasion | Random delay jitter, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--decoys`, `--fragment-size`) |
 | Resumable scans | Smart `--resume FILE` with pre-scan gap analysis audit + `--save-state FILE` (`src/resume.rs`) |
@@ -1250,6 +1251,7 @@ timeout = 2.0
 probe_timeout_ms = 300
 rate = 1000
 workers = 0
+host_concurrency = 0
 retries = 2
 randomize = false
 connect_only = false

@@ -614,6 +614,7 @@ pub(crate) async fn run_scan(
         retain_reset_closed: resolved.service_detection,
         jitter: resolved.jitter,
         rate_auto: resolved.rate_auto,
+        host_concurrency: resolved.host_concurrency,
         shutdown: Arc::clone(&shutdown),
     };
 

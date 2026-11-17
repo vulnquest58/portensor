@@ -16,6 +16,8 @@ pub mod packet;
 #[cfg(target_os = "linux")]
 pub mod permute;
 #[cfg(target_os = "linux")]
+mod retry;
+#[cfg(target_os = "linux")]
 pub mod route;
 #[cfg(target_os = "linux")]
 pub(crate) mod v6;

@@ -9,6 +9,7 @@ use rand::Rng;
 use rand::seq::SliceRandom;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::classify::{Failure, FailureKind, classify_io_error, classify_kind};
@@ -95,6 +96,8 @@ pub struct ScanOptions {
     pub jitter: Duration,
     /// Enable adaptive rate control for connect scans.
     pub rate_auto: bool,
+    /// Maximum concurrent connect attempts per target host (0 = unlimited).
+    pub host_concurrency: usize,
     /// When set to `true` by an external signal handler, workers stop picking
     /// new jobs and the scan returns a partial report instead of an error.
     pub shutdown: Arc<AtomicBool>,
@@ -115,6 +118,7 @@ struct Shared {
     options: ScanOptions,
     limiter: RateLimiter,
     rtt: Vec<Mutex<RttEstimator>>,
+    host_gates: Vec<Semaphore>,
     jobs: u64,
 }
 
@@ -146,6 +150,13 @@ pub async fn scan(
     let rtt = (0..targets.len())
         .map(|_| Mutex::new(RttEstimator::new()))
         .collect();
+    let host_gates = if options.host_concurrency > 0 {
+        (0..targets.len())
+            .map(|_| Semaphore::new(options.host_concurrency))
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let shared = Arc::new(Shared {
         targets,
@@ -153,6 +164,7 @@ pub async fn scan(
         options: options.clone(),
         limiter: RateLimiter::new(options.rate),
         rtt,
+        host_gates,
         jobs,
     });
     let next = Arc::new(AtomicU64::new(0));
@@ -287,6 +299,17 @@ pub async fn verify_candidates(
     let candidates = Arc::new(candidates.to_vec());
     let options = Arc::new(options.clone());
     let limiter = Arc::new(RateLimiter::new(options.rate));
+    let gates: Arc<HashMap<IpAddr, Semaphore>> = Arc::new(if options.host_concurrency > 0 {
+        let mut gates = HashMap::new();
+        for (host, _) in candidates.iter() {
+            gates
+                .entry(*host)
+                .or_insert_with(|| Semaphore::new(options.host_concurrency));
+        }
+        gates
+    } else {
+        HashMap::new()
+    });
     let next = Arc::new(AtomicU64::new(0));
     let (sender, receiver) =
         async_channel::bounded::<PortResult>(workers.saturating_mul(2).max(64));
@@ -296,6 +319,7 @@ pub async fn verify_candidates(
         let candidates = Arc::clone(&candidates);
         let options = Arc::clone(&options);
         let limiter = Arc::clone(&limiter);
+        let gates = Arc::clone(&gates);
         let next = Arc::clone(&next);
         let sender = sender.clone();
         tasks.spawn(async move {
@@ -305,6 +329,14 @@ pub async fn verify_candidates(
                     break;
                 }
                 let (host, port) = candidates[index as usize];
+                let _permit = match gates.get(&host) {
+                    Some(gate) => Some(
+                        gate.acquire()
+                            .await
+                            .expect("host concurrency gate stays open"),
+                    ),
+                    None => None,
+                };
                 let result = verify_candidate(&options, &limiter, host, port).await;
                 if sender.send(result).await.is_err() {
                     break;
@@ -544,6 +576,14 @@ async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) ->
     loop {
         shared.limiter.acquire().await;
         apply_jitter(shared.options.jitter).await;
+        let _host_permit = match shared.host_gates.get(target_index) {
+            Some(gate) => Some(
+                gate.acquire()
+                    .await
+                    .expect("host concurrency gate stays open"),
+            ),
+            None => None,
+        };
         let timeout = current_timeout(shared, target_index);
         let attempt_started = Instant::now();
         let outcome = tokio::time::timeout(timeout, TcpStream::connect(address)).await;
@@ -901,6 +941,7 @@ mod tests {
             retain_reset_closed: false,
             jitter: Duration::ZERO,
             rate_auto: false,
+            host_concurrency: 0,
             shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -1167,6 +1208,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn host_concurrency_cap_scans_multiple_ports() {
+        let (open_port, server) = banner_server().await;
+        let closed_port = unused_port().await;
+        let mut options = options(false);
+        options.host_concurrency = 1;
+
+        let report = scan(&[host()], &[open_port, closed_port], &options, None)
+            .await
+            .unwrap();
+        server.abort();
+
+        assert_eq!(report.counts.open, 1);
+        assert_eq!(report.counts.closed, 1);
+    }
+
+    #[tokio::test]
     async fn detects_http_service_and_product() {
         let (port, server) = http_server().await;
         let report = scan(&[host()], &[port], &options(false), None)
@@ -1294,8 +1351,10 @@ mod tests {
         let (open_port, server) = banner_server().await;
         let (silent_port, silent) = silent_server().await;
         let candidates = [(host(), open_port), (host(), silent_port)];
+        let mut options = options(false);
+        options.host_concurrency = 1;
 
-        let results = verify_candidates(&candidates, &options(false), None)
+        let results = verify_candidates(&candidates, &options, None)
             .await
             .unwrap();
 

@@ -6,6 +6,21 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **RTT-driven SYN retransmission**: raw SYN probes now carry per-host
+  retransmission deadlines derived from the RFC 6298 estimator (`MIN_RTO` 200
+  ms, capped by `--connect-timeout-ms`). Retries are interleaved with the
+  initial sweep instead of waiting for a whole pass, use a separate
+  `--retry-rate` pacer, and advance to a fresh source port with a recomputed
+  cookie. Fresh ports are required: reusing the original 4-tuple lets the
+  target coalesce duplicate SYNs and rely on its delayed SYN-ACK retransmit.
+  Hosts that never answer are not retried during the initial sweep, and the
+  1% silent-path rule still ends unproductive retries. IPv4 and IPv6 share the
+  scheduler. Loss-lab recall is unchanged (19-20/20 at 20% bidirectional loss
+  with two retries); single-pass recall is 12/20.
+- **Per-host concurrency cap**: `--host-concurrency N` (config key
+  `host_concurrency`, default `0` = unlimited) bounds simultaneous connect
+  attempts per target host. The cap applies to the connect scanner and to
+  SYN-open verification, without changing global worker or rate limits.
 - **Distributed orchestration**: `rayscan distributed plan` emits a Bash or
   PowerShell script that runs every deterministic shard and merges the reports;
   `distributed serve` runs a token-authenticated HTTP/JSON coordinator in pull

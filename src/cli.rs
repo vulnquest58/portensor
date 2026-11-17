@@ -593,6 +593,10 @@ pub struct ScanArgs {
     #[arg(long)]
     pub rate_auto: bool,
 
+    /// Maximum concurrent connect attempts per target host (0 = unlimited).
+    #[arg(long, value_name = "N")]
+    pub host_concurrency: Option<usize>,
+
     /// AIMD minimum rate floor in packets per second (default: 100).
     #[arg(long, value_name = "N")]
     pub aimd_min_rate: Option<u64>,
@@ -753,6 +757,8 @@ pub struct ResolvedConfig {
     pub aimd_min_pps: u64,
     /// Enable adaptive rate control for connect scans.
     pub rate_auto: bool,
+    /// Maximum concurrent connect attempts per target host (0 = unlimited).
+    pub host_concurrency: usize,
     /// Per-host SYN-open count above which the host is treated as an anomaly.
     /// `0` disables anomaly detection.
     pub anomaly_threshold: u32,
@@ -873,6 +879,12 @@ impl ScanArgs {
         let rate = self.rate.or(file.rate).unwrap_or(defaults.rate);
         if rate > 1_000_000 {
             return Err(AppError::usage("--rate must be at most 1000000"));
+        }
+        let host_concurrency = self.host_concurrency.or(file.host_concurrency).unwrap_or(0);
+        if host_concurrency > MAX_WORKERS {
+            return Err(AppError::usage(format!(
+                "--host-concurrency must be at most {MAX_WORKERS}"
+            )));
         }
 
         let workers = self.workers.or(file.workers).unwrap_or(defaults.workers);
@@ -1031,6 +1043,7 @@ impl ScanArgs {
             aimd: !self.no_aimd,
             aimd_min_pps: self.aimd_min_rate.unwrap_or(100),
             rate_auto: self.rate_auto,
+            host_concurrency,
             anomaly_threshold: self.anomaly_threshold.unwrap_or(1000),
             top_ports_first,
             live_table: !self.no_live,
@@ -1207,6 +1220,7 @@ mod tests {
             syn: false,
             no_aimd: false,
             rate_auto: false,
+            host_concurrency: None,
             aimd_min_rate: None,
             retry_rate: None,
             anomaly_threshold: None,
@@ -1365,6 +1379,17 @@ mod tests {
         args.connect_timeout_ms = Some(0);
         assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
         args.connect_timeout_ms = Some(300_001);
+        assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
+    fn host_concurrency_is_optional_and_bounded() {
+        let mut args = args();
+        args.host_concurrency = Some(0);
+        assert_eq!(args.resolve().unwrap().host_concurrency, 0);
+        args.host_concurrency = Some(64);
+        assert_eq!(args.resolve().unwrap().host_concurrency, 64);
+        args.host_concurrency = Some(crate::limits::MAX_WORKERS + 1);
         assert_eq!(args.resolve().unwrap_err().exit_code(), 2);
     }
 

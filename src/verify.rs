@@ -174,6 +174,7 @@ mod tests {
             retain_reset_closed: false,
             jitter: Duration::ZERO,
             rate_auto: false,
+            host_concurrency: 0,
             shutdown: Arc::new(AtomicBool::new(false)),
         }
     }

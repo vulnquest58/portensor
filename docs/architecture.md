@@ -72,7 +72,8 @@ output. `--connect-only` bypasses that recheck and exposes raw SYN semantics.
 | `syn::route` | `/proc/net/route` LPM parser, ARP resolution, `iface_ip/mac/index` |
 | `syn::packet` | Raw Ethernet/IP/TCP frame builder; SYN-ACK / RST / ICMP parser |
 | `syn::filter` | Classic BPF bytecode generator and `attach_filter()` |
-| `syn::engine` | TX/RX thread orchestrator, retransmission passes, and result aggregation |
+| `syn::retry` | Per-probe RTT retransmission queue and fresh-source-port progression |
+| `syn::engine` | TX/RX thread orchestrator, per-probe retransmission scheduling, and result aggregation |
 | `syn::aimd` | AIMD rate controller for the TX loop — additive increase on success, multiplicative decrease on loss |
 | `verify` | Connect-plus-banner verification of SYN-open candidates and state/count merging |
 | `anomaly` | Flags hosts with anomalously large open-port counts for pre-verification scrutiny |
@@ -103,20 +104,24 @@ the hard limit allows it.
 For each job:
 
 1. Acquire a token from the global rate limiter, if a rate is configured.
-2. Read the per-host timeout from the RTT estimator.
-3. Run `TcpStream::connect` under that timeout.
-4. Classify a failure using the raw OS error first, then `ErrorKind`.
-5. On handshake success, wait briefly for a banner unless `--connect-only` is set.
-6. Emit `open`, `closed`, `filtered`, `silent`, `unreachable`, or `error`.
+2. Acquire the target host's connect permit when `--host-concurrency N` is set.
+3. Read the per-host timeout from the RTT estimator.
+4. Run `TcpStream::connect` under that timeout.
+5. Classify a failure using the raw OS error first, then `ErrorKind`.
+6. On handshake success, wait briefly for a banner unless `--connect-only` is set.
+7. Emit `open`, `closed`, `filtered`, `silent`, `unreachable`, or `error`.
 
-Banner waits and active probes (step 5) run on a dedicated verification pool
+Banner waits and active probes (step 6) run on a dedicated verification pool
 sized 4× the connect worker count, so bursts of silent or slow-banner ports
 cannot occupy connect-worker slots and throttle the connect pipeline.
 
-Remaining SYN-engine speed ideas (not yet implemented): wave-based
-retransmission that retransmits a probe as soon as its own RTT window
-expires instead of waiting a full timeout after each whole pass, and
-exploiting AIMD headroom above the configured rate on healthy paths.
+`--host-concurrency N` is an opt-in per-target semaphore shared by the connect
+scanner and SYN-open verification; `0` keeps the default unlimited behavior.
+It bounds how many simultaneous connections one host sees without changing the
+global worker or rate limits. Adaptive target politeness remains future work.
+
+Remaining SYN-engine speed idea (not yet implemented): exploiting AIMD headroom
+above the configured rate on healthy paths.
 
 Timeouts do not provide RTT samples (Karn's rule); they increase a bounded
 per-host backoff. Successful connects and RTT-bearing refusals update SRTT and
@@ -144,8 +149,14 @@ shard by destination address and port.
    cookie binds the full tuple.
 3. Build raw Ethernet/IPv4/TCP frames (source MAC from `iface_mac`, destination
    MAC from ARP, headers by hand) and send them in batches with `sendmmsg(2)`.
-4. After the timeout window, retransmit only probes that received no response,
-   up to the configured retry count, using fresh source ports.
+4. Give each probe its own retransmission deadline. When the deadline expires
+   and no response was recorded, resend it with a fresh source port and cookie,
+   up to `--retries`, while new probes keep flowing. Retries use the separate
+   `--retry-rate` pacer; AIMD applies only to the initial sweep.
+5. Retry entries stay queued through their final deadline even when no further
+   attempt is allowed, which bounds the end-of-scan wait. Hosts that have never
+   answered are not retried during the initial sweep, and a path that answered
+   under 1% of probes stops retrying after the initial timeout.
 
 **RX thread:**
 1. Receives frames on the `AF_PACKET` socket filtered by a classic BPF program
@@ -200,7 +211,7 @@ CLI argument > TOML value > selected profile default > built-in fallback
 The `fast`, `balanced`, and `careful` profiles adjust the timeout ceiling, banner
 wait, rate, worker count, and retry count. Input validation rejects
 non-positive timeouts, probe windows outside 10-60,000ms, rates above 1,000,000/s,
-and worker counts above 4,096.
+and worker or per-host concurrency counts above 4,096.
 
 ## Lab and benchmark
 

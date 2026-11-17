@@ -21,9 +21,11 @@ use super::cookie::CookieKey;
 use super::filter;
 use super::packet;
 use super::permute::BlackRock;
+use super::retry::{Retry, RetryQueue, next_source_port, retry_window};
 use super::route;
 use crate::error::AppError;
 use crate::model::{HostProgress, PortResult, PortState, ScanReport, StateCounts, StateSet};
+use crate::rtt::RttEstimator;
 use crate::scanner::{ProgressCallback, ProgressEvent};
 
 /// Configuration options for a raw SYN scan.
@@ -587,17 +589,19 @@ fn record_response(
     tx_times: &HashMap<(Ipv4Addr, u16), Instant>,
     responses: &mut HashMap<(Ipv4Addr, u16), (PortState, Duration)>,
     fallback: Instant,
+    rtt: &mut HashMap<Ipv4Addr, RttEstimator>,
+    answered: &mut HashMap<Ipv4Addr, u32>,
 ) {
-    let tx_time = tx_times
-        .get(&(response.host, response.port))
-        .copied()
-        .unwrap_or(fallback);
+    let key = (response.host, response.port);
+    let tx_time = tx_times.get(&key).copied().unwrap_or(fallback);
     let latency = response.timestamp.saturating_duration_since(tx_time);
+    rtt.entry(response.host).or_default().observe(latency);
+    *answered.entry(response.host).or_default() += 1;
 
-    if let Some(&(PortState::Open, _)) = responses.get(&(response.host, response.port)) {
+    if let Some(&(PortState::Open, _)) = responses.get(&key) {
         return;
     }
-    responses.insert((response.host, response.port), (response.state, latency));
+    responses.insert(key, (response.state, latency));
 }
 
 fn drain_responses(
@@ -605,32 +609,11 @@ fn drain_responses(
     tx_times: &HashMap<(Ipv4Addr, u16), Instant>,
     responses: &mut HashMap<(Ipv4Addr, u16), (PortState, Duration)>,
     fallback: Instant,
+    rtt: &mut HashMap<Ipv4Addr, RttEstimator>,
+    answered: &mut HashMap<Ipv4Addr, u32>,
 ) {
     while let Ok(response) = result_rx.try_recv() {
-        record_response(response, tx_times, responses, fallback);
-    }
-}
-
-fn wait_for_responses(
-    result_rx: &crossbeam_channel::Receiver<RxResponse>,
-    tx_times: &HashMap<(Ipv4Addr, u16), Instant>,
-    responses: &mut HashMap<(Ipv4Addr, u16), (PortState, Duration)>,
-    fallback: Instant,
-    total_probes: u64,
-    timeout: Duration,
-) {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if responses.len() >= total_probes as usize {
-            break;
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let wait_step = remaining.min(Duration::from_millis(50));
-        match result_rx.recv_timeout(wait_step) {
-            Ok(response) => record_response(response, tx_times, responses, fallback),
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
-        }
+        record_response(response, tx_times, responses, fallback, rtt, answered);
     }
 }
 
@@ -825,6 +808,66 @@ fn run_shard(job: ShardJob) -> Result<ScanReport, AppError> {
     scan_shard(&job, tx_fd)
 }
 
+/// Builds one logical SYN probe (fragments and decoys included) into `batch`.
+fn push_probe(
+    batch: &mut Batch,
+    opts: &SynScanOptions,
+    routes: &HashMap<Ipv4Addr, TargetRoute>,
+    cookie_key: CookieKey,
+    target_ip: Ipv4Addr,
+    target_port: u16,
+    src_port: u16,
+) {
+    let seq = cookie_key.encode(u32::from(target_ip), target_port, src_port);
+    let rt = routes
+        .get(&target_ip)
+        .expect("target route resolved by the coordinator");
+    let mut stack_frame = [0u8; 54];
+    packet::write_syn_frame(
+        &mut stack_frame,
+        &rt.src_mac,
+        &rt.dst_mac,
+        rt.src_ip,
+        u32::from(target_ip),
+        src_port,
+        target_port,
+        seq,
+    );
+
+    let real_frames = match opts.fragment_size {
+        Some(size) => packet::fragment_syn_frame(&stack_frame, size),
+        None => vec![stack_frame.to_vec()],
+    };
+    for frame in real_frames {
+        batch.push_frame(
+            &frame,
+            rt.if_idx,
+            &rt.dst_mac,
+            Some((target_ip, target_port)),
+        );
+    }
+
+    for (decoy_index, decoy) in opts.decoys.iter().enumerate() {
+        let decoy_port = decoy_source_port(decoy_index, opts.sport_range.0, opts.sport_range.1);
+        let decoy_frame = packet::build_syn_frame(
+            &rt.src_mac,
+            &rt.dst_mac,
+            u32::from(*decoy),
+            u32::from(target_ip),
+            decoy_port,
+            target_port,
+            seq.wrapping_add(decoy_index as u32 + 1),
+        );
+        let decoy_frames = match opts.fragment_size {
+            Some(size) => packet::fragment_syn_frame(&decoy_frame, size),
+            None => vec![decoy_frame.to_vec()],
+        };
+        for frame in decoy_frames {
+            batch.push_frame(&frame, rt.if_idx, &rt.dst_mac, None);
+        }
+    }
+}
+
 fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
     let targets = job.targets.as_slice();
     let opts = &job.opts;
@@ -839,12 +882,18 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
         .ok_or_else(|| AppError::usage("target/port combination count overflowed"))?;
 
     let blackrock = BlackRock::new(total_probes);
-    let mut pacer = Pacer::new(job.rate_pps);
+    let mut initial_pacer = Pacer::new(job.rate_pps);
+    let mut retry_pacer = Pacer::new(job.retry_rate_pps);
     let mut tx_times: HashMap<(Ipv4Addr, u16), Instant> = HashMap::new();
     let mut responses: HashMap<(Ipv4Addr, u16), (PortState, Duration)> = HashMap::new();
+    let mut rtt: HashMap<Ipv4Addr, RttEstimator> = HashMap::new();
+    let mut answered: HashMap<Ipv4Addr, u32> = HashMap::new();
     let batch_size = opts.batch_size.max(1);
-    let mut batch = Batch::new(batch_size);
-    let batch_flush_count = batch_size as u64;
+    let mut initial_batch = Batch::new(batch_size);
+    let mut retry_batch = Batch::new(batch_size);
+    let mut pending_initial: Vec<((Ipv4Addr, u16), u16, u32)> = Vec::new();
+    let mut pending_retry: Vec<((Ipv4Addr, u16), u16, u32)> = Vec::new();
+    let mut retries: RetryQueue<(Ipv4Addr, u16)> = RetryQueue::new();
 
     let sport_lo = opts.sport_range.0;
     let sport_hi = opts.sport_range.1;
@@ -852,7 +901,10 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
     let start_time = Instant::now();
 
     let timeout_duration = Duration::from_millis(opts.timeout_ms);
-    let attempts = opts.retries.saturating_add(1);
+    let mut initial_cursor = 0u64;
+    let mut initial_done = false;
+    let mut retries_allowed = true;
+    let mut last_initial_send: Option<Instant> = None;
 
     // AIMD controller for the initial pass
     let mut aimd = AimdController::new(AimdConfig {
@@ -863,144 +915,213 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
         ..AimdConfig::default()
     });
     let mut aimd_last_tick = Instant::now();
+    let mut aimd_sent = 0u64;
+    let mut aimd_received = 0u64;
+    let mut responses_seen = 0u64;
 
-    for attempt in 0..attempts {
-        let mut sent_any = false;
-        // Use lower rate on retransmission passes; AIMD only applies to pass 0
-        if attempt > 0 {
-            pacer = Pacer::new(job.retry_rate_pps);
+    loop {
+        let now = Instant::now();
+        let mut retry_probes = 0u64;
+
+        // Retries run before new probes so a probe whose RTT window expired
+        // is resent while the initial sweep is still in flight.
+        while retry_batch.len() < batch_size {
+            let Some(entry) = retries.pop_due(now) else {
+                break;
+            };
+            if responses.contains_key(&entry.key)
+                || !retries_allowed
+                || entry.attempt >= opts.retries
+            {
+                continue;
+            }
+            // A host that has never answered is probably filtered or paging;
+            // do not add retransmission load until it shows a live response.
+            if !initial_done && answered.get(&entry.key.0).copied().unwrap_or(0) == 0 {
+                continue;
+            }
+            let attempt = entry.attempt + 1;
+            let src_port = next_source_port(entry.src_port, sport_lo, total_probes, range_len);
+            push_probe(
+                &mut retry_batch,
+                opts,
+                &job.routes,
+                job.cookie_key,
+                entry.key.0,
+                entry.key.1,
+                src_port,
+            );
+            pending_retry.push((entry.key, src_port, attempt));
+            retry_probes += 1;
         }
-        let mut pass_sent: u64 = 0;
-        let mut pass_received: u64 = responses.len() as u64;
 
-        for i in 0..total_probes {
-            let perm_idx = blackrock.encrypt(i);
+        let mut initial_probes = 0u64;
+        while initial_batch.len() < batch_size && initial_cursor < total_probes {
+            let perm_idx = blackrock.encrypt(initial_cursor);
             let target_idx = (perm_idx / ports_len) as usize;
             let port_idx = (perm_idx % ports_len) as usize;
             let target_ip = targets[target_idx];
             let target_port = opts.ports[port_idx];
-
-            if attempt > 0 && responses.contains_key(&(target_ip, target_port)) {
-                continue;
-            }
-
-            let sport_offset = perm_idx.wrapping_add((attempt as u64).wrapping_mul(total_probes));
-            let src_port = sport_lo + (sport_offset % range_len) as u16;
-            let seq = job
-                .cookie_key
-                .encode(u32::from(target_ip), target_port, src_port);
-
-            let rt = job
-                .routes
-                .get(&target_ip)
-                .expect("target route resolved by the coordinator");
-            let mut stack_frame = [0u8; 54];
-            packet::write_syn_frame(
-                &mut stack_frame,
-                &rt.src_mac,
-                &rt.dst_mac,
-                rt.src_ip,
-                u32::from(target_ip),
-                src_port,
+            let src_port = sport_lo + (perm_idx % range_len) as u16;
+            push_probe(
+                &mut initial_batch,
+                opts,
+                &job.routes,
+                job.cookie_key,
+                target_ip,
                 target_port,
-                seq,
+                src_port,
             );
-
-            let real_frames = match opts.fragment_size {
-                Some(size) => packet::fragment_syn_frame(&stack_frame, size),
-                None => vec![stack_frame.to_vec()],
-            };
-            for frame in real_frames {
-                batch.push_frame(
-                    &frame,
-                    rt.if_idx,
-                    &rt.dst_mac,
-                    Some((target_ip, target_port)),
-                );
-            }
-
-            for (decoy_index, decoy) in opts.decoys.iter().enumerate() {
-                let decoy_port = decoy_source_port(decoy_index, sport_lo, sport_hi);
-                let decoy_frame = packet::build_syn_frame(
-                    &rt.src_mac,
-                    &rt.dst_mac,
-                    u32::from(*decoy),
-                    u32::from(target_ip),
-                    decoy_port,
-                    target_port,
-                    seq.wrapping_add(decoy_index as u32 + 1),
-                );
-                let decoy_frames = match opts.fragment_size {
-                    Some(size) => packet::fragment_syn_frame(&decoy_frame, size),
-                    None => vec![decoy_frame.to_vec()],
-                };
-                for frame in decoy_frames {
-                    batch.push_frame(&frame, rt.if_idx, &rt.dst_mac, None);
-                }
-            }
-            sent_any = true;
-
-            if batch.len() >= batch_size {
-                flush_batch(tx_fd, &mut pacer, &mut batch, &mut tx_times, opts.jitter_ms)
-                    .map_err(|e| AppError::runtime(format!("TX send failed: {e}")))?;
-                pass_sent += batch_flush_count;
-
-                let prev_responses = responses.len() as u64;
-                drain_responses(&job.result_rx, &tx_times, &mut responses, start_time);
-                let new_responses = responses.len() as u64 - prev_responses;
-                pass_received += new_responses;
-
-                // Update AIMD on the initial pass using a fixed 1 s window.
-                // Updating per flush with cumulative counts measures the ratio
-                // before the just-flushed batch's responses arrive, which reads
-                // low on every update and collapses the rate toward min_pps.
-                if attempt == 0
-                    && opts.aimd
-                    && job.rate_pps > 0
-                    && pass_sent >= 64
-                    && aimd_last_tick.elapsed() >= Duration::from_secs(1)
-                {
-                    let new_rate = aimd.update(pass_sent, pass_received);
-                    pacer = Pacer::new(new_rate);
-                    aimd_last_tick = Instant::now();
-                    pass_sent = 0;
-                    pass_received = 0;
-                }
-
-                if attempt == 0
-                    && let Some(cb) = &job.progress
-                {
-                    cb(ProgressEvent::default());
-                }
-            }
+            pending_initial.push(((target_ip, target_port), src_port, 0));
+            initial_cursor += 1;
+            initial_probes += 1;
         }
 
-        flush_batch(tx_fd, &mut pacer, &mut batch, &mut tx_times, opts.jitter_ms)
+        if !retry_batch.is_empty() {
+            flush_batch(
+                tx_fd,
+                &mut retry_pacer,
+                &mut retry_batch,
+                &mut tx_times,
+                opts.jitter_ms,
+            )
             .map_err(|e| AppError::runtime(format!("TX send failed: {e}")))?;
+            let sent_at = Instant::now();
+            drain_responses(
+                &job.result_rx,
+                &tx_times,
+                &mut responses,
+                start_time,
+                &mut rtt,
+                &mut answered,
+            );
+            let new_responses = responses.len() as u64 - responses_seen;
+            if !initial_done {
+                aimd_received = aimd_received.saturating_add(new_responses);
+            }
+            responses_seen = responses.len() as u64;
+            for (key, src_port, attempt) in pending_retry.drain(..) {
+                let deadline = sent_at + retry_window(rtt.get(&key.0), timeout_duration);
+                retries.schedule(Retry {
+                    deadline,
+                    key,
+                    src_port,
+                    attempt,
+                });
+            }
+        }
 
-        wait_for_responses(
-            &job.result_rx,
-            &tx_times,
-            &mut responses,
-            start_time,
-            total_probes,
-            timeout_duration,
-        );
+        if !initial_batch.is_empty() {
+            flush_batch(
+                tx_fd,
+                &mut initial_pacer,
+                &mut initial_batch,
+                &mut tx_times,
+                opts.jitter_ms,
+            )
+            .map_err(|e| AppError::runtime(format!("TX send failed: {e}")))?;
+            let sent_at = Instant::now();
+            last_initial_send = Some(sent_at);
+            drain_responses(
+                &job.result_rx,
+                &tx_times,
+                &mut responses,
+                start_time,
+                &mut rtt,
+                &mut answered,
+            );
+            let new_responses = responses.len() as u64 - responses_seen;
+            aimd_received = aimd_received.saturating_add(new_responses);
+            responses_seen = responses.len() as u64;
+            for (key, src_port, attempt) in pending_initial.drain(..) {
+                let deadline = sent_at + retry_window(rtt.get(&key.0), timeout_duration);
+                retries.schedule(Retry {
+                    deadline,
+                    key,
+                    src_port,
+                    attempt,
+                });
+            }
+            if initial_cursor >= total_probes {
+                initial_done = true;
+            }
+            aimd_sent = aimd_sent.saturating_add(initial_probes);
+            if !initial_done
+                && opts.aimd
+                && job.rate_pps > 0
+                && aimd_sent >= 64
+                && aimd_last_tick.elapsed() >= Duration::from_secs(1)
+            {
+                let new_rate = aimd.update(aimd_sent, aimd_received);
+                initial_pacer = Pacer::new(new_rate);
+                aimd_last_tick = Instant::now();
+                aimd_sent = 0;
+                aimd_received = 0;
+            }
+            if let Some(cb) = &job.progress {
+                cb(ProgressEvent::default());
+            }
+        }
 
-        if !sent_any || responses.len() >= total_probes as usize {
+        // A path that answered under 1 % of its probes is silent: retransmits
+        // cannot recover responses that never arrive, so stop paying their
+        // wall clock. Evaluate after the initial probes' full wait window.
+        if initial_done
+            && retries_allowed
+            && last_initial_send.is_some_and(|sent| sent.elapsed() >= timeout_duration)
+            && (responses.len() as u64).saturating_mul(100) < total_probes
+        {
+            retries_allowed = false;
+            retries.clear();
+        }
+
+        if initial_cursor >= total_probes
+            && initial_batch.is_empty()
+            && retry_batch.is_empty()
+            && retries.is_empty()
+        {
             break;
         }
 
-        // A path that answered to under 1 % of the first pass's probes is
-        // silent: retransmits cannot recover responses that never arrive on
-        // such a path, so skip the retry passes instead of paying their wall
-        // clock again.
-        if attempt == 0 && responses.len() * 100 < total_probes as usize {
-            break;
+        if retry_probes == 0 && initial_probes == 0 {
+            // Drop answered entries at the head so a fast response can end
+            // the scan immediately instead of waiting for its deadline.
+            while retries
+                .peek()
+                .is_some_and(|entry| responses.contains_key(&entry.key))
+            {
+                retries.pop();
+            }
+            if let Some(deadline) = retries.next_deadline() {
+                let wait = deadline
+                    .saturating_duration_since(Instant::now())
+                    .min(Duration::from_millis(50));
+                if !wait.is_zero() {
+                    match job.result_rx.recv_timeout(wait) {
+                        Ok(response) => record_response(
+                            response,
+                            &tx_times,
+                            &mut responses,
+                            start_time,
+                            &mut rtt,
+                            &mut answered,
+                        ),
+                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+            }
         }
     }
 
-    drain_responses(&job.result_rx, &tx_times, &mut responses, start_time);
+    drain_responses(
+        &job.result_rx,
+        &tx_times,
+        &mut responses,
+        start_time,
+        &mut rtt,
+        &mut answered,
+    );
 
     // Aggregate the shard scan report
     let mut counts = StateCounts::default();
