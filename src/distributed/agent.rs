@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
 
+use super::tls::{self, TlsListener};
 use super::{
     ExecuteRequest, ExecuteResponse, bearer, constant_time_eq, execute_job, is_loopback_listen,
     resolve_token, validate_report,
@@ -61,13 +62,27 @@ pub async fn serve(args: DistributedAgentArgs) -> Result<(), AppError> {
         .layer(middleware::from_fn_with_state(agent.clone(), authorize))
         .with_state(agent.clone());
 
+    let server_tls = tls::server_config(args.tls_cert.as_deref(), args.tls_key.as_deref())?;
+    if let Some(config) = server_tls {
+        let listener = TlsListener::bind(&args.listen, config).await?;
+        eprintln!(
+            "[agent] listening on https://{}/ (concurrency {concurrency})",
+            args.listen
+        );
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown())
+            .await
+            .map_err(|error| AppError::runtime(format!("agent failed: {error}")))?;
+        return Ok(());
+    }
+
     let listener = TcpListener::bind(&args.listen)
         .await
         .map_err(|error| AppError::runtime(format!("cannot listen on {}: {error}", args.listen)))?;
     if !is_loopback_listen(&args.listen) {
         eprintln!(
             "[agent] warning: {} is not a loopback address; the bearer token travels over \
-             plaintext HTTP. Terminate TLS in front of the agent or use a trusted network.",
+             plaintext HTTP. Configure --tls-cert/--tls-key or use a trusted network.",
             args.listen
         );
     }
@@ -76,12 +91,14 @@ pub async fn serve(args: DistributedAgentArgs) -> Result<(), AppError> {
         args.listen
     );
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(shutdown())
         .await
         .map_err(|error| AppError::runtime(format!("agent failed: {error}")))?;
     Ok(())
+}
+
+async fn shutdown() {
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 async fn authorize(State(agent): State<Arc<Agent>>, request: Request, next: Next) -> Response {

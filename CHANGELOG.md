@@ -6,6 +6,12 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Distributed HTTPS**: the coordinator and push agents can terminate TLS
+  directly with `--tls-cert`/`--tls-key`; workers and push coordinators verify
+  private CAs with `--ca-cert`, or opt into `--insecure-tls` for isolated
+  testing. This protects bearer tokens, job assignments, and shard reports on
+  untrusted networks without requiring a reverse proxy. Plaintext HTTP remains
+  the default and warns on non-loopback binds.
 - **OT/ICS coverage**: `--preset ot` (aliases `ics`, `scada`) scans a curated
   control-plane port set covering Modbus, S7, DNP3, IEC 60870-5-104,
   EtherNet/IP, OPC UA, BACnet/IP, HART-IP, Niagara Fox, MELSEC, Omron FINS,
@@ -85,9 +91,9 @@ All notable changes to rayscan are documented here.
   requeueing, and bounded attempts. The coordinator merges finished shards with
   the normal open-wins/advisory-union rules, writes `--out`, and exits nonzero
   on failed shards. Shared bearer tokens come from `--token` or
-  `RAYSCAN_DISTRIBUTED_TOKEN` (minimum 16 characters); the cleartext HTTP
-  control plane warns on non-loopback binds. Raw jobs are reserved for workers
-  with raw-scan capability.
+  `RAYSCAN_DISTRIBUTED_TOKEN` (minimum 16 characters); plaintext binds outside
+  loopback warn and optional HTTPS is supported. Raw jobs are reserved for
+  workers with raw-scan capability.
 - **Empty shard reports**: sharded scans whose target hash selects no targets
   now emit a valid empty JSON report instead of failing, so distributed plans
   and coordinators can merge them normally.

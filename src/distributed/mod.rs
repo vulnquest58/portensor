@@ -8,12 +8,13 @@
 //! Three deployment shapes are supported:
 //! - `distributed plan`: emit a shell script that runs shards locally.
 //! - `distributed serve` plus `distributed worker`: workers poll the
-//!   token-authenticated HTTP/JSON control plane.
+//!   token-authenticated HTTP/JSON control plane, optionally over TLS.
 //! - `distributed serve --agents` plus `distributed agent`: the coordinator
-//!   pushes jobs to inbound agents.
+//!   pushes jobs to inbound agents, optionally over TLS.
 
 pub mod agent;
 pub mod coordinator;
+pub mod tls;
 pub mod worker;
 
 use std::io::Write as _;
@@ -295,11 +296,9 @@ pub fn post_json(
     path: &str,
     body: &Value,
     timeout: Duration,
+    tls: &tls::ClientTls,
 ) -> Result<Value, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout(timeout)
-        .build();
+    let agent = tls.agent(timeout);
     let response = agent
         .post(&format!("{base}{path}"))
         .set("Authorization", &format!("Bearer {token}"))

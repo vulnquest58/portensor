@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, watch};
 
+use super::tls::{self, ClientTls, TlsListener};
 use super::{
     Capabilities, ClaimRequest, ClaimResponse, HeartbeatRequest, JobAssignment, ResultRequest,
     bearer, build_jobs, constant_time_eq, is_loopback_listen, normalize_base, post_json,
@@ -509,6 +510,8 @@ fn merge_reports(reports: Vec<Value>) -> Result<Value, AppError> {
 
 pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
     let token = resolve_token(args.token)?;
+    let server_tls = tls::server_config(args.tls_cert.as_deref(), args.tls_key.as_deref())?;
+    let client_tls = ClientTls::load(args.ca_cert.as_deref(), args.insecure_tls)?;
     let jobs = build_jobs(&args.scan_args, args.shards, args.job_timeout_secs)?;
     let lease = Duration::from_secs(args.lease_secs.clamp(5, 86_400));
     let agents: Vec<String> = args
@@ -544,18 +547,13 @@ pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
             authorize,
         ));
 
-    let listener = TcpListener::bind(&args.listen)
-        .await
-        .map_err(|error| AppError::runtime(format!("cannot listen on {}: {error}", args.listen)))?;
-    if !is_loopback_listen(&args.listen) {
-        eprintln!(
-            "[distributed] warning: {} is not a loopback address; the bearer token travels over \
-             plaintext HTTP. Terminate TLS in front of the coordinator or use a trusted network.",
-            args.listen
-        );
-    }
+    let scheme = if server_tls.is_some() {
+        "https"
+    } else {
+        "http"
+    };
     eprintln!(
-        "[distributed] coordinator on http://{}/ ({} shard jobs, mode={})",
+        "[distributed] coordinator on {scheme}://{}/ ({} shard jobs, mode={})",
         args.listen,
         coordinator.core.lock().unwrap().jobs.len(),
         mode.as_str()
@@ -563,7 +561,7 @@ pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
 
     if mode == Mode::Push {
         for (index, agent) in agents.into_iter().enumerate() {
-            spawn_push_loop(coordinator.clone(), index, agent);
+            spawn_push_loop(coordinator.clone(), index, agent, client_tls.clone());
         }
     }
 
@@ -579,24 +577,26 @@ pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
     });
 
     let shutdown = coordinator.clone();
-    let mut complete_rx = coordinator.complete_tx.subscribe();
-    let serve_result = axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            loop {
-                if *complete_rx.borrow() {
-                    return;
-                }
-                tokio::select! {
-                    changed = complete_rx.changed() => {
-                        if changed.is_err() {
-                            return;
-                        }
-                    }
-                    _ = tokio::signal::ctrl_c() => return,
-                }
-            }
-        })
-        .await;
+    let serve_result = if let Some(config) = server_tls {
+        let listener = TlsListener::bind(&args.listen, config).await?;
+        axum::serve(listener, app)
+            .with_graceful_shutdown(wait_for_completion(coordinator.clone()))
+            .await
+    } else {
+        let listener = TcpListener::bind(&args.listen).await.map_err(|error| {
+            AppError::runtime(format!("cannot listen on {}: {error}", args.listen))
+        })?;
+        if !is_loopback_listen(&args.listen) {
+            eprintln!(
+                "[distributed] warning: {} is not a loopback address; the bearer token travels over \
+                 plaintext HTTP. Configure --tls-cert/--tls-key or use a trusted network.",
+                args.listen
+            );
+        }
+        axum::serve(listener, app)
+            .with_graceful_shutdown(wait_for_completion(coordinator.clone()))
+            .await
+    };
     serve_result.map_err(|error| AppError::runtime(format!("coordinator failed: {error}")))?;
 
     if !shutdown.is_complete() {
@@ -624,7 +624,29 @@ pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
     Ok(())
 }
 
-fn spawn_push_loop(coordinator: Arc<Coordinator>, index: usize, agent: String) {
+async fn wait_for_completion(coordinator: Arc<Coordinator>) {
+    let mut complete_rx = coordinator.complete_tx.subscribe();
+    loop {
+        if *complete_rx.borrow() {
+            return;
+        }
+        tokio::select! {
+            changed = complete_rx.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+            }
+            _ = tokio::signal::ctrl_c() => return,
+        }
+    }
+}
+
+fn spawn_push_loop(
+    coordinator: Arc<Coordinator>,
+    index: usize,
+    agent: String,
+    client_tls: ClientTls,
+) {
     tokio::spawn(async move {
         let agent = match normalize_base(&agent) {
             Ok(agent) => agent,
@@ -666,8 +688,16 @@ fn spawn_push_loop(coordinator: Arc<Coordinator>, index: usize, agent: String) {
                     }
                 }
             });
+            let request_tls = client_tls.clone();
             let response = tokio::task::spawn_blocking(move || {
-                post_json(&agent_url, &token, "/v1/execute", &body, timeout)
+                post_json(
+                    &agent_url,
+                    &token,
+                    "/v1/execute",
+                    &body,
+                    timeout,
+                    &request_tls,
+                )
             })
             .await;
             heartbeat.abort();

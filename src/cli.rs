@@ -317,14 +317,29 @@ pub struct DistributedPlanArgs {
 
 #[derive(Debug, Args)]
 pub struct DistributedServeArgs {
-    /// Coordinator listen address. Non-loopback binds carry the token in
-    /// cleartext HTTP, so terminate TLS in front of it for untrusted networks.
+    /// Coordinator listen address. Set --tls-cert and --tls-key to serve HTTPS.
     #[arg(long, default_value = "127.0.0.1:9090", value_name = "ADDR")]
     pub listen: String,
 
     /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
     #[arg(long, value_name = "TOKEN")]
     pub token: Option<String>,
+
+    /// PEM certificate chain for the coordinator's HTTPS listener.
+    #[arg(long, value_name = "FILE", requires = "tls_key")]
+    pub tls_cert: Option<PathBuf>,
+
+    /// PEM private key for the coordinator's HTTPS listener.
+    #[arg(long, value_name = "FILE", requires = "tls_cert")]
+    pub tls_key: Option<PathBuf>,
+
+    /// PEM CA bundle used to verify push-agent HTTPS certificates.
+    #[arg(long, value_name = "FILE", conflicts_with = "insecure_tls")]
+    pub ca_cert: Option<PathBuf>,
+
+    /// Accept any push-agent HTTPS certificate. Use only for testing.
+    #[arg(long, conflicts_with = "ca_cert")]
+    pub insecure_tls: bool,
 
     /// Number of deterministic target shards/jobs.
     #[arg(long, default_value_t = 8, value_name = "N")]
@@ -363,7 +378,8 @@ pub struct DistributedServeArgs {
 
 #[derive(Debug, Args)]
 pub struct DistributedWorkerArgs {
-    /// Coordinator base URL, for example http://10.0.0.5:9090.
+    /// Coordinator base URL, for example http://10.0.0.5:9090 or
+    /// https://10.0.0.5:9090.
     #[arg(long, value_name = "URL")]
     pub coordinator: String,
 
@@ -374,6 +390,14 @@ pub struct DistributedWorkerArgs {
     /// Worker display name (defaults to the hostname).
     #[arg(long, value_name = "NAME")]
     pub name: Option<String>,
+
+    /// PEM CA bundle used to verify the coordinator's HTTPS certificate.
+    #[arg(long, value_name = "FILE", conflicts_with = "insecure_tls")]
+    pub ca_cert: Option<PathBuf>,
+
+    /// Accept any coordinator HTTPS certificate. Use only for testing.
+    #[arg(long, conflicts_with = "ca_cert")]
+    pub insecure_tls: bool,
 
     /// Claim and run a single job, then exit.
     #[arg(long)]
@@ -386,13 +410,21 @@ pub struct DistributedWorkerArgs {
 
 #[derive(Debug, Args)]
 pub struct DistributedAgentArgs {
-    /// Agent listen address.
+    /// Agent listen address. Set --tls-cert and --tls-key to serve HTTPS.
     #[arg(long, default_value = "127.0.0.1:9091", value_name = "ADDR")]
     pub listen: String,
 
     /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
     #[arg(long, value_name = "TOKEN")]
     pub token: Option<String>,
+
+    /// PEM certificate chain for the agent's HTTPS listener.
+    #[arg(long, value_name = "FILE", requires = "tls_key")]
+    pub tls_cert: Option<PathBuf>,
+
+    /// PEM private key for the agent's HTTPS listener.
+    #[arg(long, value_name = "FILE", requires = "tls_cert")]
+    pub tls_key: Option<PathBuf>,
 
     /// Maximum scans executed concurrently on this agent.
     #[arg(long, default_value_t = 1, value_name = "N")]
@@ -1893,6 +1925,60 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn distributed_tls_flags_are_paired_and_parse() {
+        let cli = Cli::try_parse_from([
+            "rayscan",
+            "distributed",
+            "serve",
+            "--tls-cert",
+            "coordinator.pem",
+            "--tls-key",
+            "coordinator.key",
+            "--ca-cert",
+            "ca.pem",
+            "--",
+            "scan",
+            "-t",
+            "127.0.0.1",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Distributed(DistributedArgs {
+                action: DistributedAction::Serve(options),
+            }) => {
+                assert_eq!(
+                    options.tls_cert.as_deref(),
+                    Some(std::path::Path::new("coordinator.pem"))
+                );
+                assert_eq!(
+                    options.ca_cert.as_deref(),
+                    Some(std::path::Path::new("ca.pem"))
+                );
+                assert!(!options.insecure_tls);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let error =
+            Cli::try_parse_from(["rayscan", "distributed", "agent", "--tls-cert", "agent.pem"])
+                .expect_err("--tls-cert without --tls-key must fail");
+        assert!(error.to_string().contains("tls-key"));
+
+        let error = Cli::try_parse_from([
+            "rayscan",
+            "distributed",
+            "worker",
+            "--coordinator",
+            "https://127.0.0.1:9090",
+            "--ca-cert",
+            "ca.pem",
+            "--insecure-tls",
+        ])
+        .expect_err("--ca-cert and --insecure-tls must conflict");
+        assert!(error.to_string().contains("insecure-tls"));
     }
 
     #[test]

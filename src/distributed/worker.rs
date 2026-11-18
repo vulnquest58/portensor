@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use super::tls::ClientTls;
 use super::{
     Capabilities, ClaimRequest, ClaimResponse, HeartbeatRequest, ResultRequest, execute_job,
     new_worker_id, normalize_base, post_json, resolve_token, syn_available, worker_name,
@@ -23,13 +24,17 @@ async fn post(
     path: &str,
     body: Value,
     timeout: Duration,
+    client_tls: &ClientTls,
 ) -> Result<Value, String> {
     let base = base.to_string();
     let token = token.to_string();
     let path = path.to_string();
-    tokio::task::spawn_blocking(move || post_json(&base, &token, &path, &body, timeout))
-        .await
-        .map_err(|error| format!("request task failed: {error}"))?
+    let client_tls = client_tls.clone();
+    tokio::task::spawn_blocking(move || {
+        post_json(&base, &token, &path, &body, timeout, &client_tls)
+    })
+    .await
+    .map_err(|error| format!("request task failed: {error}"))?
 }
 
 async fn heartbeat_loop(
@@ -39,6 +44,7 @@ async fn heartbeat_loop(
     job_id: usize,
     lease_secs: u64,
     stop: Arc<AtomicBool>,
+    client_tls: ClientTls,
 ) {
     let interval = Duration::from_secs((lease_secs / 3).clamp(1, 30));
     while !stop.load(Ordering::SeqCst) {
@@ -63,6 +69,7 @@ async fn heartbeat_loop(
             "/v1/heartbeat",
             body,
             Duration::from_secs(10),
+            &client_tls,
         )
         .await
         {
@@ -72,7 +79,12 @@ async fn heartbeat_loop(
     }
 }
 
-async fn send_result(base: &str, token: &str, request: &ResultRequest) -> Result<Value, String> {
+async fn send_result(
+    base: &str,
+    token: &str,
+    request: &ResultRequest,
+    client_tls: &ClientTls,
+) -> Result<Value, String> {
     let body = encode(request)?;
     let mut last = String::new();
     for attempt in 1..=5 {
@@ -82,6 +94,7 @@ async fn send_result(base: &str, token: &str, request: &ResultRequest) -> Result
             "/v1/result",
             body.clone(),
             Duration::from_secs(60),
+            client_tls,
         )
         .await
         {
@@ -104,6 +117,7 @@ async fn send_result(base: &str, token: &str, request: &ResultRequest) -> Result
 pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
     let base = normalize_base(&args.coordinator)?;
     let token = resolve_token(args.token)?;
+    let client_tls = ClientTls::load(args.ca_cert.as_deref(), args.insecure_tls)?;
     let name = worker_name(args.name);
     if name.len() > 200 {
         return Err(AppError::usage(
@@ -139,7 +153,16 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
         };
         let body = encode(&request)
             .map_err(|error| AppError::runtime(format!("cannot encode claim: {error}")))?;
-        let claim = match post(&base, &token, "/v1/claim", body, Duration::from_secs(45)).await {
+        let claim = match post(
+            &base,
+            &token,
+            "/v1/claim",
+            body,
+            Duration::from_secs(45),
+            &client_tls,
+        )
+        .await
+        {
             Ok(value) => serde_json::from_value::<ClaimResponse>(value),
             Err(error) => {
                 if error.contains("invalid or missing bearer token") {
@@ -182,6 +205,7 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
             job_id,
             lease_secs,
             heartbeat_stop.clone(),
+            client_tls.clone(),
         ));
 
         let job_to_execute = job;
@@ -205,7 +229,7 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
                 elapsed_ms: 0,
             },
         };
-        if let Err(error) = send_result(&base, &token, &result).await {
+        if let Err(error) = send_result(&base, &token, &result, &client_tls).await {
             eprintln!(
                 "[worker] job {job_id} finished but its result was not accepted: {error}. \
                  The coordinator will requeue the shard after the lease expires."

@@ -94,7 +94,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
 | Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
 | Per-host concurrency | Optional cap on simultaneous connect attempts per target host (`--host-concurrency N`, 0 = unlimited); also applied to SYN-open verification |
-| Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes (`rayscan distributed`) |
+| Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes plus optional HTTPS (`--tls-cert`/`--tls-key`, `--ca-cert`) (`rayscan distributed`) |
 | Evasion | Random delay jitter, configurable TTL/hop limit, custom SYN source-port range, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--ttl`, `--source-port-range`, `--decoys`, `--fragment-size`) |
 | Resumable scans | Smart `--resume FILE` with pre-scan gap analysis audit + `--save-state FILE` (`src/resume.rs`) |
 | Signal handling | Graceful Ctrl-C: workers stop, partial results printed, state saved |
@@ -801,13 +801,31 @@ same evidence-preserving rules as `rayscan merge`. The coordinator writes
 reported as empty merges rather than errors.
 
 Authentication is a shared bearer token (`--token` or
-`RAYSCAN_DISTRIBUTED_TOKEN`, minimum 16 characters). The control plane is
-HTTP/JSON and **does not terminate TLS**: bind to loopback or a trusted network,
-or put a TLS reverse proxy in front of it. Raw jobs (`--syn`, `--os`, `--ndp`)
-are claimed only by workers that report raw capability (Linux with
+`RAYSCAN_DISTRIBUTED_TOKEN`, minimum 16 characters). The control plane speaks
+HTTP/JSON by default. Enable HTTPS directly on the coordinator and push agents
+with `--tls-cert`/`--tls-key`; workers and push coordinators verify private CAs
+with `--ca-cert` (or opt into `--insecure-tls` only for testing). Without TLS,
+bind to loopback or a trusted network. Raw jobs (`--syn`, `--os`, `--ndp`) are
+claimed only by workers that report raw capability (Linux with
 `CAP_NET_RAW`/root); with no capable worker those jobs remain queued. Workers
 and agents execute the current binary, so install the same build on every node
 and keep `--target-file` paths available locally.
+
+```bash
+# HTTPS coordinator plus a polling worker that trusts a private CA.
+rayscan distributed serve --listen 0.0.0.0:9090 \
+  --tls-cert coordinator.pem --tls-key coordinator.key \
+  --out merged.json -- scan -t 10.0.0.0/16 -p 22,80,443
+rayscan distributed worker --coordinator https://10.0.0.5:9090 \
+  --ca-cert ca.pem
+
+# HTTPS push agent and a coordinator that verifies the agent certificate.
+rayscan distributed agent --listen 0.0.0.0:9091 \
+  --tls-cert agent.pem --tls-key agent.key
+rayscan distributed serve --listen 0.0.0.0:9090 \
+  --tls-cert coordinator.pem --tls-key coordinator.key --ca-cert ca.pem \
+  --agents https://10.0.0.11:9091 -- scan -t 10.0.0.0/16 -p 22,80,443
+```
 
 ### Ping Sweep, ARP, and IPv6 Discovery (ARP & ICMP & NDP)
 
@@ -1522,6 +1540,7 @@ src/distributed/mod.rs      distributed protocol, shard planning, job execution
 src/distributed/coordinator.rs  token-authenticated coordinator (pull/push)
 src/distributed/worker.rs   polling worker client
 src/distributed/agent.rs    inbound push agent
+src/distributed/tls.rs      HTTPS listener and client certificate trust
 src/verify.rs               connect verification and reclassification of SYN opens
 src/anomaly.rs              anomaly detection for hosts with large SYN-open counts
 src/classify.rs             error taxonomy

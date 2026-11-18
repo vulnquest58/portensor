@@ -4,16 +4,28 @@
 .SH NAME
 rayscan\-distributed\-serve \- Serve a coordinator that assigns shard jobs to polling workers or push agents
 .SH SYNOPSIS
-\fBserve\fR [\fB\-\-listen\fR] [\fB\-\-token\fR] [\fB\-\-shards\fR] [\fB\-\-out\fR] [\fB\-\-lease\-secs\fR] [\fB\-\-max\-attempts\fR] [\fB\-\-job\-timeout\-secs\fR] [\fB\-\-agents\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISCAN_ARGS\fR> 
+\fBserve\fR [\fB\-\-listen\fR] [\fB\-\-token\fR] [\fB\-\-tls\-cert\fR] [\fB\-\-tls\-key\fR] [\fB\-\-ca\-cert\fR] [\fB\-\-insecure\-tls\fR] [\fB\-\-shards\fR] [\fB\-\-out\fR] [\fB\-\-lease\-secs\fR] [\fB\-\-max\-attempts\fR] [\fB\-\-job\-timeout\-secs\fR] [\fB\-\-agents\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISCAN_ARGS\fR>
 .SH DESCRIPTION
 Serve a coordinator that assigns shard jobs to polling workers or push agents
 .SH OPTIONS
 .TP
 \fB\-\-listen\fR \fI<ADDR>\fR [default: 127.0.0.1:9090]
-Coordinator listen address. Non\-loopback binds carry the token in cleartext HTTP, so terminate TLS in front of it for untrusted networks
+Coordinator listen address. Set \-\-tls\-cert and \-\-tls\-key to serve HTTPS
 .TP
 \fB\-\-token\fR \fI<TOKEN>\fR
 Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters
+.TP
+\fB\-\-tls\-cert\fR \fI<FILE>\fR
+PEM certificate chain for the coordinator\*(Aqs HTTPS listener
+.TP
+\fB\-\-tls\-key\fR \fI<FILE>\fR
+PEM private key for the coordinator\*(Aqs HTTPS listener
+.TP
+\fB\-\-ca\-cert\fR \fI<FILE>\fR
+PEM CA bundle used to verify push\-agent HTTPS certificates
+.TP
+\fB\-\-insecure\-tls\fR
+Accept any push\-agent HTTPS certificate. Use only for testing
 .TP
 \fB\-\-shards\fR \fI<N>\fR [default: 8]
 Number of deterministic target shards/jobs
