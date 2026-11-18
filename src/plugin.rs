@@ -1711,6 +1711,49 @@ timeout_ms = 1500
     }
 
     #[tokio::test]
+    async fn melsec_q_cpuinfo_request_matches() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0_u8; 41];
+            stream.read_exact(&mut buffer).await.unwrap();
+            assert_eq!(buffer[0], 0x57);
+            assert_eq!(&buffer[32..], b"\x04\x01\x01\x01\x00\x00\x00\x00\x01");
+            let mut response = [0_u8; 60];
+            response[0] = 0xD7;
+            response[40..48].copy_from_slice(b"Q03UDECU");
+            stream.write_all(&response).await.unwrap();
+        });
+
+        let registry = parse_pack(
+            r#"
+name = "melsec-q"
+[[probe]]
+name = "melsec-q-cpuinfo"
+service = "melsec-q"
+ports = []
+product = "Mitsubishi MELSEC-Q PLC"
+confidence = 0.90
+send_hex = "57 00 00 00 00 11 11 07 00 00 FF FF 03 00 00 FE 03 00 00 14 00 1C 08 0A 08 00 00 00 00 00 00 00 04 01 01 01 00 00 00 00 01"
+expect_hex = "D7 00"
+timeout_ms = 1500
+"#,
+        )
+        .unwrap();
+        let mut results = vec![result(port, None)];
+        let matched = registry
+            .apply(&mut results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+        let service = results[0].service.as_ref().unwrap();
+        assert_eq!(service.name, "melsec-q");
+        assert_eq!(service.product.as_deref(), Some("Mitsubishi MELSEC-Q PLC"));
+    }
+
+    #[tokio::test]
     async fn skips_plaintext_active_probes_on_tls_results() {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
             .await
@@ -1776,6 +1819,7 @@ expect = "HELLO"
             "fins",
             "hart-ip",
             "ge-srtp",
+            "melsec-q",
             "vnc",
             "mqtt",
             "kafka",

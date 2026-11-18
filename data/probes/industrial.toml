@@ -132,3 +132,13 @@ send_hex = "02 00 01 00 00 00 00 00 00 01 00 00 00 00 00 00 00 01 00 00 00 00 00
 expect_regex = '(?s)^\x03\x01\x00'
 expect_hex = "D4"
 timeout_ms = 1500
+
+[[probe]]
+name = "melsec-q-cpuinfo"
+service = "melsec-q"
+ports = [5007]
+product = "Mitsubishi MELSEC-Q PLC"
+confidence = 0.90
+send_hex = "57 00 00 00 00 11 11 07 00 00 FF FF 03 00 00 FE 03 00 00 14 00 1C 08 0A 08 00 00 00 00 00 00 00 04 01 01 01 00 00 00 00 01"
+expect_hex = "D7 00"
+timeout_ms = 1500
