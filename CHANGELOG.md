@@ -6,6 +6,16 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Windows raw SYN/ACK scanning**: `--syn` and `--ack` now work on Windows
+  (IPv4 only) through a dynamically loaded Npcap `wpcap.dll`, with no new crate
+  dependency. The backend uses `GetBestRoute`/`GetAdaptersInfo` for interface
+  and source-address selection, `SendARP` for next-hop MAC discovery, and the
+  shared pacing, AIMD, jitter, decoy, fragmentation, and retry logic. It
+  reports multiple adapters independently, requires an elevated terminal, and
+  fails with an install hint when Npcap is absent. Windows active OS
+  fingerprinting and raw IPv6 remain unsupported. `rayscan doctor` now checks
+  Npcap readiness and the selected route; CI compiles every Windows target and
+  runs the shared raw-networking unit tests.
 - **Distributed HTTPS**: the coordinator and push agents can terminate TLS
   directly with `--tls-cert`/`--tls-key`; workers and push coordinators verify
   private CAs with `--ca-cert`, or opt into `--insecure-tls` for isolated

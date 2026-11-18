@@ -39,6 +39,20 @@ jobs:
       - name: Benchmark harness tests
         run: python3 -m unittest discover -s bench/tests -t . -v
 
+  windows:
+    name: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: cargo check --all-targets --all-features --locked
+      - name: Test raw networking
+        run: cargo test --lib --all-features --locked syn::
+
   audit:
     name: audit
     runs-on: ubuntu-latest

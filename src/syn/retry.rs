@@ -86,15 +86,6 @@ pub(super) fn retry_window(estimator: Option<&RttEstimator>, maximum: Duration) 
     }
 }
 
-/// Advances a retransmission to a fresh source port in the scan's range.
-///
-/// Fresh ports keep every retransmission a distinct SYN to the target stack;
-/// reusing the original port lets a server coalesce duplicates and rely on its
-/// own delayed SYN-ACK retransmission, which can outlast the scan window.
-pub(super) fn next_source_port(current: u16, low: u16, probes: u64, range_len: u64) -> u16 {
-    low + (((u64::from(current - low) + probes) % range_len) as u16)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,12 +147,5 @@ mod tests {
         let mut estimator = RttEstimator::new();
         estimator.observe(Duration::from_millis(4));
         assert_eq!(retry_window(Some(&estimator), maximum), MIN_RTO);
-    }
-
-    #[test]
-    fn retry_source_ports_advance_and_wrap() {
-        assert_eq!(next_source_port(61000, 61000, 20, 1000), 61020);
-        assert_eq!(next_source_port(61990, 61000, 20, 1000), 61010);
-        assert_ne!(next_source_port(61000, 61000, 20, 1000), 61000);
     }
 }

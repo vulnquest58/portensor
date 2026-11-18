@@ -8,10 +8,11 @@ and benchmark harness.
 **Phase 1** added the async TCP connect engine. It is the accuracy baseline, the
 fallback on systems without raw-socket capability, and the benchmark reference.
 
-**Phase 2** added a raw SYN engine (`--syn`) that runs on Linux with
-`CAP_NET_RAW`. It shares the same CLI, output schema, and lab ground truth as
-Phase 1. Without raw-socket capability it fails with a clear error and exit code
-1; the caller can re-run without `--syn` to use the connect engine.
+**Phase 2** added a raw SYN engine (`--syn`): Linux uses `CAP_NET_RAW` and
+`AF_PACKET`, while Windows loads Npcap's `wpcap.dll` at runtime and supports
+IPv4. It shares the same CLI, output schema, and lab ground truth as Phase 1.
+Without raw-socket capability it fails with a clear error and exit code 1; the
+caller can re-run without `--syn` to use the connect engine.
 
 **Phase 3** made raw SYN results trustworthy and introduced congestion control.
 Unanswered probes are retransmitted up to the configured retry count at a reduced

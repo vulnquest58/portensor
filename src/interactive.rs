@@ -51,13 +51,20 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
     };
 
     let raw_syn_available = crate::syn::check_raw_privilege().is_ok();
-    let mut modes = vec!["TCP connect (no root)"];
+    let os_fingerprint_available = raw_syn_available && cfg!(target_os = "linux");
+    let mut modes = vec!["TCP connect (no raw sockets)"];
     if raw_syn_available {
         modes.push("Raw SYN discovery + verification");
+    }
+    if os_fingerprint_available {
         modes.push("Raw SYN + OS fingerprint");
-    } else {
+    }
+    if !raw_syn_available {
+        #[cfg(target_os = "windows")]
+        eprintln!("[interactive] raw SYN unavailable; install Npcap and run elevated for SYN mode");
+        #[cfg(not(target_os = "windows"))]
         eprintln!(
-            "[interactive] raw SYN unavailable; using TCP connect mode (run via sudo for SYN/OS)"
+            "[interactive] raw SYN unavailable; using TCP connect mode (run via sudo for SYN)"
         );
     }
     let mode = Select::new("Scan mode:", modes)

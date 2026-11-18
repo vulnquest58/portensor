@@ -6,7 +6,7 @@ rayscan \- An accuracy\-first TCP port scanner
 .SH SYNOPSIS
 \fBrayscan\fR [\fB\-\-theme\fR] [\fB\-\-db\-dir\fR] [\fB\-\-scripts\-dir\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
-An accuracy\-first TCP/UDP scanner. Rayscan uses a bounded worker pool, adaptive per\-host timeouts, a global rate limit, and a short service\-verification read so a bare handshake from a tarpit or SYN proxy is not reported as an open service. Responsive services are identified from their banners, including common products and versions. On Linux, \-\-syn performs raw SYN discovery and verifies responsive candidates over TCP. A UDP scanner is available for service detection on ports that accept UDP traffic.
+An accuracy\-first TCP/UDP scanner. Rayscan uses a bounded worker pool, adaptive per\-host timeouts, a global rate limit, and a short service\-verification read so a bare handshake from a tarpit or SYN proxy is not reported as an open service. Responsive services are identified from their banners, including common products and versions. With raw\-socket support (Linux root/CAP_NET_RAW, or Windows with Npcap), \-\-syn performs raw SYN discovery and verifies responsive candidates over TCP. A UDP scanner is available for service detection on ports that accept UDP traffic.
 .SH OPTIONS
 .TP
 \fB\-\-theme\fR \fI<THEME>\fR

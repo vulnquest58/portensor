@@ -19,82 +19,17 @@ use std::time::{Duration, Instant};
 use super::aimd::{AimdConfig, AimdController};
 use super::cookie::CookieKey;
 use super::filter;
+use super::pacer::Pacer;
 use super::packet;
 use super::permute::BlackRock;
-use super::retry::{Retry, RetryQueue, next_source_port, retry_window};
+use super::retry::{Retry, RetryQueue, retry_window};
 use super::route;
+use super::source_port::next_source_port;
+use super::{ProbeMode, SynScanOptions};
 use crate::error::AppError;
-use crate::model::{HostProgress, PortResult, PortState, ScanReport, StateCounts, StateSet};
+use crate::model::{HostProgress, PortResult, PortState, ScanReport, StateCounts};
 use crate::rtt::RttEstimator;
 use crate::scanner::{ProgressCallback, ProgressEvent};
-
-/// Raw probe mode: SYN discovery or ACK firewall mapping.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ProbeMode {
-    #[default]
-    Syn,
-    Ack,
-}
-
-/// Configuration options for a raw SYN/ACK scan.
-#[derive(Clone, Debug)]
-pub struct SynScanOptions {
-    /// Target IP addresses to scan.
-    pub targets: Vec<IpAddr>,
-    /// Target TCP ports to probe on each host.
-    pub ports: Vec<u16>,
-    /// Probe type.
-    pub mode: ProbeMode,
-    /// Initial transmit rate in packets per second (0 means unlimited).
-    pub rate_pps: u64,
-    /// Rate used for retransmission passes (0 means `rate_pps / 4`).
-    pub retry_rate_pps: u64,
-    /// Source port range used by the scanner `(min, max)`.
-    pub sport_range: (u16, u16),
-    /// Milliseconds to wait after the last transmitted probe before declaring quiet ports filtered.
-    pub timeout_ms: u64,
-    /// Number of frames to batch per `sendmmsg` syscall.
-    pub batch_size: usize,
-    /// Number of retransmission passes for probes that received no response.
-    pub retries: u32,
-    /// Set of port states to retain in the resulting report.
-    pub retain: StateSet,
-    /// Enable AIMD adaptive rate control.  Has no effect when `rate_pps == 0`.
-    pub aimd: bool,
-    /// AIMD minimum rate floor in packets per second.
-    pub aimd_min_pps: u64,
-    /// Maximum random delay inserted before each packet batch, in milliseconds.
-    pub jitter_ms: u64,
-    /// Spoofed source addresses for decoy probes (IPv4 only).
-    pub decoys: Vec<Ipv4Addr>,
-    /// Maximum IPv4 payload bytes per fragment (multiple of 8). `None` disables.
-    pub fragment_size: Option<usize>,
-    /// IPv4 TTL / IPv6 hop limit for raw probes.
-    pub ttl: u8,
-}
-
-impl Default for SynScanOptions {
-    fn default() -> Self {
-        Self {
-            targets: Vec::new(),
-            ports: Vec::new(),
-            mode: ProbeMode::Syn,
-            rate_pps: 0,
-            retry_rate_pps: 0,
-            sport_range: (61000, 61999),
-            timeout_ms: 1000,
-            batch_size: 4096,
-            retries: 2,
-            retain: StateSet::all(),
-            aimd: true,
-            aimd_min_pps: 100,
-            jitter_ms: 0,
-            decoys: Vec::new(),
-            fragment_size: None,
-            ttl: super::DEFAULT_PROBE_TTL,
-        }
-    }
-}
 
 /// Internal RAII wrapper ensuring file descriptors are always closed on drop.
 struct RawSocket(i32);
@@ -255,57 +190,6 @@ fn resolve_target_route(
     };
     cache.insert(target, route_info.clone());
     Ok(route_info)
-}
-
-/// Lightweight token bucket pacer for transmit pacing.
-pub(super) struct Pacer {
-    rate_pps: u64,
-    tokens: f64,
-    last: Instant,
-}
-
-impl Pacer {
-    pub(super) fn new(rate_pps: u64) -> Self {
-        Self {
-            rate_pps,
-            tokens: if rate_pps > 0 {
-                (rate_pps as f64 / 10.0).clamp(1.0, 1000.0)
-            } else {
-                0.0
-            },
-            last: Instant::now(),
-        }
-    }
-
-    pub(super) fn wait_for_batch(&mut self, batch_count: usize) {
-        if self.rate_pps == 0 || batch_count == 0 {
-            return;
-        }
-
-        let rate = self.rate_pps as f64;
-        let burst = (rate / 10.0).clamp(1.0, 1000.0);
-        let mut remaining = batch_count as f64;
-
-        while remaining > 0.0 {
-            let cost = remaining.min(burst);
-            loop {
-                let now = Instant::now();
-                let elapsed = now.duration_since(self.last).as_secs_f64();
-                self.last = now;
-                self.tokens = (self.tokens + elapsed * rate).min(burst);
-
-                if self.tokens >= cost {
-                    self.tokens -= cost;
-                    break;
-                }
-
-                let needed = cost - self.tokens;
-                let sleep_secs = needed / rate;
-                std::thread::sleep(Duration::from_secs_f64(sleep_secs));
-            }
-            remaining -= cost;
-        }
-    }
 }
 
 /// Sends a batch of raw Ethernet frames using `sendmmsg(2)`.
@@ -1452,14 +1336,6 @@ fn syn_scan_v4(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn pacer_handles_batches_larger_than_the_burst() {
-        let mut pacer = Pacer::new(1000);
-        let started = Instant::now();
-        pacer.wait_for_batch(101);
-        assert!(started.elapsed() < Duration::from_millis(100));
-    }
 
     #[test]
     fn shard_targets_partitions_without_overlap_or_loss() {

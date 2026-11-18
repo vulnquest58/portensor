@@ -24,7 +24,8 @@ use crate::tls::TlsMode;
                   service-verification read so a bare handshake from a tarpit or SYN \
                   proxy is not reported as an open service. Responsive services are \
                   identified from their banners, including common products and versions. \
-                  On Linux, --syn performs raw SYN discovery and verifies responsive \
+                  With raw-socket support (Linux root/CAP_NET_RAW, or Windows with \
+                  Npcap), --syn performs raw SYN discovery and verifies responsive \
                   candidates over TCP. A UDP scanner is available for service \
                   detection on ports that accept UDP traffic.",
     arg_required_else_help = true,
@@ -598,7 +599,7 @@ pub struct ScanArgs {
     #[arg(long)]
     pub no_tls: bool,
 
-    /// Enable OS fingerprinting via TCP/IP stack analysis (requires root/CAP_NET_RAW).
+    /// Enable OS fingerprinting via TCP/IP stack analysis (Linux raw sockets; root/CAP_NET_RAW).
     /// Probes up to --os-probes open ports per host and classifies the SYN-ACK replies.
     #[arg(long)]
     pub os: bool,
@@ -627,11 +628,11 @@ pub struct ScanArgs {
     #[arg(short = 'q', long)]
     pub quiet: bool,
 
-    /// Use raw SYN discovery, then verify responsive ports (root/CAP_NET_RAW, Linux only).
+    /// Use raw SYN discovery, then verify responsive ports (Linux root/CAP_NET_RAW; Windows Npcap + admin).
     #[arg(long)]
     pub syn: bool,
 
-    /// TCP ACK scan to map firewall filtering (root/CAP_NET_RAW, Linux only).
+    /// TCP ACK scan to map firewall filtering (Linux root/CAP_NET_RAW; Windows Npcap + admin).
     /// Unfiltered ports answer with RST; filtered ports stay silent.
     #[arg(
         long,
@@ -911,6 +912,12 @@ pub struct ResolvedConfig {
 impl ScanArgs {
     pub fn resolve(&self) -> Result<ResolvedConfig, AppError> {
         let shard = crate::shard::validate(self.shard_index, self.shard_count)?;
+        #[cfg(not(target_os = "linux"))]
+        if self.os {
+            return Err(AppError::usage(
+                "--os requires Linux raw sockets (root or CAP_NET_RAW)",
+            ));
+        }
         let file = config::load(self.config.as_deref())?;
         let profile = if self.stealth {
             self.profile.unwrap_or(Profile::Stealth)

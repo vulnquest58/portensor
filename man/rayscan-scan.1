@@ -181,7 +181,7 @@ Inspect TLS on every open TCP port (certificate, version, cipher)
 Disable automatic TLS inspection of known TLS/STARTTLS ports
 .TP
 \fB\-\-os\fR
-Enable OS fingerprinting via TCP/IP stack analysis (requires root/CAP_NET_RAW). Probes up to \-\-os\-probes open ports per host and classifies the SYN\-ACK replies
+Enable OS fingerprinting via TCP/IP stack analysis (Linux raw sockets; root/CAP_NET_RAW). Probes up to \-\-os\-probes open ports per host and classifies the SYN\-ACK replies
 .TP
 \fB\-\-os\-probes\fR \fI<N>\fR
 Open\-port samples per host for the OS fingerprint consensus (1\-8, default: 3)
@@ -224,10 +224,10 @@ Resolve and scan only IPv6 targets
 Suppress progress and status messages
 .TP
 \fB\-\-syn\fR
-Use raw SYN discovery, then verify responsive ports (root/CAP_NET_RAW, Linux only)
+Use raw SYN discovery, then verify responsive ports (Linux root/CAP_NET_RAW; Windows Npcap + admin)
 .TP
 \fB\-\-ack\fR
-TCP ACK scan to map firewall filtering (root/CAP_NET_RAW, Linux only). Unfiltered ports answer with RST; filtered ports stay silent
+TCP ACK scan to map firewall filtering (Linux root/CAP_NET_RAW; Windows Npcap + admin). Unfiltered ports answer with RST; filtered ports stay silent
 .TP
 \fB\-\-no\-aimd\fR
 Disable AIMD adaptive rate control during raw SYN scanning

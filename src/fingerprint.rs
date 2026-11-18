@@ -723,6 +723,7 @@ pub fn classify(fp: &TcpFingerprint) -> OsGuess {
     }
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn guess_from_fingerprint(fingerprint: &TcpFingerprint, port: u16) -> OsGuess {
     let mut guess = classify(fingerprint);
     guess.hops = Some(fingerprint.hops);
@@ -946,11 +947,13 @@ pub fn probe_fingerprint(host: IpAddr, port: u16, timeout: Duration, ttl: u8) ->
     #[cfg(not(target_os = "linux"))]
     {
         let _ = (host, port, timeout, ttl);
-        return None;
+        None
     }
 
     #[cfg(target_os = "linux")]
-    probe_fingerprint_linux(host, port, timeout, ttl)
+    {
+        probe_fingerprint_linux(host, port, timeout, ttl)
+    }
 }
 
 #[cfg(target_os = "linux")]

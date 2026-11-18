@@ -67,12 +67,14 @@ In our controlled benchmark lab simulating an enterprise perimeter with tarpits 
 |---|---|---|
 | `rayscan-linux` | Linux (x86_64 glibc) | Dynamic release binary for standard Linux distributions |
 | `rayscan-static-musl` | Linux (x86_64 musl) | Fully static standalone binary, runs anywhere (including Alpine / scratch) |
-| `rayscan.exe` | Windows (x86_64) | Native Windows executable (TCP connect scanner + UDP probe engine) |
+| `rayscan.exe` | Windows (x86_64) | Native Windows executable (connect/UDP engine plus Npcap-backed IPv4 raw SYN/ACK) |
 
-Raw SYN and ACK discovery and active OS fingerprinting are Linux/WSL2-only
-because they require `CAP_NET_RAW`; IPv4 uses `AF_PACKET`, while IPv6 uses
-kernel-routed `AF_INET6` raw sockets. The Windows binary uses the verified connect engine plus
-UDP probes and cannot perform raw IPv6 scans.
+Raw IPv4 SYN and ACK discovery works on Linux/WSL2 with `CAP_NET_RAW` and on
+Windows with [Npcap](https://npcap.com/) installed and the scanner run as
+administrator. Linux IPv6 uses kernel-routed `AF_INET6` raw sockets; Windows
+raw scanning is IPv4-only, and active OS fingerprinting remains Linux-only.
+Without Npcap, the Windows binary still uses the verified connect engine and
+UDP probes.
 
 ## What exists today
 
@@ -80,7 +82,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | :--- | :--- |
 | Toolchain | `rust-toolchain.toml`, pinned Rust 1.99.1, `rustfmt`, `clippy` |
 | CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan distributed plan/serve/worker/agent`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list/search/install`, guided `rayscan interactive`, global `--theme` |
-| Discovery | Async TCP connect scanner plus Linux raw SYN for IPv4 and IPv6 (`--syn`); raw TCP ACK firewall mapping (`--ack`, RST = `unfiltered`, timeout = `filtered`); optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
+| Discovery | Async TCP connect scanner plus raw SYN on Linux (IPv4/IPv6) and Windows with Npcap (IPv4) (`--syn`); raw TCP ACK firewall mapping (`--ack`, RST = `unfiltered`, timeout = `filtered`) on both raw backends; optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
@@ -89,7 +91,7 @@ UDP probes and cannot perform raw IPv6 scans.
 | Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353), and BACnet/IP Who-Is (47808) via `--udp` flag, including IPv6 (`src/udp.rs`) |
-| OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8) and reports consensus family, port agreement, sample count, and hop count; Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
+| OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` on Linux raw sockets (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8) and reports consensus family, port agreement, sample count, and hop count; Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
 | Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `ot|ics|scada`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
 | Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
@@ -298,10 +300,11 @@ cycle results, environment caveats, and repro instructions live in
 
 ## Requirements
 
-- Linux, or WSL2 with Ubuntu 22.04+.
+- Linux, WSL2 with Ubuntu 22.04+, or Windows 10/11.
 - Rust 1.99.1 (the pinned toolchain is installed automatically by `rustup`).
 - Python 3.10+ for the lab and benchmark harness.
-- Root only for `make lab`, `--syn`, and `--ack`; the other CLI paths and tests do not need root.
+- Linux root only for `make lab`, `--syn`, and `--ack`; the other CLI paths and tests do not need root.
+- Windows raw scanning requires Npcap plus an elevated terminal; no extra Rust dependency is needed.
 - Optional: `musl-tools` (`sudo apt-get install -y musl-tools`) for `make musl`.
 - Optional comparison tools: `nmap`, `masscan`, `rustscan`.
 
@@ -393,7 +396,7 @@ ports, so services, OS fingerprinting, UDP, advisories, plugins, and scripts are
 disabled automatically, and only `unfiltered` results are shown by default.
 
 ```bash
-# Map unfiltered TCP ports through a firewall (Linux/WSL2, root or CAP_NET_RAW):
+# Map unfiltered TCP ports through a firewall (Linux root/CAP_NET_RAW):
 sudo rayscan scan --ack --target 192.168.100.37 --ports 1-1024 --json
 
 # ACK probes honor probe shaping shared with SYN scans:
@@ -401,7 +404,16 @@ sudo rayscan scan --ack --target 192.168.100.37 --top-ports 100 \
     --ttl 64 --source-port-range 40000-40100
 ```
 
-ACK mode is available for IPv4 and IPv6, accepts `--retries`, `--timeout`,
+On Windows, run the same commands from an elevated PowerShell with Npcap
+installed (IPv4 only):
+
+```powershell
+.\rayscan.exe scan --syn --target 10.77.0.2 --ports 1-65535 --json
+.\rayscan.exe scan --ack --target 10.77.0.2 --ports 1-1024 --json
+```
+
+ACK mode is available for IPv4 everywhere raw scanning is available and for
+IPv6 on Linux only. It accepts `--retries`, `--timeout`,
 `--rate`, `--ttl`, and `--source-port-range`, and rejects `--decoys`,
 `--fragment-size`, `--format port-list`, and `--format host-port` (those
 renderers expose only open/closed results). Loopback validation in a Linux

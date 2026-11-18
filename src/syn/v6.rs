@@ -11,10 +11,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use super::engine::{Pacer, ProbeMode, SynScanOptions};
+use super::pacer::Pacer;
 use super::packet;
 use super::permute::BlackRock;
-use super::retry::{Retry, RetryQueue, next_source_port, retry_window};
+use super::retry::{Retry, RetryQueue, retry_window};
+use super::source_port::next_source_port;
+use super::{ProbeMode, SynScanOptions};
 use crate::error::AppError;
 use crate::model::{HostProgress, PortResult, PortState, ScanReport, StateCounts};
 use crate::rtt::RttEstimator;

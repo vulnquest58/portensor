@@ -1,57 +1,51 @@
 //! Raw SYN packet scanning engine.
 //!
-//! Provides high-speed raw TCP SYN scanning using Linux `AF_PACKET` sockets,
-//! kernel BPF filtering, SipHash-1-3 SYN cookies, and BlackRock permutation.
+//! Linux uses high-speed `AF_PACKET` sockets with kernel BPF filtering.
+//! Windows uses a dynamically loaded Npcap/WinPcap (`wpcap.dll`) backend so
+//! the normal release binary does not need a packet-capture SDK at build time.
+
+use crate::error::AppError;
+use crate::model::{ScanReport, StateSet};
+use crate::scanner::ProgressCallback;
 
 /// Default IPv4 TTL and IPv6 hop limit for raw probes.
 pub const DEFAULT_PROBE_TTL: u8 = 64;
 
-#[cfg(target_os = "linux")]
 pub mod aimd;
-#[cfg(target_os = "linux")]
 pub mod cookie;
+mod pacer;
+pub mod packet;
+pub mod permute;
+#[cfg(target_os = "linux")]
+mod retry;
+mod source_port;
+
 #[cfg(target_os = "linux")]
 pub mod engine;
 #[cfg(target_os = "linux")]
 pub mod filter;
 #[cfg(target_os = "linux")]
-pub mod packet;
-#[cfg(target_os = "linux")]
-pub mod permute;
-#[cfg(target_os = "linux")]
-mod retry;
-#[cfg(target_os = "linux")]
 pub mod route;
 #[cfg(target_os = "linux")]
 pub(crate) mod v6;
+#[cfg(target_os = "windows")]
+mod win;
 
-#[cfg(target_os = "linux")]
 pub use aimd::{AimdConfig, AimdController};
-#[cfg(target_os = "linux")]
 pub use cookie::CookieKey;
-#[cfg(target_os = "linux")]
-pub use engine::{ProbeMode, SynScanOptions, check_raw_privilege, syn_scan};
-#[cfg(target_os = "linux")]
-pub use filter::{attach_filter, build_filter};
-#[cfg(target_os = "linux")]
 pub use packet::{
     ParsedFrame, build_syn_frame, fragment_syn_frame, ip_checksum, parse_frame, tcp_checksum,
 };
-#[cfg(target_os = "linux")]
 pub use permute::BlackRock;
+
+#[cfg(target_os = "linux")]
+pub use filter::{attach_filter, build_filter};
 #[cfg(target_os = "linux")]
 pub use route::{
     RouteInfo, SynError, arp_resolve, default_route, iface_index, iface_ip, iface_mac,
 };
 
-#[cfg(not(target_os = "linux"))]
-use crate::error::AppError;
-#[cfg(not(target_os = "linux"))]
-use crate::model::ScanReport;
-#[cfg(not(target_os = "linux"))]
-use crate::scanner::ProgressCallback;
-
-#[cfg(not(target_os = "linux"))]
+/// Raw probe mode: SYN discovery or ACK firewall mapping.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ProbeMode {
     #[default]
@@ -59,36 +53,107 @@ pub enum ProbeMode {
     Ack,
 }
 
-#[cfg(not(target_os = "linux"))]
-#[derive(Clone, Debug, Default)]
+/// Configuration options for a raw SYN/ACK scan.
+#[derive(Clone, Debug)]
 pub struct SynScanOptions {
+    /// Target IP addresses to scan.
     pub targets: Vec<std::net::IpAddr>,
+    /// Target TCP ports to probe on each host.
     pub ports: Vec<u16>,
+    /// Probe type.
     pub mode: ProbeMode,
+    /// Initial transmit rate in packets per second (0 means unlimited).
     pub rate_pps: u64,
+    /// Rate used for retransmission passes (0 means `rate_pps / 4`).
     pub retry_rate_pps: u64,
+    /// Source port range used by the scanner `(min, max)`.
     pub sport_range: (u16, u16),
+    /// Milliseconds to wait after the last transmitted probe before declaring quiet ports filtered.
     pub timeout_ms: u64,
+    /// Number of frames to batch per send call.
     pub batch_size: usize,
+    /// Number of retransmission passes for probes that received no response.
     pub retries: u32,
-    pub retain: crate::model::StateSet,
+    /// Set of port states to retain in the resulting report.
+    pub retain: StateSet,
+    /// Enable AIMD adaptive rate control. Has no effect when `rate_pps == 0`.
     pub aimd: bool,
+    /// AIMD minimum rate floor in packets per second.
     pub aimd_min_pps: u64,
+    /// Maximum random delay inserted before each packet batch, in milliseconds.
     pub jitter_ms: u64,
+    /// Spoofed source addresses for decoy probes (IPv4 only).
     pub decoys: Vec<std::net::Ipv4Addr>,
+    /// Maximum IPv4 payload bytes per fragment (multiple of 8). `None` disables.
     pub fragment_size: Option<usize>,
+    /// IPv4 TTL / IPv6 hop limit for raw probes.
     pub ttl: u8,
 }
 
-#[cfg(not(target_os = "linux"))]
-pub fn check_raw_privilege() -> Result<(), AppError> {
-    Err(AppError::usage("raw SYN scanning requires Linux"))
+impl Default for SynScanOptions {
+    fn default() -> Self {
+        Self {
+            targets: Vec::new(),
+            ports: Vec::new(),
+            mode: ProbeMode::Syn,
+            rate_pps: 0,
+            retry_rate_pps: 0,
+            sport_range: (61000, 61999),
+            timeout_ms: 1000,
+            batch_size: 4096,
+            retries: 2,
+            retain: StateSet::all(),
+            aimd: true,
+            aimd_min_pps: 100,
+            jitter_ms: 0,
+            decoys: Vec::new(),
+            fragment_size: None,
+            ttl: DEFAULT_PROBE_TTL,
+        }
+    }
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Checks whether raw probing is available on this platform.
+pub fn check_raw_privilege() -> Result<(), AppError> {
+    #[cfg(target_os = "linux")]
+    {
+        engine::check_raw_privilege()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        win::check_raw_privilege()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        Err(AppError::usage(
+            "raw SYN scanning requires Linux or Windows with Npcap",
+        ))
+    }
+}
+
+/// Executes a raw SYN/ACK scan.
 pub fn syn_scan(
-    _opts: SynScanOptions,
-    _progress: Option<ProgressCallback>,
+    opts: SynScanOptions,
+    progress: Option<ProgressCallback>,
 ) -> Result<ScanReport, AppError> {
-    Err(AppError::usage("raw SYN scanning requires Linux"))
+    #[cfg(target_os = "linux")]
+    {
+        engine::syn_scan(opts, progress)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        win::syn_scan(opts, progress)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        let _ = (opts, progress);
+        Err(AppError::usage(
+            "raw SYN scanning requires Linux or Windows with Npcap",
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn route_summary() -> Result<String, String> {
+    win::route_summary()
 }

@@ -180,12 +180,30 @@ fn raw_syn_check() -> Check {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn raw_syn_check() -> Check {
+    match crate::syn::check_raw_privilege() {
+        Ok(()) => Check {
+            name: "raw-syn",
+            status: CheckStatus::Pass,
+            detail: "Npcap loaded; IPv4 raw SYN/ACK available (administrator may be required)"
+                .to_string(),
+        },
+        Err(error) => Check {
+            name: "raw-syn",
+            status: CheckStatus::Warn,
+            detail: format!("{error}; connect and UDP scanning remain available"),
+        },
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn raw_syn_check() -> Check {
     Check {
         name: "raw-syn",
         status: CheckStatus::Warn,
-        detail: "requires Linux; connect and UDP scanning are available".to_string(),
+        detail: "requires Linux or Windows with Npcap; connect and UDP scanning are available"
+            .to_string(),
     }
 }
 
@@ -208,12 +226,28 @@ fn route_check() -> Check {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn route_check() -> Check {
+    match crate::syn::route_summary() {
+        Ok(summary) => Check {
+            name: "route",
+            status: CheckStatus::Pass,
+            detail: summary,
+        },
+        Err(error) => Check {
+            name: "route",
+            status: CheckStatus::Warn,
+            detail: error,
+        },
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn route_check() -> Check {
     Check {
         name: "route",
         status: CheckStatus::Warn,
-        detail: "raw route diagnostics are Linux-only".to_string(),
+        detail: "raw route diagnostics require Linux or Windows with Npcap".to_string(),
     }
 }
 

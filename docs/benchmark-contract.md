@@ -55,8 +55,9 @@ and restores handshake-only behaviour.
 ## SYN mode
 
 `--syn` uses the same command and JSON contract. It requires Linux
-root/`CAP_NET_RAW` and is Linux-only. IPv4 and IPv6 targets are supported; mixed
-families are partitioned and merged into one result. Raw SYN-ACKs are candidates: by default
+root/`CAP_NET_RAW`, or Windows with Npcap and an elevated terminal. Linux
+supports IPv4 and IPv6; Windows raw mode is IPv4-only. Mixed families are
+partitioned and merged into one result. Raw SYN-ACKs are candidates: by default
 each candidate is connect-verified before it appears in `open`. For raw
 diagnostics, `--syn --connect-only` reports the layer-3/4 result directly.
 `--retries N` controls both raw retransmission and connect-verification retries.

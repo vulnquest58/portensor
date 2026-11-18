@@ -98,8 +98,8 @@ Rootless Linux run:
 
 - Release archives and platform binaries still predate Phase 8 and will be
   rebuilt after the speed and accuracy tracks.
-- Windows raw SYN remains out of scope until an Npcap/WinDivert backend exists;
-  the Windows binary keeps the connect + UDP engines.
+- Windows raw SYN was added after this checkpoint through an optional Npcap
+  backend (IPv4 only); active OS fingerprinting remains Linux-only.
 - Docker image construction remains unverified until a Docker host is available.
 - Speed and accuracy work has not started; this checkpoint is presentation,
   diagnostics, and guidance only.
