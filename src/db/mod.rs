@@ -33,7 +33,10 @@ pub const FEED_BASE: &str = "https://nvd.nist.gov/feeds/json/cve/2.0";
 /// First year covered by the NVD CVE 2.0 yearly feeds.
 pub const FIRST_YEAR: u16 = 2002;
 /// On-disk schema version; a mismatch triggers a rebuild on update.
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// Version 2 added the CPE vendor to every product mapping so lookups can
+/// distinguish same-named products from different vendors.
+pub const SCHEMA_VERSION: u32 = 2;
 /// A local database whose recent feed is older than this is considered stale.
 pub const STALE_AFTER_SECS: u64 = 8 * 24 * 60 * 60;
 /// Maximum number of version ranges retained per CVE/product pair.
@@ -61,9 +64,26 @@ impl VersionRange {
     }
 }
 
+/// Exact vendor/product identity from a CPE 2.3 name.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct CpeIdentity {
+    pub vendor: String,
+    pub product: String,
+}
+
+/// A conservative fallback mapping from a detected product name to an NVD
+/// vendor/product identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CpeAlias {
+    pub vendor: &'static str,
+    pub product: &'static str,
+}
+
 /// One product affected by a CVE, with the applicable version constraints.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AffectedProduct {
+    #[serde(default)]
+    pub vendor: String,
     pub product: String,
     #[serde(default, skip_serializing_if = "is_false")]
     pub all_versions: bool,
@@ -87,6 +107,8 @@ pub struct ShardEntry {
     pub id: String,
     pub title: String,
     pub cvss: f32,
+    #[serde(default)]
+    pub vendor: String,
     pub product: String,
     #[serde(default, skip_serializing_if = "is_false")]
     pub all_versions: bool,
@@ -286,32 +308,283 @@ pub fn bucket(product: &str) -> u8 {
     (hash & 0xff) as u8
 }
 
-/// Map a detected service product to the CPE product names used by NVD.
+/// Map a detected service product to exact NVD CPE vendor/product identities.
 ///
-/// Only products with a confident, unambiguous CPE mapping are included;
-/// generic service names (`ftp`, `ssh`, `http`) are intentionally excluded.
-pub fn cpe_products(product: &str) -> &'static [&'static str] {
-    match product.to_ascii_lowercase().as_str() {
-        "apache" | "httpd" | "apache httpd" => &["http_server"],
-        "vsftpd" => &["vsftpd"],
-        "openssh" => &["openssh"],
-        "samba" => &["samba"],
-        "exim" => &["exim"],
-        "postfix" => &["postfix"],
-        "mysql" => &["mysql"],
-        "unrealircd" => &["unrealircd"],
-        "distcc" | "distccd" => &["distcc"],
-        "proftpd" => &["proftpd"],
-        "nginx" => &["nginx"],
-        "openssl" => &["openssl"],
-        "tomcat" | "apache tomcat" => &["tomcat"],
-        "squid" => &["squid"],
-        "postgresql" => &["postgresql"],
-        "redis" => &["redis"],
-        "docker" => &["docker"],
-        "node.js" | "nodejs" => &["node.js"],
+/// Only products with a confident, unambiguous mapping are included; generic
+/// service names (`ftp`, `ssh`, `http`) are intentionally excluded.  NVD data
+/// is keyed by both vendor and product, so a product name alone never matches
+/// another vendor's similarly named product.
+pub fn cpe_products(product: &str) -> &'static [CpeAlias] {
+    match product.trim().to_ascii_lowercase().as_str() {
+        "apache" | "httpd" | "apache httpd" | "apache http server" => &[CpeAlias {
+            vendor: "apache",
+            product: "http_server",
+        }],
+        "vsftpd" => &[CpeAlias {
+            vendor: "vsftpd",
+            product: "vsftpd",
+        }],
+        "openssh" => &[CpeAlias {
+            vendor: "openbsd",
+            product: "openssh",
+        }],
+        "samba" => &[CpeAlias {
+            vendor: "samba",
+            product: "samba",
+        }],
+        "exim" => &[CpeAlias {
+            vendor: "exim",
+            product: "exim",
+        }],
+        "postfix" => &[CpeAlias {
+            vendor: "postfix",
+            product: "postfix",
+        }],
+        "mysql" => &[
+            CpeAlias {
+                vendor: "oracle",
+                product: "mysql",
+            },
+            CpeAlias {
+                vendor: "mysql",
+                product: "mysql",
+            },
+        ],
+        "unrealircd" => &[CpeAlias {
+            vendor: "unrealircd",
+            product: "unrealircd",
+        }],
+        "distcc" | "distccd" => &[CpeAlias {
+            vendor: "distcc",
+            product: "distcc",
+        }],
+        "proftpd" => &[CpeAlias {
+            vendor: "proftpd",
+            product: "proftpd",
+        }],
+        "nginx" => &[
+            CpeAlias {
+                vendor: "nginx",
+                product: "nginx",
+            },
+            CpeAlias {
+                vendor: "f5",
+                product: "nginx",
+            },
+        ],
+        "openssl" => &[CpeAlias {
+            vendor: "openssl",
+            product: "openssl",
+        }],
+        "tomcat" | "apache tomcat" => &[CpeAlias {
+            vendor: "apache",
+            product: "tomcat",
+        }],
+        "squid" => &[
+            CpeAlias {
+                vendor: "squid-cache",
+                product: "squid",
+            },
+            CpeAlias {
+                vendor: "squid",
+                product: "squid",
+            },
+        ],
+        "postgresql" => &[CpeAlias {
+            vendor: "postgresql",
+            product: "postgresql",
+        }],
+        "redis" => &[CpeAlias {
+            vendor: "redis",
+            product: "redis",
+        }],
+        "docker" => &[CpeAlias {
+            vendor: "docker",
+            product: "docker",
+        }],
+        "node.js" | "nodejs" => &[CpeAlias {
+            vendor: "nodejs",
+            product: "node.js",
+        }],
+        "mongodb" => &[CpeAlias {
+            vendor: "mongodb",
+            product: "mongodb",
+        }],
+        "kafka" | "apache kafka" => &[CpeAlias {
+            vendor: "apache",
+            product: "kafka",
+        }],
+        "kubernetes" => &[CpeAlias {
+            vendor: "kubernetes",
+            product: "kubernetes",
+        }],
+        "vault" | "hashicorp vault" => &[CpeAlias {
+            vendor: "hashicorp",
+            product: "vault",
+        }],
+        "consul" | "hashicorp consul" => &[CpeAlias {
+            vendor: "hashicorp",
+            product: "consul",
+        }],
+        "etcd" => &[CpeAlias {
+            vendor: "etcd",
+            product: "etcd",
+        }],
+        "clickhouse" => &[CpeAlias {
+            vendor: "clickhouse",
+            product: "clickhouse",
+        }],
+        "couchdb" | "apache couchdb" => &[CpeAlias {
+            vendor: "apache",
+            product: "couchdb",
+        }],
+        "rabbitmq" | "rabbitmq management" => &[CpeAlias {
+            vendor: "pivotal",
+            product: "rabbitmq",
+        }],
+        "zookeeper" | "apache zookeeper" => &[CpeAlias {
+            vendor: "apache",
+            product: "zookeeper",
+        }],
+        "jenkins" => &[CpeAlias {
+            vendor: "jenkins",
+            product: "jenkins",
+        }],
+        "grafana" => &[CpeAlias {
+            vendor: "grafana",
+            product: "grafana",
+        }],
+        "prometheus" => &[CpeAlias {
+            vendor: "prometheus",
+            product: "prometheus",
+        }],
+        "kibana" => &[CpeAlias {
+            vendor: "elastic",
+            product: "kibana",
+        }],
+        "elasticsearch" => &[CpeAlias {
+            vendor: "elastic",
+            product: "elasticsearch",
+        }],
+        "sonarqube" => &[CpeAlias {
+            vendor: "sonarsource",
+            product: "sonarqube",
+        }],
+        "jira" => &[CpeAlias {
+            vendor: "atlassian",
+            product: "jira",
+        }],
+        "confluence" => &[CpeAlias {
+            vendor: "atlassian",
+            product: "confluence",
+        }],
+        "gitlab" => &[CpeAlias {
+            vendor: "gitlab",
+            product: "gitlab",
+        }],
+        "webmin" => &[CpeAlias {
+            vendor: "webmin",
+            product: "webmin",
+        }],
+        "zabbix" => &[CpeAlias {
+            vendor: "zabbix",
+            product: "zabbix",
+        }],
+        "phpmyadmin" => &[CpeAlias {
+            vendor: "phpmyadmin",
+            product: "phpmyadmin",
+        }],
+        "microsoft-iis" | "iis" => &[CpeAlias {
+            vendor: "microsoft",
+            product: "internet_information_services",
+        }],
+        "lighttpd" => &[CpeAlias {
+            vendor: "lighttpd",
+            product: "lighttpd",
+        }],
+        "php" => &[CpeAlias {
+            vendor: "php",
+            product: "php",
+        }],
+        "dropbear" | "dropbear ssh" => &[CpeAlias {
+            vendor: "dropbear_ssh_project",
+            product: "dropbear_ssh",
+        }],
+        "oracle weblogic" => &[CpeAlias {
+            vendor: "oracle",
+            product: "weblogic_server",
+        }],
+        "ibm websphere" => &[CpeAlias {
+            vendor: "ibm",
+            product: "websphere_application_server",
+        }],
+        "nexus repository manager" => &[CpeAlias {
+            vendor: "sonatype",
+            product: "nexus_repository_manager",
+        }],
         _ => &[],
     }
+}
+
+/// Parse a CPE 2.3 name into its exact application identity and version.
+///
+/// Full NVD criteria and the abbreviated forms used by plugins (for example
+/// `cpe:2.3:a:redis:redis`) are accepted.  CPE names without a concrete
+/// vendor/product pair are rejected because they cannot be matched safely.
+pub(crate) fn parse_cpe(criteria: &str) -> Option<(CpeIdentity, Option<String>)> {
+    if !criteria.starts_with("cpe:2.3:") {
+        return None;
+    }
+    let fields: Vec<String> = split_cpe(criteria);
+    if fields.len() < 5 || fields[2] != "a" {
+        return None;
+    }
+    let vendor = normalize_cpe_part(&fields[3])?;
+    let product = normalize_cpe_part(&fields[4])?;
+    let version = fields.get(5).map(String::as_str).unwrap_or("*");
+    let update = fields.get(6).map(String::as_str).unwrap_or("*");
+    let exact = if is_cpe_wildcard(version) {
+        None
+    } else {
+        let mut value = version.to_string();
+        if !is_cpe_wildcard(update) {
+            value.push_str(update);
+        }
+        Some(value)
+    };
+    Some((CpeIdentity { vendor, product }, exact))
+}
+
+fn normalize_cpe_part(value: &str) -> Option<String> {
+    let value = value.trim().to_ascii_lowercase();
+    if value.is_empty() || is_cpe_wildcard(&value) {
+        return None;
+    }
+    Some(value)
+}
+
+fn is_cpe_wildcard(value: &str) -> bool {
+    value.is_empty() || value == "*" || value == "-" || value.contains('*') || value.contains('?')
+}
+
+fn split_cpe(criteria: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut escaped = false;
+    for character in criteria.chars() {
+        if escaped {
+            current.push(character);
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if character == ':' {
+            fields.push(std::mem::take(&mut current));
+        } else {
+            current.push(character);
+        }
+    }
+    fields.push(current);
+    fields
 }
 
 fn is_false(value: &bool) -> bool {
@@ -891,12 +1164,88 @@ mod tests {
     }
 
     #[test]
-    fn cpe_alias_mapping_is_conservative() {
-        assert_eq!(cpe_products("Apache"), &["http_server"]);
-        assert_eq!(cpe_products("vsFTPd"), &["vsftpd"]);
+    fn cpe_alias_mapping_is_vendor_aware_and_conservative() {
+        assert_eq!(
+            cpe_products("Apache"),
+            &[CpeAlias {
+                vendor: "apache",
+                product: "http_server",
+            }]
+        );
+        assert_eq!(
+            cpe_products("vsFTPd"),
+            &[CpeAlias {
+                vendor: "vsftpd",
+                product: "vsftpd",
+            }]
+        );
+        assert_eq!(
+            cpe_products("MySQL"),
+            &[
+                CpeAlias {
+                    vendor: "oracle",
+                    product: "mysql",
+                },
+                CpeAlias {
+                    vendor: "mysql",
+                    product: "mysql",
+                },
+            ]
+        );
         assert!(cpe_products("Apache-Coyote").is_empty());
         assert!(cpe_products("ftp").is_empty());
         assert!(cpe_products("http").is_empty());
+    }
+
+    #[test]
+    fn cpe_parser_returns_vendor_product_and_version() {
+        assert_eq!(
+            parse_cpe("cpe:2.3:a:vendor:some\\:product:1.0:*:*:*:*:*:*:*"),
+            Some((
+                CpeIdentity {
+                    vendor: "vendor".to_string(),
+                    product: "some:product".to_string(),
+                },
+                Some("1.0".to_string()),
+            ))
+        );
+        assert_eq!(
+            parse_cpe("cpe:2.3:a:openbsd:openssh:4.7:p1:*:*:*:*:*:*"),
+            Some((
+                CpeIdentity {
+                    vendor: "openbsd".to_string(),
+                    product: "openssh".to_string(),
+                },
+                Some("4.7p1".to_string()),
+            ))
+        );
+        assert_eq!(
+            parse_cpe("cpe:2.3:a:redis:redis"),
+            Some((
+                CpeIdentity {
+                    vendor: "redis".to_string(),
+                    product: "redis".to_string(),
+                },
+                None,
+            ))
+        );
+        assert_eq!(
+            parse_cpe("cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*"),
+            Some((
+                CpeIdentity {
+                    vendor: "vendor".to_string(),
+                    product: "product".to_string(),
+                },
+                None,
+            ))
+        );
+        assert_eq!(parse_cpe("cpe:2.3:a:*:product:1.0:*:*:*:*:*:*:*"), None);
+        assert_eq!(
+            parse_cpe("cpe:2.3:h:vendor:product:1.0:*:*:*:*:*:*:*"),
+            None
+        );
+        assert_eq!(parse_cpe("cpe:2.2:a:vendor:product:1.0"), None);
+        assert_eq!(parse_cpe("not-a-cpe"), None);
     }
 
     #[test]

@@ -2046,7 +2046,9 @@ mod tests {
                 cvss: 7.5,
                 cisa_kev: false,
                 epss: None,
-                source: "nvd",
+                source: "nvd".to_string(),
+                confidence: 0.88,
+                evidence: "exact_version".to_string(),
             })
             .collect();
         let results: Vec<&PortResult> = report.results.iter().collect();

@@ -1391,7 +1391,9 @@ mod tests {
                 cvss: 8.1,
                 cisa_kev: false,
                 epss: None,
-                source: "nvd",
+                source: "nvd".to_string(),
+                confidence: 0.88,
+                evidence: "exact_version".to_string(),
             },
             AdvisoryMatch {
                 id: "CVE-2024-9999".to_string(),
@@ -1400,7 +1402,9 @@ mod tests {
                 cvss: 9.8,
                 cisa_kev: true,
                 epss: Some(0.95),
-                source: "nvd",
+                source: "nvd".to_string(),
+                confidence: 0.88,
+                evidence: "exact_version".to_string(),
             },
         ];
 

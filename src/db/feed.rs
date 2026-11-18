@@ -16,8 +16,8 @@ use serde::de::{DeserializeSeed, Deserializer, IgnoredAny, MapAccess, SeqAccess,
 use sha2::{Digest, Sha256};
 
 use super::{
-    AffectedProduct, DbPaths, FeedMeta, MAX_RANGES_PER_PRODUCT, StoredEntry, VersionRange,
-    runtime_error,
+    AffectedProduct, CpeIdentity, DbPaths, FeedMeta, MAX_RANGES_PER_PRODUCT, StoredEntry,
+    VersionRange, parse_cpe, runtime_error,
 };
 use crate::error::AppError;
 
@@ -335,7 +335,7 @@ impl FeedVulnerability {
             .map(|metric| metric.data.base_score)
             .unwrap_or(0.0);
 
-        let mut products: std::collections::BTreeMap<String, ProductAccumulator> =
+        let mut products: std::collections::BTreeMap<CpeIdentity, ProductAccumulator> =
             std::collections::BTreeMap::new();
         for configuration in &cve.configurations {
             for node in &configuration.nodes {
@@ -343,10 +343,10 @@ impl FeedVulnerability {
                     if !cpe.vulnerable {
                         continue;
                     }
-                    let Some((product, exact_version)) = parse_cpe(&cpe.criteria) else {
+                    let Some((identity, exact_version)) = parse_cpe(&cpe.criteria) else {
                         continue;
                     };
-                    let accumulator = products.entry(product).or_default();
+                    let accumulator = products.entry(identity).or_default();
                     let range = VersionRange {
                         start_incl: cpe.start_incl.clone(),
                         start_excl: cpe.start_excl.clone(),
@@ -372,8 +372,9 @@ impl FeedVulnerability {
 
         let affected = products
             .into_iter()
-            .map(|(product, accumulator)| AffectedProduct {
-                product,
+            .map(|(identity, accumulator)| AffectedProduct {
+                vendor: identity.vendor,
+                product: identity.product,
                 all_versions: accumulator.all_versions,
                 ranges: accumulator.ranges,
             })
@@ -403,57 +404,6 @@ impl ProductAccumulator {
             self.ranges.push(range);
         }
     }
-}
-
-/// Parse a CPE 2.3 criteria string into `(product, exact_version)`.
-///
-/// Wildcard/not-applicable versions yield `None` for the version; the caller
-/// falls back to range bounds or treats the product as affected in all
-/// versions.
-fn parse_cpe(criteria: &str) -> Option<(String, Option<String>)> {
-    if !criteria.starts_with("cpe:2.3:") {
-        return None;
-    }
-    let fields: Vec<String> = split_cpe(criteria);
-    if fields.len() < 7 || fields[2] != "a" {
-        return None;
-    }
-    let product = fields[4].trim().to_string();
-    if product.is_empty() || product == "*" || product == "-" {
-        return None;
-    }
-    let version = fields[5].as_str();
-    let update = fields[6].as_str();
-    let exact = if version == "*" || version == "-" {
-        None
-    } else {
-        let mut value = version.to_string();
-        if !update.is_empty() && update != "*" && update != "-" {
-            value.push_str(update);
-        }
-        Some(value)
-    };
-    Some((product.to_ascii_lowercase(), exact))
-}
-
-fn split_cpe(criteria: &str) -> Vec<String> {
-    let mut fields = Vec::new();
-    let mut current = String::new();
-    let mut escaped = false;
-    for character in criteria.chars() {
-        if escaped {
-            current.push(character);
-            escaped = false;
-        } else if character == '\\' {
-            escaped = true;
-        } else if character == ':' {
-            fields.push(std::mem::take(&mut current));
-        } else {
-            current.push(character);
-        }
-    }
-    fields.push(current);
-    fields
 }
 
 fn clean_title(value: &str) -> String {
@@ -545,6 +495,7 @@ mod tests {
                 assert_eq!(entry.cvss, 9.8);
                 assert_eq!(entry.title, "Test overflow in vsftpd with newline");
                 assert_eq!(entry.affected.len(), 1);
+                assert_eq!(entry.affected[0].vendor, "vsftpd");
                 assert_eq!(entry.affected[0].product, "vsftpd");
                 assert!(!entry.affected[0].all_versions);
                 assert_eq!(entry.affected[0].ranges[0].end_excl.as_deref(), Some("3.0"));
@@ -560,6 +511,7 @@ mod tests {
         match &changes[2] {
             Change::Upsert(entry) => {
                 assert_eq!(entry.cvss, 5.0);
+                assert_eq!(entry.affected[0].vendor, "apache");
                 assert_eq!(entry.affected[0].product, "http_server");
                 assert_eq!(
                     entry.affected[0].ranges[0].start_incl.as_deref(),
@@ -572,27 +524,6 @@ mod tests {
             }
             Change::Remove(_) => panic!("expected upsert"),
         }
-    }
-
-    #[test]
-    fn cpe_parser_handles_escaping_and_wildcards() {
-        assert_eq!(
-            parse_cpe("cpe:2.3:a:vendor:some\\:product:1.0:*:*:*:*:*:*:*"),
-            Some(("some:product".to_string(), Some("1.0".to_string())))
-        );
-        assert_eq!(
-            parse_cpe("cpe:2.3:a:openssh:openssh:4.7:p1:*:*:*:*:*:*"),
-            Some(("openssh".to_string(), Some("4.7p1".to_string())))
-        );
-        assert_eq!(
-            parse_cpe("cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*"),
-            Some(("product".to_string(), None))
-        );
-        assert_eq!(
-            parse_cpe("cpe:2.3:h:vendor:product:1.0:*:*:*:*:*:*:*"),
-            None
-        );
-        assert_eq!(parse_cpe("not-a-cpe"), None);
     }
 
     #[test]

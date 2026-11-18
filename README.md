@@ -85,7 +85,7 @@ UDP probes.
 | Discovery | Async TCP connect scanner plus raw SYN on Linux (IPv4/IPv6) and Windows with Npcap (IPv4) (`--syn`); raw TCP ACK firewall mapping (`--ack`, RST = `unfiltered`, timeout = `filtered`) on both raw backends; optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
-| Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
+| Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`); vendor-aware CPE identity, version suffix/prerelease normalization, and confidence-gated findings |
 | Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`); accepts rayscan JSON, state files, and Nmap XML |
 | Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 60 embedded probes (13 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
 | Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), a read-only official baseline pack (`packs/official-baseline`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
@@ -486,7 +486,11 @@ Correlation is advisory only: it never sends extra probes, and findings must be 
 - Severity is derived from CVSS (Critical >= 9.0, High >= 7.0, Medium >= 4.0).
 - Version rules support exact, upper-bound, range, and all-version matches, so patched releases are not flagged.
 - Curated banner gates prevent ambiguous matches (for example the Debian OpenSSL PRNG issue only matches Debian/Ubuntu SSH banners).
-- NVD matches are extracted from CPE configurations and inherit NVD data quality: records marked as affecting all versions can produce legacy false positives, and new CVEs that only have CNA-supplied data are indexed but not correlated until NVD publishes CPE configurations.
+- NVD matches use exact CPE vendor/product identities when a plugin supplies a `service.cpe`, otherwise a conservative built-in product alias table; CPE identities are never broadened across vendors.
+- Explicit NVD version bounds are strict: malformed bounds reject the record instead of widening it, and a wildcard CPE in the same product mapping cannot override a narrower range.
+- Versions preserve patch and distro suffixes such as `4.7p1`, `1.0.2u`, and `5.0.51a-3ubuntu5`, compare numeric components numerically, and order prerelease markers before the final release.
+- New CVEs that only have CNA-supplied data are indexed but not correlated until NVD publishes CPE configurations.
+- Low-confidence NVD matches are discarded (`confidence < 0.55`). Exact-version evidence starts at `0.90`, ranges at `0.80`, and all-version records at `0.60`, scaled by service identification confidence; records marked as affecting all versions are therefore suppressed unless the service was identified with a version.
 
 ```bash
 # One-time full sync (all yearly feeds, 2002-2026) plus the rolling recent feed:
@@ -516,7 +520,7 @@ overlay that cache automatically. Use `--force` to bypass the 24-hour freshness
 window, for example in a scheduled intelligence refresh. A live refresh on
 2026-11-09 indexed 1,775 KEV CVEs and 402,199 EPSS-scored CVEs.
 
-Once initialized, every scan performs a lightweight check of the NVD `recent` feed and applies new or changed CVEs automatically (a few seconds when nothing changed). A full sync must be run manually once to bootstrap the database; without it, scans use only the bundled curated database and print a hint when `--advisories` is requested. Update failures never fail the scan.
+Once initialized, every scan performs a lightweight check of the NVD `recent` feed and applies new or changed CVEs automatically (a few seconds when nothing changed). A full sync must be run manually once to bootstrap the database; without it, scans use only the bundled curated database and print a hint when `--advisories` is requested. Update failures never fail the scan. Schema 2 stores CPE vendor identities; databases created by older releases are ignored and rebuilt by rerunning `rayscan db update`.
 
 The database lives in a user-writable data directory, resolved in this order: `--db-dir <DIR>`, `RAYSCAN_DB_DIR`, then `%APPDATA%\rayscan\db` on Windows or `$XDG_DATA_HOME/rayscan/db` (`~/.local/share/rayscan/db`) elsewhere. A full mirror is roughly 275 MB and grows over time; yearly feeds and 256-way product shards keep lookups fast, and a lock file prevents concurrent updates.
 
@@ -541,7 +545,7 @@ Vulnerability Advisory Correlation:
   175 advisory match(es) across 3 open service(s); offline CVE correlation (curated + local NVD database) — verify against vendor advisories.
 ```
 
-The table renderer adds an `ADVISORIES` column summarizing the highest-ranked match per port, `--explain` includes an `Advisory Matches:` breakdown, and JSON/JSONL results include an `advisories` array on each port object. Each match carries a `source` of `curated` or `nvd`. Human-readable sections show at most 10 matches per service; JSON/JSONL always contains the full list. Curated matches are listed first (they carry hand-verified version and banner gates), followed by NVD matches; each group is sorted by severity. When both sources report the same CVE, the curated entry is kept.
+The table renderer adds an `ADVISORIES` column summarizing the highest-ranked match per port, `--explain` includes an `Advisory Matches:` breakdown, and JSON/JSONL results include an `advisories` array on each port object. Each match carries a `source` of `curated` or `nvd`, a `confidence` score, and an `evidence` label (`curated`, `exact_version`, `version_range`, or `all_versions`). Human-readable sections show at most 10 matches per service; JSON/JSONL always contains the full list. Curated matches are listed first (they carry hand-verified version and banner gates), followed by NVD matches; each group is sorted by severity. When both sources report the same CVE, the curated entry is kept.
 
 ### CISA KEV & EPSS Threat Prioritization (`--kev-only` & `--min-epss`)
 

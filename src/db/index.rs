@@ -11,7 +11,7 @@ use super::{
     DbPaths, Manifest, ShardEntry, StoredEntry, VersionRange, YearState, replace_file,
     runtime_error,
 };
-use crate::advisory::{AdvisoryMatch, Severity, compare_versions, parse_version};
+use crate::advisory::{AdvisoryMatch, Severity, Version, parse_version};
 use crate::error::AppError;
 
 /// Write a yearly compact file and rebuild its product shards.
@@ -91,6 +91,7 @@ pub fn rebuild_year_shards(paths: &DbPaths, year: u16) -> Result<(), AppError> {
                 id: entry.id.clone(),
                 title: entry.title.clone(),
                 cvss: entry.cvss,
+                vendor: affected.vendor.clone(),
                 product: affected.product.clone(),
                 all_versions: affected.all_versions,
                 ranges: affected.ranges.clone(),
@@ -224,46 +225,80 @@ impl LocalIndex {
         })
     }
 
-    /// Return NVD advisories matching a detected product and version.
-    pub fn advisories_for(&self, product: &str, version: Option<&[u64]>) -> Vec<AdvisoryMatch> {
-        let products = super::cpe_products(product);
-        if products.is_empty() {
-            return Vec::new();
-        }
-
+    /// Return NVD advisories matching a detected product and version using
+    /// the conservative built-in vendor/product aliases.
+    pub(crate) fn advisories_for(
+        &self,
+        product: &str,
+        version: Option<&Version>,
+    ) -> Vec<AdvisoryMatch> {
+        let aliases = super::cpe_products(product);
         let mut best: HashMap<String, AdvisoryMatch> = HashMap::new();
-        for &cpe_product in products {
-            let bucket = super::bucket(cpe_product);
-            for &year in &self.years {
-                let shard = self.load_shard(year, bucket);
-                for entry in shard.iter() {
-                    if entry.product != cpe_product || !entry_matches(entry, version) {
-                        continue;
+        for alias in aliases {
+            self.collect_identity(alias.vendor, alias.product, version, &mut best);
+        }
+        best.into_values().collect()
+    }
+
+    /// Return NVD advisories for one exact CPE vendor/product identity.
+    ///
+    /// This is used for plugin-supplied CPEs, where the vendor is part of the
+    /// detection and must not be broadened by an alias.
+    pub(crate) fn advisories_for_identity(
+        &self,
+        vendor: &str,
+        product: &str,
+        version: Option<&Version>,
+    ) -> Vec<AdvisoryMatch> {
+        let mut best = HashMap::new();
+        self.collect_identity(vendor, product, version, &mut best);
+        best.into_values().collect()
+    }
+
+    fn collect_identity(
+        &self,
+        vendor: &str,
+        product: &str,
+        version: Option<&Version>,
+        best: &mut HashMap<String, AdvisoryMatch>,
+    ) {
+        let bucket = super::bucket(product);
+        for &year in &self.years {
+            let shard = self.load_shard(year, bucket);
+            for entry in shard.iter() {
+                if entry.vendor != vendor || entry.product != product {
+                    continue;
+                }
+                let Some(evidence) = entry_matches(entry, version) else {
+                    continue;
+                };
+                let (cisa_kev, epss) = crate::advisory::lookup_threat_intel(&entry.id);
+                let advisory = AdvisoryMatch {
+                    id: entry.id.clone(),
+                    title: entry.title.clone(),
+                    severity: Severity::from_cvss(entry.cvss),
+                    cvss: entry.cvss,
+                    cisa_kev,
+                    epss,
+                    source: "nvd".to_string(),
+                    confidence: evidence.confidence(),
+                    evidence: evidence.label().to_string(),
+                };
+                match best.get_mut(&advisory.id) {
+                    Some(existing)
+                        if advisory.confidence > existing.confidence
+                            || (advisory.confidence == existing.confidence
+                                && advisory.cvss > existing.cvss) =>
+                    {
+                        *existing = advisory;
                     }
-                    let (cisa_kev, epss) = crate::advisory::lookup_threat_intel(&entry.id);
-                    let advisory = AdvisoryMatch {
-                        id: entry.id.clone(),
-                        title: entry.title.clone(),
-                        severity: Severity::from_cvss(entry.cvss),
-                        cvss: entry.cvss,
-                        cisa_kev,
-                        epss,
-                        source: "nvd",
-                    };
-                    match best.get_mut(&advisory.id) {
-                        Some(existing) => {
-                            if advisory.cvss > existing.cvss {
-                                *existing = advisory;
-                            }
-                        }
-                        None => {
-                            best.insert(advisory.id.clone(), advisory);
-                        }
+                    Some(_) => {}
+                    None => {
+                        best.insert(advisory.id.clone(), advisory);
                     }
                 }
             }
         }
-        best.into_values().collect()
     }
 
     fn load_shard(&self, year: u16, bucket: u8) -> Rc<Vec<ShardEntry>> {
@@ -290,45 +325,104 @@ impl LocalIndex {
     }
 }
 
-fn entry_matches(entry: &ShardEntry, version: Option<&[u64]>) -> bool {
-    if entry.all_versions {
-        return true;
-    }
-    let Some(version) = version else {
-        return false;
-    };
-    entry
-        .ranges
-        .iter()
-        .any(|range| range_matches(range, version))
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MatchEvidence {
+    Exact,
+    Range,
+    AllVersions,
 }
 
-fn range_matches(range: &VersionRange, detected: &[u64]) -> bool {
-    if let Some(value) = &range.start_incl {
-        match parse_version(value) {
-            Some(bound) if compare_versions(detected, &bound).is_ge() => {}
-            _ => return false,
+impl MatchEvidence {
+    const fn confidence(self) -> f32 {
+        match self {
+            Self::Exact => 0.90,
+            Self::Range => 0.80,
+            Self::AllVersions => 0.60,
         }
     }
-    if let Some(value) = &range.start_excl {
-        match parse_version(value) {
-            Some(bound) if compare_versions(detected, &bound).is_gt() => {}
-            _ => return false,
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Exact => "exact_version",
+            Self::Range => "version_range",
+            Self::AllVersions => "all_versions",
         }
     }
-    if let Some(value) = &range.end_incl {
-        match parse_version(value) {
-            Some(bound) if compare_versions(detected, &bound).is_le() => {}
-            _ => return false,
+}
+
+fn entry_matches(entry: &ShardEntry, version: Option<&Version>) -> Option<MatchEvidence> {
+    if entry.ranges.is_empty() {
+        return entry.all_versions.then_some(MatchEvidence::AllVersions);
+    }
+
+    // A wildcard CPE entry must not override explicit version bounds in the
+    // same product mapping; doing so would turn a narrow range into "all
+    // versions" and reintroduce false positives.
+    let version = version?;
+    let mut saw_range = false;
+    for range in &entry.ranges {
+        match range_matches(range, version) {
+            Some(MatchEvidence::Exact) => return Some(MatchEvidence::Exact),
+            Some(MatchEvidence::Range) => saw_range = true,
+            Some(MatchEvidence::AllVersions) | None => {}
         }
     }
-    if let Some(value) = &range.end_excl {
-        match parse_version(value) {
-            Some(bound) if compare_versions(detected, &bound).is_lt() => {}
-            _ => return false,
-        }
+    saw_range.then_some(MatchEvidence::Range)
+}
+
+fn range_matches(range: &VersionRange, detected: &Version) -> Option<MatchEvidence> {
+    let start_incl = match &range.start_incl {
+        Some(value) => Some(parse_version(value)?),
+        None => None,
+    };
+    let start_excl = match &range.start_excl {
+        Some(value) => Some(parse_version(value)?),
+        None => None,
+    };
+    let end_incl = match &range.end_incl {
+        Some(value) => Some(parse_version(value)?),
+        None => None,
+    };
+    let end_excl = match &range.end_excl {
+        Some(value) => Some(parse_version(value)?),
+        None => None,
+    };
+
+    if start_incl.is_none() && start_excl.is_none() && end_incl.is_none() && end_excl.is_none() {
+        return None;
     }
-    true
+
+    if let Some(bound) = &start_incl
+        && detected < bound
+    {
+        return None;
+    }
+    if let Some(bound) = &start_excl
+        && detected <= bound
+    {
+        return None;
+    }
+    if let Some(bound) = &end_incl
+        && detected > bound
+    {
+        return None;
+    }
+    if let Some(bound) = &end_excl
+        && detected >= bound
+    {
+        return None;
+    }
+
+    let exact = start_incl.is_some()
+        && end_incl.is_some()
+        && start_excl.is_none()
+        && end_excl.is_none()
+        && start_incl == end_incl;
+    Some(if exact {
+        MatchEvidence::Exact
+    } else {
+        MatchEvidence::Range
+    })
 }
 
 #[cfg(test)]
@@ -387,12 +481,13 @@ mod tests {
     }
 
     #[test]
-    fn index_matches_products_and_versions() {
+    fn index_matches_vendor_product_and_versions() {
         let db = TempDb::new("match");
         let entries = vec![
             entry(
                 "CVE-2024-0001",
                 vec![AffectedProduct {
+                    vendor: "apache".to_string(),
                     product: "http_server".to_string(),
                     all_versions: false,
                     ranges: vec![VersionRange {
@@ -406,9 +501,24 @@ mod tests {
             entry(
                 "CVE-2024-0002",
                 vec![AffectedProduct {
+                    vendor: "vsftpd".to_string(),
                     product: "vsftpd".to_string(),
                     all_versions: true,
                     ranges: Vec::new(),
+                }],
+            ),
+            entry(
+                "CVE-2024-0003",
+                vec![AffectedProduct {
+                    vendor: "oracle".to_string(),
+                    product: "http_server".to_string(),
+                    all_versions: false,
+                    ranges: vec![VersionRange {
+                        start_incl: Some("2.4.49".to_string()),
+                        start_excl: None,
+                        end_incl: Some("2.4.49".to_string()),
+                        end_excl: None,
+                    }],
                 }],
             ),
         ];
@@ -416,19 +526,31 @@ mod tests {
         write_manifest(&db.paths, &entries);
 
         let index = LocalIndex::load(&db.paths).expect("index loads");
-        let apache = index.advisories_for("Apache", parse_version("2.4.49").as_deref());
+        let apache = index.advisories_for("Apache", parse_version("2.4.49").as_ref());
         assert_eq!(apache.len(), 1);
         assert_eq!(apache[0].id, "CVE-2024-0001");
         assert_eq!(apache[0].source, "nvd");
+        assert_eq!(apache[0].confidence, 0.90);
+        assert_eq!(apache[0].evidence, "exact_version");
 
-        let patched = index.advisories_for("Apache", parse_version("2.4.50").as_deref());
+        let oracle = index.advisories_for_identity(
+            "oracle",
+            "http_server",
+            parse_version("2.4.49").as_ref(),
+        );
+        assert_eq!(oracle.len(), 1);
+        assert_eq!(oracle[0].id, "CVE-2024-0003");
+
+        let patched = index.advisories_for("Apache", parse_version("2.4.50").as_ref());
         assert!(patched.is_empty());
         let coyote = index.advisories_for("Apache-Coyote", None);
         assert!(coyote.is_empty());
 
-        let vsftpd = index.advisories_for("vsFTPd", parse_version("3.0.5").as_deref());
+        let vsftpd = index.advisories_for("vsFTPd", parse_version("3.0.5").as_ref());
         assert_eq!(vsftpd.len(), 1);
         assert_eq!(vsftpd[0].id, "CVE-2024-0002");
+        assert_eq!(vsftpd[0].evidence, "all_versions");
+        assert_eq!(vsftpd[0].confidence, 0.60);
     }
 
     #[test]
@@ -437,6 +559,7 @@ mod tests {
         let entries = vec![entry(
             "CVE-2024-0001",
             vec![AffectedProduct {
+                vendor: "openbsd".to_string(),
                 product: "openssh".to_string(),
                 all_versions: false,
                 ranges: vec![VersionRange {
@@ -455,6 +578,7 @@ mod tests {
             Change::Upsert(entry(
                 "CVE-2024-0001",
                 vec![AffectedProduct {
+                    vendor: "openbsd".to_string(),
                     product: "openssh".to_string(),
                     all_versions: true,
                     ranges: Vec::new(),
@@ -463,6 +587,7 @@ mod tests {
             Change::Upsert(entry(
                 "CVE-2024-0003",
                 vec![AffectedProduct {
+                    vendor: "samba".to_string(),
                     product: "samba".to_string(),
                     all_versions: true,
                     ranges: Vec::new(),
@@ -472,7 +597,7 @@ mod tests {
         apply_changes(&db.paths, &mut manifest, &changes).unwrap();
 
         let index = LocalIndex::load(&db.paths).expect("index loads");
-        let ssh = index.advisories_for("OpenSSH", parse_version("9.0").as_deref());
+        let ssh = index.advisories_for("OpenSSH", parse_version("9.0").as_ref());
         assert_eq!(ssh.len(), 1);
         assert!(ssh[0].title.contains("CVE-2024-0001"));
 
@@ -486,22 +611,31 @@ mod tests {
         let index = LocalIndex::load(&db.paths).expect("index loads");
         assert!(
             index
-                .advisories_for("OpenSSH", parse_version("9.0").as_deref())
+                .advisories_for("OpenSSH", parse_version("9.0").as_ref())
                 .is_empty()
         );
     }
 
     #[test]
-    fn range_bounds_are_inclusive_and_exclusive() {
+    fn range_bounds_are_inclusive_exclusive_and_strict() {
         let inclusive = VersionRange {
             start_incl: Some("1.0".to_string()),
             start_excl: None,
             end_incl: Some("1.2".to_string()),
             end_excl: None,
         };
-        assert!(range_matches(&inclusive, &[1, 0]));
-        assert!(range_matches(&inclusive, &[1, 2]));
-        assert!(!range_matches(&inclusive, &[1, 3]));
+        assert_eq!(
+            range_matches(&inclusive, &parse_version("1.0").unwrap()),
+            Some(MatchEvidence::Range)
+        );
+        assert_eq!(
+            range_matches(&inclusive, &parse_version("1.2").unwrap()),
+            Some(MatchEvidence::Range)
+        );
+        assert_eq!(
+            range_matches(&inclusive, &parse_version("1.3").unwrap()),
+            None
+        );
 
         let exclusive = VersionRange {
             start_incl: None,
@@ -509,9 +643,67 @@ mod tests {
             end_incl: None,
             end_excl: Some("2.0".to_string()),
         };
-        assert!(!range_matches(&exclusive, &[1, 0]));
-        assert!(range_matches(&exclusive, &[1, 5]));
-        assert!(!range_matches(&exclusive, &[2, 0]));
+        assert_eq!(
+            range_matches(&exclusive, &parse_version("1.0").unwrap()),
+            None
+        );
+        assert_eq!(
+            range_matches(&exclusive, &parse_version("1.5").unwrap()),
+            Some(MatchEvidence::Range)
+        );
+        assert_eq!(
+            range_matches(&exclusive, &parse_version("2.0").unwrap()),
+            None
+        );
+
+        let exact = VersionRange {
+            start_incl: Some("4.7p1".to_string()),
+            start_excl: None,
+            end_incl: Some("4.7p1".to_string()),
+            end_excl: None,
+        };
+        assert_eq!(
+            range_matches(&exact, &parse_version("4.7p1").unwrap()),
+            Some(MatchEvidence::Exact)
+        );
+        assert_eq!(
+            range_matches(&exact, &parse_version("4.7p2").unwrap()),
+            None
+        );
+
+        let malformed = VersionRange {
+            start_incl: None,
+            start_excl: None,
+            end_incl: None,
+            end_excl: Some("garbage".to_string()),
+        };
+        assert_eq!(
+            range_matches(&malformed, &parse_version("1.0").unwrap()),
+            None
+        );
+    }
+
+    #[test]
+    fn wildcard_entries_do_not_override_explicit_ranges() {
+        let entry = ShardEntry {
+            id: "CVE-2024-0004".to_string(),
+            title: "mixed constraints".to_string(),
+            cvss: 7.5,
+            vendor: "vendor".to_string(),
+            product: "product".to_string(),
+            all_versions: true,
+            ranges: vec![VersionRange {
+                start_incl: Some("1.0".to_string()),
+                start_excl: None,
+                end_incl: Some("1.2".to_string()),
+                end_excl: None,
+            }],
+        };
+        assert_eq!(entry_matches(&entry, parse_version("2.0").as_ref()), None);
+        assert_eq!(
+            entry_matches(&entry, parse_version("1.1").as_ref()),
+            Some(MatchEvidence::Range)
+        );
     }
 
     #[test]

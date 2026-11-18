@@ -6,6 +6,18 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Vendor-aware advisory confidence**: NVD correlation now stores exact CPE
+  vendor/product identities (database schema 2) and prefers a plugin-supplied
+  `service.cpe` over the product alias table, preventing cross-vendor false
+  positives such as Apache HTTP Server matches against Oracle HTTP Server.
+  Version matching preserves patch and distro suffixes (`4.7p1`, `1.0.2u`,
+  `5.0.51a-3ubuntu5`), compares numeric components numerically, and orders
+  prerelease markers before the final release. Malformed NVD bounds are
+  rejected instead of widening a range, and wildcard CPEs cannot override
+  explicit bounds. Advisory matches now expose `confidence` and `evidence`
+  fields; low-confidence all-version matches are suppressed (`confidence <
+  0.55`) while exact-version, range, and curated evidence remain ranked.
+  Existing databases must be rebuilt with `rayscan db update`.
 - **Adaptive target politeness**: `--rate-auto` now distinguishes timeout,
   ICMP-unreachable, and tarpit/handshake-silent feedback in 500-probe windows;
   it halves on adverse bursts and recovers by 25% when responses are healthy,

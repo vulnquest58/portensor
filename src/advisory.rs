@@ -142,7 +142,15 @@ pub struct AdvisoryMatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub epss: Option<f32>,
     /// Where the match came from: `curated` or `nvd`.
-    pub source: &'static str,
+    pub source: String,
+    /// Confidence in the advisory match after combining evidence quality with
+    /// the detected service identification confidence.
+    #[serde(default)]
+    pub confidence: f32,
+    /// Match basis: `curated`, `exact_version`, `version_range`, or
+    /// `all_versions`.
+    #[serde(default)]
+    pub evidence: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -178,27 +186,23 @@ enum VersionRule {
 }
 
 impl VersionRule {
-    fn matches(&self, detected: Option<&[u64]>) -> bool {
+    fn matches(&self, detected: Option<&Version>) -> bool {
         let Some(detected) = detected else {
             return matches!(self, Self::Any);
         };
         match self {
             Self::Any => true,
-            Self::Eq { value } => {
-                parse_version(value).is_some_and(|rule| compare_versions(detected, &rule).is_eq())
-            }
-            Self::Lt { value } => {
-                parse_version(value).is_some_and(|rule| compare_versions(detected, &rule).is_lt())
-            }
+            Self::Eq { value } => parse_version(value).is_some_and(|rule| detected == &rule),
+            Self::Lt { value } => parse_version(value).is_some_and(|rule| detected < &rule),
             Self::Range { min, max_exclusive } => {
-                let above_min = min
-                    .as_deref()
-                    .and_then(parse_version)
-                    .is_none_or(|rule| compare_versions(detected, &rule).is_ge());
-                let below_max = max_exclusive
-                    .as_deref()
-                    .and_then(parse_version)
-                    .is_none_or(|rule| compare_versions(detected, &rule).is_lt());
+                let above_min = match min {
+                    Some(value) => parse_version(value).is_some_and(|rule| detected >= &rule),
+                    None => true,
+                };
+                let below_max = match max_exclusive {
+                    Some(value) => parse_version(value).is_some_and(|rule| detected < &rule),
+                    None => true,
+                };
                 above_min && below_max
             }
         }
@@ -209,7 +213,7 @@ impl Advisory {
     fn matches(
         &self,
         identities: &[String],
-        version: Option<&[u64]>,
+        version: Option<&Version>,
         banner: Option<&str>,
     ) -> bool {
         if self.products.is_empty()
@@ -267,12 +271,22 @@ pub fn correlate_with(result: &PortResult, index: Option<&LocalIndex>) -> Vec<Ad
         identities.push(product.to_ascii_lowercase());
     }
 
-    let version = service.version.as_deref().and_then(parse_version);
+    let service_confidence = service_identity_confidence(service);
+    let cpe = service.cpe.as_deref().and_then(crate::db::parse_cpe);
+    let cpe_version = cpe
+        .as_ref()
+        .and_then(|(_, version)| version.as_deref())
+        .and_then(parse_version);
+    let version = service
+        .version
+        .as_deref()
+        .and_then(parse_version)
+        .or(cpe_version);
     let banner = result.banner.as_deref().map(str::to_ascii_lowercase);
 
     let mut matches: Vec<AdvisoryMatch> = database()
         .iter()
-        .filter(|advisory| advisory.matches(&identities, version.as_deref(), banner.as_deref()))
+        .filter(|advisory| advisory.matches(&identities, version.as_ref(), banner.as_deref()))
         .map(|advisory| {
             let (cisa_kev, epss) = lookup_threat_intel(&advisory.id);
             AdvisoryMatch {
@@ -282,28 +296,63 @@ pub fn correlate_with(result: &PortResult, index: Option<&LocalIndex>) -> Vec<Ad
                 cvss: advisory.cvss,
                 cisa_kev,
                 epss,
-                source: "curated",
+                source: "curated".to_string(),
+                confidence: match_confidence(CURATED_MATCH_CONFIDENCE, service_confidence),
+                evidence: "curated".to_string(),
             }
         })
         .collect();
 
-    if let (Some(index), Some(product)) = (index, service.product.as_deref()) {
-        for advisory in index.advisories_for(product, version.as_deref()) {
+    if let Some(index) = index {
+        let found = if let Some((identity, _)) = &cpe {
+            // A plugin-supplied CPE is an exact identity; do not broaden it
+            // through the product alias table.
+            index.advisories_for_identity(&identity.vendor, &identity.product, version.as_ref())
+        } else if let Some(product) = service.product.as_deref() {
+            index.advisories_for(product, version.as_ref())
+        } else {
+            Vec::new()
+        };
+        for mut advisory in found {
+            advisory.confidence = match_confidence(advisory.confidence, service_confidence);
             if !matches.iter().any(|existing| existing.id == advisory.id) {
                 matches.push(advisory);
             }
         }
     }
 
+    // Low-confidence all-version NVD entries are a common source of noise when
+    // the service identity is weak.  Keep only matches with enough combined
+    // identification and evidence confidence.
+    matches.retain(|advisory| advisory.confidence >= MIN_ADVISORY_CONFIDENCE);
     sort_matches(&mut matches);
     matches
+}
+
+const CURATED_MATCH_CONFIDENCE: f32 = 0.99;
+const MIN_ADVISORY_CONFIDENCE: f32 = 0.55;
+
+fn service_identity_confidence(service: &crate::service::ServiceInfo) -> f32 {
+    service
+        .confidence
+        .filter(|confidence| confidence.is_finite())
+        .map(|confidence| confidence.clamp(0.0, 1.0))
+        .unwrap_or(if service.cpe.is_some() || service.product.is_some() {
+            0.85
+        } else {
+            0.70
+        })
+}
+
+fn match_confidence(evidence_confidence: f32, service_confidence: f32) -> f32 {
+    ((evidence_confidence * service_confidence * 100.0).round() / 100.0).clamp(0.0, 1.0)
 }
 
 fn sort_matches(matches: &mut [AdvisoryMatch]) {
     matches.sort_by(|left, right| {
         let rank = |source: &str| u8::from(source != "curated");
-        rank(left.source)
-            .cmp(&rank(right.source))
+        rank(left.source.as_str())
+            .cmp(&rank(right.source.as_str()))
             .then_with(|| right.severity.cmp(&left.severity))
             .then_with(|| left.id.cmp(&right.id))
     });
@@ -341,31 +390,192 @@ pub fn filter_advisories(report: &mut ScanReport, kev_only: bool, min_epss: Opti
     }
 }
 
-pub(crate) fn parse_version(version: &str) -> Option<Vec<u64>> {
-    let core: String = version
-        .chars()
-        .take_while(|character| character.is_ascii_digit() || *character == '.')
-        .collect();
-    let parts: Vec<u64> = core
-        .split('.')
-        .filter(|part| !part.is_empty())
-        .map(|part| part.parse::<u64>())
-        .collect::<Result<_, _>>()
-        .ok()?;
-    (!parts.is_empty()).then_some(parts)
+/// Normalized version with numeric and alphabetic tokens.
+///
+/// Numeric segments compare numerically, alphabetic suffixes compare
+/// lexically, and common prerelease markers (`rc`, `beta`, ...) sort before
+/// the final release.  This preserves information that the previous
+/// numeric-only parser discarded, such as the `p1` in `4.7p1` or the `u` in
+/// `1.0.2u`, while still treating `2.3` and `2.3.0` as equivalent.
+#[derive(Clone, Debug)]
+pub(crate) struct Version {
+    tokens: Vec<VersionToken>,
 }
 
-pub(crate) fn compare_versions(left: &[u64], right: &[u64]) -> Ordering {
-    let len = left.len().max(right.len());
-    for index in 0..len {
-        let left_part = left.get(index).copied().unwrap_or(0);
-        let right_part = right.get(index).copied().unwrap_or(0);
-        match left_part.cmp(&right_part) {
-            Ordering::Equal => continue,
-            other => return other,
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum VersionToken {
+    Number(u64),
+    /// A prerelease marker separated from the release by punctuation (for
+    /// example `1.0.0-rc1`) or a recognized attached marker such as `rc2`.
+    Text(String),
+    /// An attached alphabetic release suffix such as `4.7p1`, `1.0.2u`, or
+    /// `2.4.49c`. These sort after the bare release.
+    Suffix(String),
+}
+
+fn is_prerelease_marker(text: &str) -> bool {
+    matches!(
+        text,
+        "alpha" | "beta" | "rc" | "pre" | "preview" | "dev" | "snapshot" | "nightly" | "milestone"
+    )
+}
+
+impl PartialEq for Version {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Version {}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let common = self.tokens.len().min(other.tokens.len());
+        for index in 0..common {
+            let ordering = match (&self.tokens[index], &other.tokens[index]) {
+                (VersionToken::Number(left), VersionToken::Number(right)) => left.cmp(right),
+                (VersionToken::Text(left), VersionToken::Text(right)) => left.cmp(right),
+                (VersionToken::Suffix(left), VersionToken::Suffix(right)) => left.cmp(right),
+                (VersionToken::Text(_), VersionToken::Suffix(_)) => Ordering::Less,
+                (VersionToken::Suffix(_), VersionToken::Text(_)) => Ordering::Greater,
+                (VersionToken::Text(_) | VersionToken::Suffix(_), VersionToken::Number(_)) => {
+                    Ordering::Less
+                }
+                (VersionToken::Number(_), VersionToken::Text(_) | VersionToken::Suffix(_)) => {
+                    Ordering::Greater
+                }
+            };
+            if ordering != Ordering::Equal {
+                return ordering;
+            }
+        }
+
+        if self.tokens.len() == other.tokens.len() {
+            return Ordering::Equal;
+        }
+
+        let (left_longer, longer, shorter_len) = if self.tokens.len() > other.tokens.len() {
+            (true, self, other.tokens.len())
+        } else {
+            (false, other, self.tokens.len())
+        };
+        let first_extra = &longer.tokens[shorter_len];
+        let extra_is_release = matches!(
+            first_extra,
+            VersionToken::Number(_) | VersionToken::Suffix(_)
+        );
+        match (left_longer, extra_is_release) {
+            (true, true) => Ordering::Greater,
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Less,
+            (false, false) => Ordering::Greater,
         }
     }
-    Ordering::Equal
+}
+
+const MAX_VERSION_TOKENS: usize = 32;
+const MAX_VERSION_TOKEN_CHARS: usize = 64;
+const MAX_VERSION_CHARS: usize = 256;
+
+pub(crate) fn parse_version(version: &str) -> Option<Version> {
+    let mut text = version.trim();
+    if text.is_empty() || text.len() > MAX_VERSION_CHARS || text.contains('*') || text.contains('?')
+    {
+        return None;
+    }
+    if text.starts_with('v') || text.starts_with('V') {
+        let rest = &text[1..];
+        if rest.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+            text = rest;
+        }
+    }
+
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut current_is_digit: Option<bool> = None;
+    let mut current_attached = false;
+    let mut previous_was_alphanumeric = false;
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() {
+            let is_digit = character.is_ascii_digit();
+            if let Some(previous) = current_is_digit
+                && previous != is_digit
+            {
+                push_version_token(&mut tokens, &mut current, previous, current_attached)?;
+            }
+            if current.is_empty() {
+                current_attached = previous_was_alphanumeric;
+            }
+            current_is_digit = Some(is_digit);
+            current.push(character.to_ascii_lowercase());
+            if current.len() > MAX_VERSION_TOKEN_CHARS {
+                return None;
+            }
+            previous_was_alphanumeric = true;
+        } else {
+            if let Some(previous) = current_is_digit.take() {
+                push_version_token(&mut tokens, &mut current, previous, current_attached)?;
+            }
+            previous_was_alphanumeric = false;
+        }
+    }
+    if let Some(previous) = current_is_digit {
+        push_version_token(&mut tokens, &mut current, previous, current_attached)?;
+    }
+
+    if tokens.len() > MAX_VERSION_TOKENS || !matches!(tokens.first(), Some(VersionToken::Number(_)))
+    {
+        return None;
+    }
+    while tokens.len() > 1 && matches!(tokens.last(), Some(VersionToken::Number(0))) {
+        tokens.pop();
+    }
+    let raw = std::mem::take(&mut tokens);
+    let mut index = 0;
+    while index < raw.len() {
+        if index > 0 && matches!(raw[index], VersionToken::Number(0)) {
+            let start = index;
+            let mut end = index;
+            while end < raw.len() && matches!(raw[end], VersionToken::Number(0)) {
+                end += 1;
+            }
+            if end < raw.len()
+                && matches!(raw[end], VersionToken::Text(_) | VersionToken::Suffix(_))
+            {
+                index = end;
+                continue;
+            }
+            tokens.extend_from_slice(&raw[start..start + 1]);
+            index += 1;
+            continue;
+        }
+        tokens.push(raw[index].clone());
+        index += 1;
+    }
+    Some(Version { tokens })
+}
+
+fn push_version_token(
+    tokens: &mut Vec<VersionToken>,
+    current: &mut String,
+    is_digit: bool,
+    attached: bool,
+) -> Option<()> {
+    if is_digit {
+        tokens.push(VersionToken::Number(current.parse().ok()?));
+    } else if attached && !is_prerelease_marker(current) {
+        tokens.push(VersionToken::Suffix(std::mem::take(current)));
+    } else {
+        tokens.push(VersionToken::Text(std::mem::take(current)));
+    }
+    current.clear();
+    Some(())
 }
 
 #[cfg(test)]
@@ -374,7 +584,80 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::db::{AffectedProduct, DbPaths, Manifest, StoredEntry, VersionRange};
     use crate::service::ServiceInfo;
+
+    struct TempDb {
+        paths: DbPaths,
+    }
+
+    impl TempDb {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "rayscan-advisory-{name}-{}-{}",
+                std::process::id(),
+                crate::db::now_unix()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            Self {
+                paths: DbPaths::at(root),
+            }
+        }
+    }
+
+    impl Drop for TempDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.paths.root);
+        }
+    }
+
+    fn exact_range(version: &str) -> VersionRange {
+        VersionRange {
+            start_incl: Some(version.to_string()),
+            start_excl: None,
+            end_incl: Some(version.to_string()),
+            end_excl: None,
+        }
+    }
+
+    fn nvd_entry(
+        id: &str,
+        vendor: &str,
+        product: &str,
+        all_versions: bool,
+        ranges: Vec<VersionRange>,
+    ) -> StoredEntry {
+        StoredEntry {
+            id: id.to_string(),
+            title: format!("{id} title"),
+            cvss: 9.8,
+            affected: vec![AffectedProduct {
+                vendor: vendor.to_string(),
+                product: product.to_string(),
+                all_versions,
+                ranges,
+            }],
+        }
+    }
+
+    fn install_nvd(name: &str, entries: &[StoredEntry]) -> (TempDb, LocalIndex) {
+        let db = TempDb::new(name);
+        let state = crate::db::index::write_year(&db.paths, 2024, entries).unwrap();
+        let mut manifest = Manifest {
+            schema: crate::db::SCHEMA_VERSION,
+            ..Manifest::default()
+        };
+        manifest.years.insert(2024, state);
+        manifest.cve_count = entries.len() as u64;
+        manifest.entry_count = entries
+            .iter()
+            .map(|entry| entry.affected.len() as u64)
+            .sum();
+        crate::db::save_manifest(&db.paths, &manifest).unwrap();
+        let index = LocalIndex::load(&db.paths).expect("index loads");
+        (db, index)
+    }
 
     fn sample(
         name: &str,
@@ -411,6 +694,9 @@ mod tests {
         let matches = correlate(&result);
         assert!(matches.iter().any(|m| m.id == "CVE-2011-2523"));
         assert_eq!(matches[0].severity, Severity::Critical);
+        assert_eq!(matches[0].source, "curated");
+        assert_eq!(matches[0].evidence, "curated");
+        assert!(matches[0].confidence >= 0.8);
     }
 
     #[test]
@@ -474,6 +760,76 @@ mod tests {
     }
 
     #[test]
+    fn plugin_cpe_identity_enables_nvd_matches_without_product() {
+        let entries = vec![nvd_entry(
+            "CVE-2024-9000",
+            "redis",
+            "redis",
+            false,
+            vec![exact_range("7.0.0")],
+        )];
+        let (_db, index) = install_nvd("cpe-identity", &entries);
+
+        let mut result = sample("redis", None, Some("7.0.0"), None);
+        let service = result.service.as_mut().unwrap();
+        service.cpe = Some("cpe:2.3:a:redis:redis".to_string());
+        service.confidence = Some(0.98);
+
+        let matches = correlate_with(&result, Some(&index));
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].id, "CVE-2024-9000");
+        assert_eq!(matches[0].source, "nvd");
+        assert_eq!(matches[0].evidence, "exact_version");
+        assert_eq!(matches[0].confidence, 0.88);
+    }
+
+    #[test]
+    fn plugin_cpe_vendor_prevents_alias_false_positives() {
+        let entries = vec![nvd_entry(
+            "CVE-2024-9001",
+            "apache",
+            "http_server",
+            false,
+            vec![exact_range("9.9")],
+        )];
+        let (_db, index) = install_nvd("cpe-vendor", &entries);
+
+        let mut result = sample("http", Some("Apache"), Some("9.9"), None);
+        let service = result.service.as_mut().unwrap();
+        service.cpe = Some("cpe:2.3:a:oracle:http_server".to_string());
+        service.confidence = Some(0.98);
+
+        assert!(correlate_with(&result, Some(&index)).is_empty());
+    }
+
+    #[test]
+    fn low_confidence_all_version_matches_are_suppressed() {
+        let entries = vec![nvd_entry(
+            "CVE-2024-9002",
+            "redis",
+            "redis",
+            true,
+            Vec::new(),
+        )];
+        let (_db, index) = install_nvd("all-versions", &entries);
+
+        let mut product_only = sample("redis", Some("Redis"), None, None);
+        let service = product_only.service.as_mut().unwrap();
+        service.cpe = Some("cpe:2.3:a:redis:redis".to_string());
+        service.confidence = Some(0.85);
+        assert!(correlate_with(&product_only, Some(&index)).is_empty());
+
+        let mut versioned = sample("redis", Some("Redis"), Some("7.0"), None);
+        let service = versioned.service.as_mut().unwrap();
+        service.cpe = Some("cpe:2.3:a:redis:redis".to_string());
+        service.confidence = Some(0.98);
+        let matches = correlate_with(&versioned, Some(&index));
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].evidence, "all_versions");
+        assert_eq!(matches[0].confidence, 0.59);
+    }
+
+    #[test]
     fn curated_matches_rank_before_nvd_matches() {
         let mut matches = vec![
             AdvisoryMatch {
@@ -483,7 +839,9 @@ mod tests {
                 cvss: 9.8,
                 cisa_kev: false,
                 epss: None,
-                source: "nvd",
+                source: "nvd".to_string(),
+                confidence: 0.88,
+                evidence: "exact_version".to_string(),
             },
             AdvisoryMatch {
                 id: "CVE-2024-0001".to_string(),
@@ -492,7 +850,9 @@ mod tests {
                 cvss: 5.0,
                 cisa_kev: false,
                 epss: None,
-                source: "curated",
+                source: "curated".to_string(),
+                confidence: 0.9,
+                evidence: "curated".to_string(),
             },
         ];
         sort_matches(&mut matches);
@@ -501,12 +861,37 @@ mod tests {
     }
 
     #[test]
-    fn version_parsing_and_comparison() {
-        assert_eq!(parse_version("4.7p1"), Some(vec![4, 7]));
-        assert_eq!(parse_version("5.0.51a-3ubuntu5"), Some(vec![5, 0, 51]));
+    fn version_parsing_preserves_patch_and_prerelease_semantics() {
+        let base = parse_version("4.7").unwrap();
+        let patch = parse_version("4.7p1").unwrap();
+        assert!(patch > base);
+        assert_eq!(patch, parse_version("4.7p1").unwrap());
+        assert!(parse_version("4.7p2").unwrap() > patch);
+        assert_ne!(base, patch);
+
+        assert_eq!(parse_version("2.3"), parse_version("2.3.0"));
+        assert!(parse_version("1.10").unwrap() > parse_version("1.9").unwrap());
+        assert!(parse_version("2.4.49c").unwrap() > parse_version("2.4.49").unwrap());
+        assert!(parse_version("1.0.0-rc1").unwrap() < parse_version("1.0.0").unwrap());
+        assert_eq!(parse_version("v1.2.3"), parse_version("1.2.3"));
         assert_eq!(parse_version("garbage"), None);
-        assert_eq!(compare_versions(&[2, 2, 8], &[2, 2, 20]), Ordering::Less);
-        assert_eq!(compare_versions(&[2, 3], &[2, 3, 0]), Ordering::Equal);
+        assert_eq!(parse_version("1.0.*"), None);
+        assert!(parse_version("5.0.51a-3ubuntu5").is_some());
+    }
+
+    #[test]
+    fn malformed_range_bounds_do_not_widen_matches() {
+        let detected = parse_version("9.0").unwrap();
+        let rule = VersionRule::Range {
+            min: Some("garbage".to_string()),
+            max_exclusive: None,
+        };
+        assert!(!rule.matches(Some(&detected)));
+        let rule = VersionRule::Range {
+            min: None,
+            max_exclusive: Some("garbage".to_string()),
+        };
+        assert!(!rule.matches(Some(&detected)));
     }
 
     #[test]
