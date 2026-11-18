@@ -2448,6 +2448,168 @@ expect = "HELLO"
         );
     }
 
+    fn builtin_probes(names: &[&str], port: Option<u16>) -> Registry {
+        let mut registry = Registry::default();
+        registry.merge_builtin().unwrap();
+        registry
+            .probes
+            .retain(|probe| names.contains(&probe.name.as_str()));
+        assert_eq!(registry.probes.len(), names.len());
+        if let Some(port) = port {
+            for probe in &mut registry.probes {
+                probe.ports = vec![port];
+            }
+        }
+        registry
+    }
+
+    #[tokio::test]
+    async fn rabbitmq_amqp_start_extracts_version() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut header = [0_u8; 8];
+            stream.read_exact(&mut header).await.unwrap();
+            assert_eq!(&header, b"AMQP\x00\x00\x09\x01");
+            let mut response = header.to_vec();
+            response.extend_from_slice(
+                b"product\x05S\x00\x00\x00\x08RabbitMQversion\x05S\x00\x00\x00\x063.13.7",
+            );
+            stream.write_all(&response).await.unwrap();
+        });
+
+        let registry = builtin_probes(&["rabbitmq-amqp-start"], Some(port));
+        let mut results = vec![result(port, None)];
+        let matched = registry
+            .apply(&mut results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+        let service = results[0].service.as_ref().unwrap();
+        assert_eq!(service.name, "rabbitmq");
+        assert_eq!(service.product.as_deref(), Some("RabbitMQ"));
+        assert_eq!(service.version.as_deref(), Some("3.13.7"));
+    }
+
+    #[tokio::test]
+    async fn nats_and_rsync_passive_banners_are_identified() {
+        let registry = builtin_probes(&["nats-info", "rsync-greeting"], None);
+        let mut results = vec![
+            result(
+                4222,
+                Some(
+                    r#"{"server_id":"abc","server_name":"nats-1","version":"2.10.7","proto":1,"go":"go1.21.5"}"#,
+                ),
+            ),
+            result(873, Some("@RSYNCD: 31.0\n")),
+        ];
+        let matched = registry
+            .apply(&mut results, Duration::from_millis(100), true)
+            .await;
+        assert_eq!(matched, 2);
+
+        let nats = results[0].service.as_ref().unwrap();
+        assert_eq!(nats.name, "nats");
+        assert_eq!(nats.product.as_deref(), Some("NATS"));
+        assert_eq!(nats.version.as_deref(), Some("2.10.7"));
+
+        let rsync = results[1].service.as_ref().unwrap();
+        assert_eq!(rsync.name, "rsync");
+        assert_eq!(rsync.product.as_deref(), Some("rsync"));
+        assert_eq!(rsync.version.as_deref(), Some("31.0"));
+    }
+
+    #[tokio::test]
+    async fn zookeeper_srvr_extracts_version() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut command = [0_u8; 6];
+            stream.read_exact(&mut command).await.unwrap();
+            assert_eq!(&command, b"srvr\r\n");
+            stream
+                .write_all(
+                    b"Zookeeper version: 3.9.2-abc, built on 2024-01-01\r\nLatency min/avg/max: 0/0/0\r\n",
+                )
+                .await
+                .unwrap();
+        });
+
+        let registry = builtin_probes(&["zookeeper-srvr"], Some(port));
+        let mut results = vec![result(port, None)];
+        let matched = registry
+            .apply(&mut results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+        let service = results[0].service.as_ref().unwrap();
+        assert_eq!(service.name, "zookeeper");
+        assert_eq!(service.product.as_deref(), Some("Apache ZooKeeper"));
+        assert_eq!(service.version.as_deref(), Some("3.9.2"));
+    }
+
+    #[tokio::test]
+    async fn clickhouse_and_influxdb_http_probes_extract_versions() {
+        let clickhouse = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let clickhouse_port = clickhouse.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = clickhouse.accept().await.unwrap();
+            let mut request = [0_u8; 256];
+            let read = stream.read(&mut request).await.unwrap();
+            assert!(String::from_utf8_lossy(&request[..read]).contains("SELECT%20version()"));
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/tab-separated-values\r\nConnection: close\r\n\r\n24.3.2.23\n",
+                )
+                .await
+                .unwrap();
+        });
+
+        let influx = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let influx_port = influx.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = influx.accept().await.unwrap();
+            let mut request = [0_u8; 256];
+            let read = stream.read(&mut request).await.unwrap();
+            assert!(String::from_utf8_lossy(&request[..read]).starts_with("GET /ping "));
+            stream
+                .write_all(
+                    b"HTTP/1.1 204 No Content\r\nX-Influxdb-Version: 2.7.10\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .unwrap();
+        });
+
+        let clickhouse_registry = builtin_probes(&["clickhouse-version"], Some(clickhouse_port));
+        let influx_registry = builtin_probes(&["influxdb-ping"], Some(influx_port));
+
+        let mut clickhouse_results = vec![result(clickhouse_port, None)];
+        let matched = clickhouse_registry
+            .apply(&mut clickhouse_results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+        let service = clickhouse_results[0].service.as_ref().unwrap();
+        assert_eq!(service.name, "clickhouse");
+        assert_eq!(service.version.as_deref(), Some("24.3.2.23"));
+
+        let mut influx_results = vec![result(influx_port, None)];
+        let matched = influx_registry
+            .apply(&mut influx_results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+        let service = influx_results[0].service.as_ref().unwrap();
+        assert_eq!(service.name, "influxdb");
+        assert_eq!(service.version.as_deref(), Some("2.7.10"));
+    }
+
     #[test]
     fn builtin_packs_compile_and_cover_core_protocols() {
         let mut registry = Registry::default();
@@ -2486,6 +2648,12 @@ expect = "HELLO"
             "vnc",
             "mqtt",
             "kafka",
+            "rabbitmq",
+            "nats",
+            "zookeeper",
+            "rsync",
+            "clickhouse",
+            "influxdb",
         ] {
             assert!(
                 summaries.iter().any(|summary| summary.service == service),

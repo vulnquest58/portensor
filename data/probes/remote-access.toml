@@ -52,3 +52,32 @@ send = "POST /wsman HTTP/1.1\r\nHost: scan\r\nContent-Length: 0\r\nConnection: c
 expect_regex = '(?i)^(WWW-Authenticate|HTTP/1\.[01] 401)'
 read_until = '\r\n\r\n'
 timeout_ms = 2000
+
+[[probe]]
+name = "zookeeper-srvr"
+service = "zookeeper"
+ports = [2181]
+product = "Apache ZooKeeper"
+cpe = "cpe:2.3:a:apache:zookeeper"
+confidence = 0.95
+ignore_case = true
+version_regex = 'zookeeper version: ([0-9][0-9.]*)'
+
+[[probe.step]]
+name = "srvr"
+send = "srvr\r\n"
+expect_regex = 'zookeeper version: [0-9]'
+timeout_ms = 1500
+
+[[probe]]
+name = "rsync-greeting"
+service = "rsync"
+ports = [873]
+product = "rsync"
+confidence = 0.95
+version_regex = '@RSYNCD: ([0-9][0-9.]*)'
+
+[[probe.step]]
+name = "greeting"
+expect_regex = '@RSYNCD: [0-9][0-9.]*'
+timeout_ms = 1200

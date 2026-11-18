@@ -87,7 +87,7 @@ UDP probes.
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
 | Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`) |
-| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 53 embedded probes (12 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
+| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 60 embedded probes (13 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
 | Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353), and BACnet/IP Who-Is (47808) via `--udp` flag, including IPv6 (`src/udp.rs`) |
@@ -899,14 +899,14 @@ grace read, and never retried beyond the scan timeout:
 
 Deep coverage for services that never speak first comes from the built-in
 probe library below: PostgreSQL startup, Elasticsearch/OpenSearch root,
-Cassandra OPTIONS, Docker Engine and registry, Kubernetes API server and
-kubelet, etcd, Consul, Vault, Modbus, S7, DNP3, EtherNet/IP, OPC UA, IEC 60870-5-104,
-Tridium Niagara Fox, OMRON FINS, HART-IP, GE SRTP, Mitsubishi MELSEC-Q,
-Phoenix Contact PCWorx, VNC, WinRM,
-Jenkins, Grafana, Prometheus, Kibana, RabbitMQ management, Portainer, and
-SonarQube. TLS-fronted endpoints are covered by TLS-aware probes for the
-Kubernetes API server and kubelet, Docker API, etcd, Elasticsearch/OpenSearch,
-Vault, WinRM, and Portainer.
+Cassandra OPTIONS, ClickHouse `version()`, InfluxDB `/ping`, Docker Engine and
+registry, Kubernetes API server and kubelet, etcd, Consul, Vault, Modbus, S7,
+DNP3, EtherNet/IP, OPC UA, IEC 60870-5-104, Tridium Niagara Fox, OMRON FINS,
+HART-IP, GE SRTP, Mitsubishi MELSEC-Q, Phoenix Contact PCWorx, VNC, WinRM,
+rsync, ZooKeeper `srvr`, Jenkins, Grafana, Prometheus, Kibana, RabbitMQ
+management and AMQP, NATS, Portainer, and SonarQube. TLS-fronted endpoints are
+covered by TLS-aware probes for the Kubernetes API server and kubelet, Docker
+API, etcd, Elasticsearch/OpenSearch, AMQPS, Vault, WinRM, and Portainer.
 
 RDP never sends an unsolicited banner. Silent results on 3389 are retained and
 promoted to `open` when the NLA identity succeeds, and JSON output gains an
@@ -952,16 +952,16 @@ extra corroborating step, capped at `0.99`). Probes may also populate
 ### Probe Engine: Built-ins and Declarative Packs (`--plugins`)
 
 Service identification is driven by a declarative probe engine. Six packs
-(53 probes, 12 TLS-aware) are compiled into the binary and always available:
+(60 probes, 13 TLS-aware) are compiled into the binary and always available:
 
 | Pack | Coverage |
 | :--- | :--- |
-| `databases` | PostgreSQL startup, Redis `INFO`, Cassandra `OPTIONS`, Elasticsearch/OpenSearch root (HTTP and HTTPS), memcached stats, CouchDB root, MySQL/MariaDB greeting (passive), MongoDB `isMaster` OP_QUERY (TCP and TLS) |
+| `databases` | PostgreSQL startup, Redis `INFO`, Cassandra `OPTIONS`, Elasticsearch/OpenSearch root (HTTP and HTTPS), ClickHouse `version()`, InfluxDB `/ping`, memcached stats, CouchDB root, MySQL/MariaDB greeting (passive), MongoDB `isMaster` OP_QUERY (TCP and TLS) |
 | `containers` | Docker Engine `/version`/`_ping` (HTTP and TLS), Docker registry v2, Kubernetes API server and kubelet (HTTP and TLS), etcd (HTTP and TLS), Consul agent, Vault health (HTTP and TLS) |
 | `industrial` | Modbus device identification, S7 COTP, DNP3 link status, EtherNet/IP ListServices, OPC UA HEL/ACK, IEC 60870-5-104 STARTDT, Tridium Niagara Fox hello, OMRON FINS/TCP node address, HART-IP session initiation, GE SRTP initialization and system-register read, Mitsubishi MELSEC-Q CPU information, Phoenix Contact PCWorx session-ID handshake |
-| `remote` | VNC handshake + version, WinRM WSMan (HTTP and HTTPS) |
+| `remote` | VNC handshake + version, WinRM WSMan (HTTP and HTTPS), ZooKeeper `srvr`, rsync daemon greeting |
 | `appliances` | Jenkins, Grafana, Prometheus, Kibana, RabbitMQ management, Portainer (HTTP and HTTPS), SonarQube |
-| `messaging` | MQTT CONNECT/CONNACK (TCP and TLS), Kafka ApiVersions (TCP and TLS) |
+| `messaging` | MQTT CONNECT/CONNACK (TCP and TLS), Kafka ApiVersions (TCP and TLS), RabbitMQ AMQP Connection.Start (TCP and TLS), NATS INFO |
 
 ```bash
 rayscan probes list

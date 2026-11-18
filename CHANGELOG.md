@@ -16,6 +16,12 @@ All notable changes to rayscan are documented here.
   fingerprinting and raw IPv6 remain unsupported. `rayscan doctor` now checks
   Npcap readiness and the selected route; CI compiles every Windows target and
   runs the shared raw-networking unit tests.
+- **Broker, database, and infrastructure probes**: the built-in library now
+  includes RabbitMQ AMQP Connection.Start (5672 and AMQPS 5671), NATS INFO
+  (4222), ZooKeeper `srvr` (2181), rsync daemon greeting (873), ClickHouse
+  `version()` (8123), and InfluxDB `/ping` (8086). The library ships 60 probes
+  (13 TLS-aware), with version extraction and focused mock-server tests for
+  every new protocol.
 - **Distributed HTTPS**: the coordinator and push agents can terminate TLS
   directly with `--tls-cert`/`--tls-key`; workers and push coordinators verify
   private CAs with `--ca-cert`, or opt into `--insecure-tls` for isolated

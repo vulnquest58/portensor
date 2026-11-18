@@ -59,3 +59,53 @@ name = "api-versions"
 send_hex = "00 00 00 0A 00 12 00 00 00 00 00 01 FF FF"
 expect_hex = "00 12 00 00"
 timeout_ms = 1500
+
+[[probe]]
+name = "rabbitmq-amqp-start"
+service = "rabbitmq"
+ports = [5672]
+product = "RabbitMQ"
+cpe = "cpe:2.3:a:pivotal:rabbitmq"
+confidence = 0.96
+version_regex = '(?s)version.{0,8}?([0-9]+\.[0-9]+\.[0-9]+)'
+
+[[probe.step]]
+name = "connection-start"
+send_hex = "41 4D 51 50 00 00 09 01"
+expect_hex = "41 4D 51 50 00 00 09 01"
+expect_regex = '(?s)RabbitMQ'
+timeout_ms = 1800
+
+[[probe]]
+name = "rabbitmq-amqp-start-tls"
+service = "rabbitmq"
+ports = [5671]
+product = "RabbitMQ"
+cpe = "cpe:2.3:a:pivotal:rabbitmq"
+confidence = 0.96
+tls = true
+version_regex = '(?s)version.{0,8}?([0-9]+\.[0-9]+\.[0-9]+)'
+
+[[probe.step]]
+name = "connection-start"
+send_hex = "41 4D 51 50 00 00 09 01"
+expect_hex = "41 4D 51 50 00 00 09 01"
+expect_regex = '(?s)RabbitMQ'
+timeout_ms = 2000
+
+[[probe]]
+name = "nats-info"
+service = "nats"
+ports = [4222]
+product = "NATS"
+confidence = 0.94
+version_regex = '"version"\s*:\s*"([^"]+)"'
+
+[[probe.step]]
+name = "info"
+expect = '"server_id"'
+timeout_ms = 1200
+
+[probe.info]
+server_name = '"server_name"\s*:\s*"([^"]+)"'
+go_version = '"go"\s*:\s*"([^"]+)"'
