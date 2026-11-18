@@ -112,3 +112,23 @@ confidence = 0.90
 send_hex = "01 00 00 00 00 01 00 0D 01 00 00 4E 20"
 expect_hex = "01 01 00 00"
 timeout_ms = 1500
+
+[[probe]]
+name = "ge-srtp-info"
+service = "ge-srtp"
+ports = [18245]
+product = "GE SRTP PLC"
+confidence = 0.90
+
+[[probe.step]]
+name = "initialize"
+send_hex = "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+expect_regex = '(?s)^\x01.{7}\x0F'
+timeout_ms = 1500
+
+[[probe.step]]
+name = "read-system-register"
+send_hex = "02 00 01 00 00 00 00 00 00 01 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 06 C0 00 00 00 00 10 0E 00 00 01 01 04 08 00 00 01 00 00 00 00 00 00 00 00 00"
+expect_regex = '(?s)^\x03\x01\x00'
+expect_hex = "D4"
+timeout_ms = 1500

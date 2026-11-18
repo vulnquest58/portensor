@@ -13,8 +13,10 @@ All notable changes to rayscan are documented here.
   pack now identifies OPC UA servers with a binary HEL/ACK handshake on 4840,
   IEC 60870-5-104 stations with STARTDT activation on 2404, Tridium Niagara
   Fox stations on 1911/4911 (extracting the application version), OMRON
-  FINS/TCP PLCs with a node-address exchange on 9600, and HART-IP servers
-  with a session-initiate handshake on 5094. `--udp` recognizes BACnet/IP
+  FINS/TCP PLCs with a node-address exchange on 9600, HART-IP servers
+  with a session-initiate handshake on 5094, and GE SRTP PLCs with a
+  zero-filled initialization followed by a system-register read on 18245.
+  `--udp` recognizes BACnet/IP
   I-Am replies on 47808 (device instance and vendor ID) alongside the
   existing UDP inspectors.
 - **Raw TCP ACK firewall mapping**: `--ack` sends stateless ACK probes over
