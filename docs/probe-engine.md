@@ -97,12 +97,16 @@ Step keys:
 | `send_hex` | string | Binary payload; whitespace, `:`, and `-` ignored |
 | `expect` | string | Literal substring match |
 | `expect_regex` | string | Regex match (use `(?i)` for case-insensitivity) |
-| `expect_hex` | string | Binary substring match |
+| `expect_hex` | string | Binary match; `??` matches any byte |
+| `expect_hex_offset` | integer | Require `expect_hex` at this zero-based response offset instead of searching |
+| `capture` | table | `name = "regex"` captures saved from this step's response |
+| `capture_hex` | table | `name = "offset:length"` captures raw response bytes (offset is zero-based) |
 | `version_regex` | string | Fallback version extraction for this probe |
 | `read_until` | string | Stop reading once this regex matches |
 | `timeout_ms` | integer | Per-step timeout override |
 
-Set `send` or `send_hex`, never both, and at most one expectation per step.
+Set `send` or `send_hex`, never both. Multiple expectations on one step are
+ANDed, so a step can require both a textual and a binary property.
 
 ### Extraction rules
 
@@ -113,6 +117,48 @@ Set `send` or `send_hex`, never both, and at most one expectation per step.
   group 1 is used when present, otherwise the whole match. Empty values and
   values longer than 200 characters are truncated/dropped.
 - Every extracted value is trimmed.
+
+### Response variables
+
+Multi-step protocols often return a session identifier that later requests must
+echo. A step can capture values from its own response and later `send` or
+`send_hex` payloads can interpolate them as `${name}`:
+
+```toml
+[[probe]]
+name = "pcworx-info"
+service = "pcworx"
+ports = [1962]
+
+[[probe.step]]
+name = "initialize"
+send_hex = "01 01 00 1A ..."
+expect_hex = "81"
+expect_hex_offset = 0
+capture_hex = { sid = "17:1" }
+
+[[probe.step]]
+name = "request-info"
+send_hex = "01 06 00 0E ... ${sid} 04 00"
+expect_hex = "81"
+expect_hex_offset = 0
+```
+
+- `${name}` is recognized only when the probe declares at least one capture.
+  Literal payloads in probes without captures are unchanged.
+- A capture must be declared before the step that uses it. Duplicate names and
+  forward references fail at pack load time.
+- `capture` resolves the regex against the current step response, using capture
+  group 1 when present and otherwise the whole match.
+- `capture_hex` copies bytes from the current response without text decoding,
+  so values containing `0x00` or bytes above `0x7f` survive unchanged.
+- Capture names are 1-32 characters of lowercase `[a-z][a-z0-9_]*`.
+- A step fails when a declared capture cannot be resolved.
+
+Binary expectations support `??` wildcards and an optional exact offset. For
+example, `expect_hex = "?? 42 ?? D4"` with `expect_hex_offset = 1` requires the
+four-byte pattern to start at response byte 1; without an offset the pattern is
+searched anywhere in the response.
 
 ### Confidence
 
@@ -147,8 +193,11 @@ transcript line (160 characters).
 | Packs per run (built-ins included) | 64 |
 | Probes per run | 512 |
 | Steps per probe | 8 |
+| Captures per probe | 32 |
+| Capture name | 32 characters |
 | Payload size | 8 KiB |
 | Response per step | 16 KiB |
+| Binary capture length | 8 KiB |
 | Regex length | 512 characters |
 | Probe/step timeout | 100 ms–10 s |
 | Extracted value | 200 characters |
@@ -159,7 +208,7 @@ run; nothing is auto-discovered from the working directory.
 
 ## Built-in library
 
-The following packs are compiled into the binary (52 probes, 12 TLS-aware).
+The following packs are compiled into the binary (53 probes, 12 TLS-aware).
 TLS-aware probes are named after their transport (for example `-tls` or
 `-https`):
 
@@ -167,7 +216,7 @@ TLS-aware probes are named after their transport (for example `-tls` or
 | :--- | :--- | :--- |
 | `databases` | `redis-info`, `elasticsearch-root`, `elasticsearch-root-tls`, `opensearch-root`, `opensearch-root-tls`, `couchdb-root`, `memcached-stats`, `cassandra-options`, `postgresql-startup`, `mysql-greeting`, `mongodb-hello`, `mongodb-hello-tls` | Redis mode/OS/uptime/config file; Elasticsearch cluster/build; OpenSearch distribution; CouchDB vendor/features; memcached connections/uptime; CQL version; PostgreSQL auth method/database; MySQL/MariaDB/Percona/TiDB version; MongoDB identity |
 | `containers` | `docker-version`, `docker-ping`, `docker-ping-tls`, `docker-registry`, `kubernetes-version`, `kubernetes-api-tls`, `kubernetes-kubelet`, `kubernetes-kubelet-tls`, `kubelet-pods`, `etcd-version`, `etcd-version-tls`, `consul-agent-self`, `vault-health`, `vault-health-tls` | Docker API/Go/OS/kernel; registry API version; Kubernetes platform/Go/build date; etcd cluster version; Consul datacenter/node/server role; Vault initialization/seal state |
-| `industrial` | `modbus-device-id`, `s7-comm`, `dnp3-link-status`, `ethernet-ip-list-services`, `opcua-hello`, `iec-104-startdt`, `niagara-fox`, `omron-fins`, `hart-ip-session`, `ge-srtp-info`, `melsec-q-cpuinfo` | Protocol identity and liveness via standard identification PDUs; OPC UA HEL/ACK, IEC 60870-5-104 STARTDT, Niagara Fox, OMRON FINS/TCP, HART-IP session, GE SRTP initialization/system-register, and MELSEC-Q CPU information handshakes |
+| `industrial` | `modbus-device-id`, `s7-comm`, `dnp3-link-status`, `ethernet-ip-list-services`, `opcua-hello`, `iec-104-startdt`, `niagara-fox`, `omron-fins`, `hart-ip-session`, `ge-srtp-info`, `melsec-q-cpuinfo`, `pcworx-info` | Protocol identity and liveness via standard identification PDUs; OPC UA HEL/ACK, IEC 60870-5-104 STARTDT, Niagara Fox, OMRON FINS/TCP, HART-IP session, GE SRTP initialization/system-register, MELSEC-Q CPU information, and a stateful PCWorx session-ID exchange |
 | `remote` | `vnc-handshake`, `winrm-wsman`, `winrm-wsman-tls` | RFB version; WinRM WSMan challenge response |
 | `appliances` | `jenkins-root`, `grafana-health`, `prometheus-buildinfo`, `kibana-status`, `rabbitmq-overview`, `portainer-status`, `portainer-https`, `sonarqube-status` | Product version plus server/database/commit/branch/Erlang/node/status details |
 | `messaging` | `mqtt-connect`, `mqtt-connect-tls`, `kafka-apiversions`, `kafka-apiversions-tls` | MQTT broker CONNACK; Kafka ApiVersions negotiation |

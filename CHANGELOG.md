@@ -9,17 +9,27 @@ All notable changes to rayscan are documented here.
 - **OT/ICS coverage**: `--preset ot` (aliases `ics`, `scada`) scans a curated
   control-plane port set covering Modbus, S7, DNP3, IEC 60870-5-104,
   EtherNet/IP, OPC UA, BACnet/IP, HART-IP, Niagara Fox, MELSEC, Omron FINS,
-  GE SRTP, ProConOS, Red Lion, HMI HTTP(S), and SNMP. The built-in industrial
-  pack now identifies OPC UA servers with a binary HEL/ACK handshake on 4840,
-  IEC 60870-5-104 stations with STARTDT activation on 2404, Tridium Niagara
+  GE SRTP, PCWorx, ProConOS, Red Lion, HMI HTTP(S), and SNMP. The built-in
+  industrial pack now identifies OPC UA servers with a binary HEL/ACK
+  handshake on 4840, IEC 60870-5-104 stations with STARTDT activation on 2404,
+  Tridium Niagara
   Fox stations on 1911/4911 (extracting the application version), OMRON
   FINS/TCP PLCs with a node-address exchange on 9600, HART-IP servers
   with a session-initiate handshake on 5094, GE SRTP PLCs with a zero-filled
-  initialization followed by a system-register read on 18245, and Mitsubishi
-  MELSEC-Q PLCs with a CPU-information request on 5007. `--udp` recognizes
-  BACnet/IP
-  I-Am replies on 47808 (device instance and vendor ID) alongside the
-  existing UDP inspectors.
+  initialization followed by a system-register read on 18245, Mitsubishi
+  MELSEC-Q PLCs with a CPU-information request on 5007, and Phoenix Contact
+  PCWorx PLCs with a three-step session-ID exchange on 1962. `--udp`
+  recognizes BACnet/IP I-Am replies on 47808 (device instance and vendor ID)
+  alongside the existing UDP inspectors.
+- **Stateful probe sessions and binary matching**: probe steps can capture
+  values from their own response with `capture` (regex) or `capture_hex`
+  (`offset:length` raw bytes), and later `send`/`send_hex` payloads interpolate
+  them as `${name}`. Captures must be declared before use, duplicate names and
+  forward references fail at pack load, and binary captures preserve `0x00`
+  and high-bit bytes. `expect_hex` now accepts `??` wildcards, and
+  `expect_hex_offset` anchors a binary expectation at a zero-based response
+  offset. The PCWorx probe uses these features to echo the PLC-generated
+  session ID across its second and third requests.
 - **Raw TCP ACK firewall mapping**: `--ack` sends stateless ACK probes over
   IPv4 and IPv6 and reports firewall behavior as `unfiltered` when a RST echoes
   the probe cookie (the packet reached a host or stateless device) and

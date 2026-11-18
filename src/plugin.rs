@@ -28,16 +28,23 @@
 //! ```
 //!
 //! Steps run sequentially over one TCP connection.  A step may set `send`
-//! (UTF-8) or `send_hex` (binary), and one of `expect` (literal text),
-//! `expect_regex`, or `expect_hex` (binary substring).  Steps without an
-//! expectation are pure stimuli.  `read_until` stops reading as soon as its
-//! regex matches, which keeps HTTP-style probes fast.
+//! (UTF-8) or `send_hex` (binary), and any combination of `expect` (literal
+//! text), `expect_regex`, or `expect_hex` (binary substring with `??`
+//! wildcards).  `expect_hex_offset` anchors the binary pattern at a zero-based
+//! response offset.  Steps without an expectation are pure stimuli.
+//! `read_until` stops reading as soon as its regex matches, which keeps
+//! HTTP-style probes fast.
+//!
+//! A step can capture values from its response with `capture` (regex) or
+//! `capture_hex` (raw `offset:length` bytes).  Later `send` and `send_hex`
+//! payloads interpolate them as `${name}`, enabling stateful sessions that
+//! echo a server-generated session ID.
 //!
 //! Extraction patterns are applied to the full transcript.  A probe-level
 //! `version_regex` wins over per-step patterns; `product_regex` and the
 //! `[probe.info]` table use capture group 1 when present.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -62,6 +69,8 @@ const MAX_PAYLOAD: usize = 8192;
 const MAX_REGEX_CHARS: usize = 512;
 const MAX_RESPONSE: usize = 16 * 1024;
 const MAX_STEPS: usize = 8;
+const MAX_CAPTURES: usize = 32;
+const MAX_CAPTURE_NAME: usize = 32;
 const MIN_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -136,6 +145,8 @@ struct RawProbe {
     #[serde(default)]
     expect_hex: Option<String>,
     #[serde(default)]
+    expect_hex_offset: Option<usize>,
+    #[serde(default)]
     ignore_case: bool,
     /// Run steps over a TLS session instead of plain TCP.
     #[serde(default)]
@@ -166,6 +177,12 @@ struct RawStep {
     #[serde(default)]
     expect_hex: Option<String>,
     #[serde(default)]
+    expect_hex_offset: Option<usize>,
+    #[serde(default)]
+    capture: BTreeMap<String, String>,
+    #[serde(default)]
+    capture_hex: BTreeMap<String, String>,
+    #[serde(default)]
     version_regex: Option<String>,
     #[serde(default)]
     read_until: Option<String>,
@@ -195,13 +212,15 @@ struct CompiledProbe {
 #[derive(Debug, Default)]
 struct Step {
     name: Option<String>,
-    payload: Option<Vec<u8>>,
+    payload: Option<PayloadTemplate>,
     expect: Option<String>,
     expect_regex: Option<Regex>,
-    expect_hex: Option<Vec<u8>>,
+    expect_hex: Option<HexPattern>,
+    expect_hex_offset: Option<usize>,
     version_regex: Option<Regex>,
     read_until: Option<Regex>,
     timeout: Option<Duration>,
+    captures: Vec<Capture>,
 }
 
 impl Step {
@@ -227,13 +246,197 @@ impl Step {
             return false;
         }
         if let Some(expect) = &self.expect_hex
-            && !response
-                .windows(expect.len())
-                .any(|window| window == expect.as_slice())
+            && !expect.matches(response, self.expect_hex_offset)
         {
             return false;
         }
         true
+    }
+}
+
+#[derive(Debug)]
+struct PayloadTemplate {
+    parts: Vec<PayloadPart>,
+}
+
+#[derive(Debug)]
+enum PayloadPart {
+    Literal(Vec<u8>),
+    Variable(String),
+}
+
+impl PayloadTemplate {
+    fn text(input: &str, variables: bool) -> Result<Self, String> {
+        Self::compile(input, variables, false)
+    }
+
+    fn hex(input: &str, variables: bool) -> Result<Self, String> {
+        Self::compile(input, variables, true)
+    }
+
+    fn compile(input: &str, variables: bool, hex: bool) -> Result<Self, String> {
+        let chunks = split_payload_template(input, variables);
+        let mut parts = Vec::new();
+        for chunk in chunks {
+            let bytes = match chunk {
+                TemplateChunk::Literal(literal) => {
+                    if hex {
+                        decode_hex(literal)?
+                    } else {
+                        literal.as_bytes().to_vec()
+                    }
+                }
+                TemplateChunk::Variable(name) => {
+                    parts.push(PayloadPart::Variable(name.to_string()));
+                    continue;
+                }
+            };
+            if !bytes.is_empty() {
+                parts.push(PayloadPart::Literal(bytes));
+            }
+        }
+        Ok(Self { parts })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.parts.is_empty()
+            || self
+                .parts
+                .iter()
+                .all(|part| matches!(part, PayloadPart::Literal(bytes) if bytes.is_empty()))
+    }
+
+    fn variables(&self) -> impl Iterator<Item = &str> {
+        self.parts.iter().filter_map(|part| match part {
+            PayloadPart::Variable(name) => Some(name.as_str()),
+            PayloadPart::Literal(_) => None,
+        })
+    }
+
+    fn has_variables(&self) -> bool {
+        self.variables().next().is_some()
+    }
+
+    fn literal_len(&self) -> usize {
+        self.parts
+            .iter()
+            .map(|part| match part {
+                PayloadPart::Literal(bytes) => bytes.len(),
+                PayloadPart::Variable(_) => 0,
+            })
+            .sum()
+    }
+
+    fn render(&self, variables: &BTreeMap<String, Vec<u8>>) -> Option<Vec<u8>> {
+        let mut payload = Vec::new();
+        for part in &self.parts {
+            let bytes = match part {
+                PayloadPart::Literal(bytes) => bytes,
+                PayloadPart::Variable(name) => variables.get(name)?,
+            };
+            if payload.len() + bytes.len() > MAX_PAYLOAD {
+                return None;
+            }
+            payload.extend_from_slice(bytes);
+        }
+        Some(payload)
+    }
+}
+
+enum TemplateChunk<'a> {
+    Literal(&'a str),
+    Variable(&'a str),
+}
+
+fn split_payload_template(input: &str, variables: bool) -> Vec<TemplateChunk<'_>> {
+    if !variables {
+        return vec![TemplateChunk::Literal(input)];
+    }
+    let mut chunks = Vec::new();
+    let mut rest = input;
+    while let Some(start) = rest.find("${") {
+        if start > 0 {
+            chunks.push(TemplateChunk::Literal(&rest[..start]));
+        }
+        let after = &rest[start + 2..];
+        if let Some(end) = after.find('}')
+            && is_capture_name(&after[..end])
+        {
+            chunks.push(TemplateChunk::Variable(&after[..end]));
+            rest = &after[end + 1..];
+            continue;
+        }
+        chunks.push(TemplateChunk::Literal("${"));
+        rest = after;
+    }
+    if !rest.is_empty() {
+        chunks.push(TemplateChunk::Literal(rest));
+    }
+    chunks
+}
+
+#[derive(Debug)]
+struct HexPattern {
+    bytes: Vec<Option<u8>>,
+}
+
+impl HexPattern {
+    fn matches(&self, response: &[u8], offset: Option<usize>) -> bool {
+        if self.bytes.is_empty() {
+            return false;
+        }
+        match offset {
+            Some(offset) => self.matches_at(response, offset),
+            None => {
+                if response.len() < self.bytes.len() {
+                    return false;
+                }
+                (0..=response.len() - self.bytes.len())
+                    .any(|offset| self.matches_at(response, offset))
+            }
+        }
+    }
+
+    fn matches_at(&self, response: &[u8], offset: usize) -> bool {
+        let Some(end) = offset.checked_add(self.bytes.len()) else {
+            return false;
+        };
+        let Some(window) = response.get(offset..end) else {
+            return false;
+        };
+        self.bytes
+            .iter()
+            .zip(window)
+            .all(|(expected, actual)| match expected {
+                Some(expected) => expected == actual,
+                None => true,
+            })
+    }
+}
+
+#[derive(Debug)]
+struct Capture {
+    name: String,
+    source: CaptureSource,
+}
+
+#[derive(Debug)]
+enum CaptureSource {
+    Regex(Regex),
+    Hex { offset: usize, length: usize },
+}
+
+impl Capture {
+    fn extract(&self, response: &[u8]) -> Option<Vec<u8>> {
+        match &self.source {
+            CaptureSource::Regex(regex) => {
+                extract(regex, &String::from_utf8_lossy(response)).map(String::into_bytes)
+            }
+            CaptureSource::Hex { offset, length } => {
+                let end = offset.checked_add(*length)?;
+                response.get(*offset..end).map(<[u8]>::to_vec)
+            }
+        }
     }
 }
 
@@ -696,23 +899,32 @@ impl CompiledProbe {
         S: AsyncRead + AsyncWrite + Unpin,
     {
         let mut transcript = String::new();
+        let mut variables = BTreeMap::new();
         for step in &self.steps {
             let step_timeout = step
                 .timeout
                 .unwrap_or(timeout)
                 .clamp(MIN_TIMEOUT, MAX_TIMEOUT);
-            if let Some(payload) = &step.payload
-                && tokio::time::timeout(step_timeout, stream.write_all(payload))
+            if let Some(template) = &step.payload {
+                let payload = template.render(&variables)?;
+                if payload.is_empty() {
+                    return None;
+                }
+                if tokio::time::timeout(step_timeout, stream.write_all(&payload))
                     .await
                     .ok()?
                     .is_err()
-            {
-                return None;
+                {
+                    return None;
+                }
             }
 
             let response = read_response(stream, step, step_timeout).await?;
             if !step.matches(&response, self.ignore_case) {
                 return None;
+            }
+            for capture in &step.captures {
+                variables.insert(capture.name.clone(), capture.extract(&response)?);
             }
             if !response.is_empty() {
                 transcript.push_str(&String::from_utf8_lossy(&response));
@@ -841,6 +1053,86 @@ fn extract(regex: &Regex, text: &str) -> Option<String> {
     }
 }
 
+fn validate_step_bindings(steps: &[Step], pack: &str, probe: &str) -> Result<(), AppError> {
+    let mut defined = BTreeSet::new();
+    let mut total = 0;
+    for step in steps {
+        if let Some(payload) = &step.payload {
+            for variable in payload.variables() {
+                if !defined.contains(variable) {
+                    return Err(AppError::usage(format!(
+                        "probe '{pack}/{probe}' uses variable '{variable}' before it is captured"
+                    )));
+                }
+            }
+        }
+        for capture in &step.captures {
+            total += 1;
+            if !defined.insert(capture.name.clone()) {
+                return Err(AppError::usage(format!(
+                    "probe '{pack}/{probe}' declares capture '{}' more than once",
+                    capture.name
+                )));
+            }
+        }
+    }
+    if total > MAX_CAPTURES {
+        return Err(AppError::usage(format!(
+            "probe '{pack}/{probe}' exceeds {MAX_CAPTURES} captures"
+        )));
+    }
+    if total > 0 && !steps.iter().any(|step| step.payload.is_some()) {
+        return Err(AppError::usage(format!(
+            "probe '{pack}/{probe}' declares captures but no active payload"
+        )));
+    }
+    Ok(())
+}
+
+fn is_capture_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    matches!(characters.next(), Some(character) if character.is_ascii_lowercase())
+        && characters.all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+        })
+}
+
+fn validate_capture_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.chars().count() > MAX_CAPTURE_NAME {
+        return Err(format!(
+            "name must be 1-{MAX_CAPTURE_NAME} characters of lowercase [a-z][a-z0-9_]*"
+        ));
+    }
+    if !is_capture_name(name) {
+        return Err("name must start with a lowercase letter and use [a-z0-9_]".to_string());
+    }
+    Ok(())
+}
+
+fn parse_capture_hex(input: &str) -> Result<(usize, usize), String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err("capture spec cannot be empty".to_string());
+    }
+    let (offset, length) = match input.split_once(':') {
+        Some((offset, length)) => (offset.trim(), length.trim()),
+        None => (input, "1"),
+    };
+    let offset = offset
+        .parse::<usize>()
+        .map_err(|_| "offset must be a non-negative decimal byte offset".to_string())?;
+    let length = length
+        .parse::<usize>()
+        .map_err(|_| "length must be a positive decimal byte count".to_string())?;
+    if length == 0 {
+        return Err("length must be at least 1".to_string());
+    }
+    if length > MAX_PAYLOAD {
+        return Err(format!("length must not exceed {MAX_PAYLOAD} bytes"));
+    }
+    Ok((offset, length))
+}
+
 fn compile_probe(pack: &str, raw: RawProbe) -> Result<CompiledProbe, AppError> {
     validate_name("probe", &raw.name)?;
     if raw.send.is_some() && raw.send_hex.is_some() {
@@ -854,7 +1146,8 @@ fn compile_probe(pack: &str, raw: RawProbe) -> Result<CompiledProbe, AppError> {
             || raw.send_hex.is_some()
             || raw.expect.is_some()
             || raw.expect_regex.is_some()
-            || raw.expect_hex.is_some())
+            || raw.expect_hex.is_some()
+            || raw.expect_hex_offset.is_some())
     {
         return Err(AppError::usage(format!(
             "probe '{pack}/{name}' mixes single-step fields with [[probe.step]] entries",
@@ -868,6 +1161,10 @@ fn compile_probe(pack: &str, raw: RawProbe) -> Result<CompiledProbe, AppError> {
         )));
     }
 
+    let has_captures = raw
+        .steps
+        .iter()
+        .any(|step| !step.capture.is_empty() || !step.capture_hex.is_empty());
     let steps = if raw.steps.is_empty() {
         vec![compile_step(
             pack,
@@ -879,20 +1176,30 @@ fn compile_probe(pack: &str, raw: RawProbe) -> Result<CompiledProbe, AppError> {
                 expect: raw.expect.clone(),
                 expect_regex: raw.expect_regex.clone(),
                 expect_hex: raw.expect_hex.clone(),
+                expect_hex_offset: raw.expect_hex_offset,
                 timeout_ms: raw.timeout_ms,
                 ..RawStep::default()
             },
             raw.ignore_case,
+            false,
         )?]
     } else {
         raw.steps
             .into_iter()
             .enumerate()
             .map(|(index, step)| {
-                compile_step(pack, &raw.name, Some(index + 1), step, raw.ignore_case)
+                compile_step(
+                    pack,
+                    &raw.name,
+                    Some(index + 1),
+                    step,
+                    raw.ignore_case,
+                    has_captures,
+                )
             })
             .collect::<Result<Vec<_>, _>>()?
     };
+    validate_step_bindings(&steps, pack, &raw.name)?;
 
     let product_regex = match raw.product_regex {
         Some(pattern) => Some(compile_regex(&pattern, raw.ignore_case, pack, &raw.name)?),
@@ -946,6 +1253,7 @@ fn compile_step(
     index: Option<usize>,
     raw: RawStep,
     ignore_case: bool,
+    has_captures: bool,
 ) -> Result<Step, AppError> {
     if raw.send.is_some() && raw.send_hex.is_some() {
         return Err(AppError::usage(format!(
@@ -953,34 +1261,36 @@ fn compile_step(
         )));
     }
     let payload = match (&raw.send, &raw.send_hex) {
-        (Some(text), None) => Some(text.as_bytes().to_vec()),
-        (None, Some(hex)) => Some(decode_hex(hex).map_err(|error| {
+        (Some(text), None) => {
+            Some(PayloadTemplate::text(text, has_captures).map_err(|error| {
+                AppError::usage(format!("probe '{pack}/{probe}' send: {error}"))
+            })?)
+        }
+        (None, Some(hex)) => Some(PayloadTemplate::hex(hex, has_captures).map_err(|error| {
             AppError::usage(format!("probe '{pack}/{probe}' send_hex: {error}"))
         })?),
         (None, None) => None,
         (Some(_), Some(_)) => unreachable!("checked above"),
     };
     if let Some(payload) = &payload
-        && (payload.is_empty() || payload.len() > MAX_PAYLOAD)
+        && (payload.is_empty() || (!payload.has_variables() && payload.literal_len() > MAX_PAYLOAD))
     {
         return Err(AppError::usage(format!(
             "probe '{pack}/{probe}' payload must be between 1 and {MAX_PAYLOAD} bytes"
         )));
     }
 
+    if raw.expect_hex_offset.is_some() && raw.expect_hex.is_none() {
+        return Err(AppError::usage(format!(
+            "probe '{pack}/{probe}' expect_hex_offset requires expect_hex"
+        )));
+    }
     let expect_hex = match &raw.expect_hex {
-        Some(hex) => Some(decode_hex(hex).map_err(|error| {
+        Some(hex) => Some(decode_hex_pattern(hex).map_err(|error| {
             AppError::usage(format!("probe '{pack}/{probe}' expect_hex: {error}"))
         })?),
         None => None,
     };
-    if let Some(hex) = &expect_hex
-        && hex.is_empty()
-    {
-        return Err(AppError::usage(format!(
-            "probe '{pack}/{probe}' expect_hex cannot be empty"
-        )));
-    }
 
     let expect_regex = match raw.expect_regex {
         Some(pattern) => Some(compile_regex(&pattern, ignore_case, pack, probe)?),
@@ -995,6 +1305,44 @@ fn compile_step(
         None => None,
     };
 
+    let mut captures = Vec::new();
+    let mut capture_names = BTreeSet::new();
+    for (name, pattern) in &raw.capture {
+        validate_capture_name(name).map_err(|error| {
+            AppError::usage(format!("probe '{pack}/{probe}' capture '{name}': {error}"))
+        })?;
+        if !capture_names.insert(name.clone()) {
+            return Err(AppError::usage(format!(
+                "probe '{pack}/{probe}' declares capture '{name}' more than once"
+            )));
+        }
+        captures.push(Capture {
+            name: name.clone(),
+            source: CaptureSource::Regex(compile_regex(pattern, ignore_case, pack, probe)?),
+        });
+    }
+    for (name, spec) in &raw.capture_hex {
+        validate_capture_name(name).map_err(|error| {
+            AppError::usage(format!(
+                "probe '{pack}/{probe}' capture_hex '{name}': {error}"
+            ))
+        })?;
+        if !capture_names.insert(name.clone()) {
+            return Err(AppError::usage(format!(
+                "probe '{pack}/{probe}' declares capture '{name}' more than once"
+            )));
+        }
+        let (offset, length) = parse_capture_hex(spec).map_err(|error| {
+            AppError::usage(format!(
+                "probe '{pack}/{probe}' capture_hex '{name}': {error}"
+            ))
+        })?;
+        captures.push(Capture {
+            name: name.clone(),
+            source: CaptureSource::Hex { offset, length },
+        });
+    }
+
     Ok(Step {
         name: raw
             .name
@@ -1003,9 +1351,11 @@ fn compile_step(
         expect: raw.expect,
         expect_regex,
         expect_hex,
+        expect_hex_offset: raw.expect_hex_offset,
         version_regex,
         read_until,
         timeout: raw.timeout_ms.map(Duration::from_millis),
+        captures,
     })
 }
 
@@ -1087,6 +1437,40 @@ fn decode_hex(input: &str) -> Result<Vec<u8>, String> {
         bytes.push(byte);
     }
     Ok(bytes)
+}
+
+fn decode_hex_pattern(input: &str) -> Result<HexPattern, String> {
+    let cleaned: String = input
+        .chars()
+        .filter(|character| {
+            !character.is_ascii_whitespace() && *character != ':' && *character != '-'
+        })
+        .collect();
+    if cleaned.is_empty() {
+        return Err("expect_hex cannot be empty".to_string());
+    }
+    if !cleaned.len().is_multiple_of(2) {
+        return Err("hex pattern has an odd number of digits".to_string());
+    }
+    let chars: Vec<char> = cleaned.chars().collect();
+    let mut bytes = Vec::with_capacity(chars.len() / 2);
+    for pair in chars.chunks(2) {
+        if pair == ['?', '?'] {
+            bytes.push(None);
+            continue;
+        }
+        let pair: String = pair.iter().collect();
+        if pair.contains('?') {
+            return Err(format!("invalid hex wildcard '{pair}'; use '??'"));
+        }
+        let byte =
+            u8::from_str_radix(&pair, 16).map_err(|_| format!("invalid hex byte '{pair}'"))?;
+        bytes.push(Some(byte));
+    }
+    if !bytes.iter().any(Option::is_some) {
+        return Err("hex pattern must contain at least one literal byte".to_string());
+    }
+    Ok(HexPattern { bytes })
 }
 
 fn first_line(text: &str) -> String {
@@ -1487,6 +1871,284 @@ product = "DNP3"
     }
 
     #[tokio::test]
+    async fn hex_wildcards_and_offsets_match_binary_responses() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0_u8; 8];
+            let read = stream.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..read], b"go");
+            stream
+                .write_all(&[0x00, 0xAA, 0x42, 0x00, 0xD4])
+                .await
+                .unwrap();
+        });
+
+        let registry = parse_pack(
+            r#"
+name = "binary-pattern"
+[[probe]]
+name = "offset-wildcards"
+service = "binary-pattern"
+send = "go"
+expect_hex = "?? 42 ?? D4"
+expect_hex_offset = 1
+"#,
+        )
+        .unwrap();
+        let mut results = vec![result(port, None)];
+        let matched = registry
+            .apply(&mut results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+    }
+
+    #[tokio::test]
+    async fn captures_text_from_a_response_for_the_next_step() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0_u8; 64];
+            let read = stream.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..read], b"HELLO");
+            stream.write_all(b"token=abc123\n").await.unwrap();
+            let read = stream.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..read], b"AUTH abc123");
+            stream.write_all(b"WELCOME\n").await.unwrap();
+        });
+
+        let registry = parse_pack(
+            r#"
+name = "stateful-text"
+[[probe]]
+name = "token"
+service = "stateful-text"
+[[probe.step]]
+send = "HELLO"
+capture = { token = "token=([a-z0-9]+)" }
+[[probe.step]]
+send = "AUTH ${token}"
+expect = "WELCOME"
+"#,
+        )
+        .unwrap();
+        let mut results = vec![result(port, None)];
+        let matched = registry
+            .apply(&mut results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+    }
+
+    #[tokio::test]
+    async fn captures_binary_session_id_and_reuses_it() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0_u8; 32];
+            let read = stream.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..read], b"init");
+            let mut response = [0_u8; 24];
+            response[0] = 0x81;
+            response[17] = 0xAB;
+            stream.write_all(&response).await.unwrap();
+            let read = stream.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..read], [0x02, 0xAB, 0x04]);
+            stream.write_all(b"OK").await.unwrap();
+        });
+
+        let registry = parse_pack(
+            r#"
+name = "stateful-binary"
+[[probe]]
+name = "sid"
+service = "stateful-binary"
+[[probe.step]]
+send = "init"
+expect_hex = "81"
+expect_hex_offset = 0
+capture_hex = { sid = "17:1" }
+[[probe.step]]
+send_hex = "02 ${sid} 04"
+expect_hex = "4F 4B"
+"#,
+        )
+        .unwrap();
+        let mut results = vec![result(port, None)];
+        let matched = registry
+            .apply(&mut results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+    }
+
+    #[test]
+    fn dollar_braces_stay_literal_when_no_captures_exist() {
+        let registry = parse_pack(
+            r#"
+name = "literal"
+[[probe]]
+name = "literal"
+service = "literal"
+send = "GET /${path}"
+"#,
+        )
+        .unwrap();
+        let payload = registry.probes[0].steps[0]
+            .payload
+            .as_ref()
+            .unwrap()
+            .render(&BTreeMap::new())
+            .unwrap();
+        assert_eq!(payload, b"GET /${path}");
+    }
+
+    #[test]
+    fn hex_pattern_offsets_are_anchored() {
+        let pattern = decode_hex_pattern("?? 42").unwrap();
+        assert!(pattern.matches(&[0x00, 0x42], Some(0)));
+        assert!(!pattern.matches(&[0x00, 0x42], Some(1)));
+        assert!(pattern.matches(&[0x00, 0x00, 0x42], None));
+    }
+
+    #[test]
+    fn rejects_invalid_captures_and_hex_patterns() {
+        let undefined = parse_pack(
+            r#"
+name = "bad"
+[[probe]]
+name = "x"
+[[probe.step]]
+send = "${sid}"
+[[probe.step]]
+send = "next"
+capture_hex = { sid = "0:1" }
+"#,
+        )
+        .unwrap_err();
+        assert!(undefined.to_string().contains("before it is captured"));
+
+        let duplicate = parse_pack(
+            r#"
+name = "bad"
+[[probe]]
+name = "x"
+[[probe.step]]
+send = "first"
+capture = { sid = "(.*)" }
+[[probe.step]]
+send = "second"
+capture_hex = { sid = "0:1" }
+"#,
+        )
+        .unwrap_err();
+        assert!(duplicate.to_string().contains("more than once"));
+
+        let offset_without_expectation = parse_pack(
+            r#"
+name = "bad"
+[[probe]]
+name = "x"
+send = "hello"
+expect_hex_offset = 1
+"#,
+        )
+        .unwrap_err();
+        assert!(offset_without_expectation.to_string().contains("requires"));
+
+        for pattern in ["?1", "??"] {
+            assert!(
+                parse_pack(&format!(
+                    r#"
+name = "bad"
+[[probe]]
+name = "x"
+send = "hello"
+expect_hex = "{pattern}"
+"#
+                ))
+                .is_err(),
+                "pattern {pattern} should not compile"
+            );
+        }
+
+        assert!(
+            parse_pack(
+                r#"
+name = "bad"
+[[probe]]
+name = "x"
+send = "hello"
+capture = { "Bad" = "(.*)" }
+"#
+            )
+            .is_err()
+        );
+        assert!(
+            parse_pack(
+                r#"
+name = "bad"
+[[probe]]
+name = "x"
+send = "hello"
+capture_hex = { sid = "17:0" }
+"#
+            )
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn pcworx_reuses_the_plc_session_id() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 1962))
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0_u8; 256];
+            stream.read_exact(&mut buffer[..26]).await.unwrap();
+            assert_eq!(&buffer[..4], b"\x01\x01\x00\x1a");
+            let mut response = [0_u8; 32];
+            response[0] = 0x81;
+            response[17] = 0x5A;
+            stream.write_all(&response).await.unwrap();
+
+            stream.read_exact(&mut buffer[..22]).await.unwrap();
+            assert_eq!(&buffer[..3], b"\x01\x05\x00");
+            assert_eq!(buffer[11], 0x5A);
+            stream.write_all(&response).await.unwrap();
+
+            stream.read_exact(&mut buffer[..14]).await.unwrap();
+            assert_eq!(&buffer[..3], b"\x01\x06\x00");
+            assert_eq!(buffer[11], 0x5A);
+            let mut info = [0_u8; 192];
+            info[0] = 0x81;
+            stream.write_all(&info).await.unwrap();
+        });
+
+        let mut registry = Registry::default();
+        registry.merge_builtin().unwrap();
+        let mut results = vec![result(1962, None)];
+        let matched = registry
+            .apply(&mut results, Duration::from_secs(2), true)
+            .await;
+        assert_eq!(matched, 1);
+        let service = results[0].service.as_ref().unwrap();
+        assert_eq!(service.name, "pcworx");
+        assert_eq!(
+            service.product.as_deref(),
+            Some("Phoenix Contact PCWorx PLC")
+        );
+    }
+
+    #[tokio::test]
     async fn mysql_greeting_passive_probe_identifies_forks() {
         let registry = Registry::default();
         let mut registry = registry;
@@ -1820,6 +2482,7 @@ expect = "HELLO"
             "hart-ip",
             "ge-srtp",
             "melsec-q",
+            "pcworx",
             "vnc",
             "mqtt",
             "kafka",

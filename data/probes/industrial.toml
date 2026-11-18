@@ -142,3 +142,31 @@ confidence = 0.90
 send_hex = "57 00 00 00 00 11 11 07 00 00 FF FF 03 00 00 FE 03 00 00 14 00 1C 08 0A 08 00 00 00 00 00 00 00 04 01 01 01 00 00 00 00 01"
 expect_hex = "D7 00"
 timeout_ms = 1500
+
+[[probe]]
+name = "pcworx-info"
+service = "pcworx"
+ports = [1962]
+product = "Phoenix Contact PCWorx PLC"
+confidence = 0.92
+timeout_ms = 2000
+
+[[probe.step]]
+name = "initialize"
+send_hex = "01 01 00 1A 00 00 00 00 78 80 00 03 00 0C 49 42 45 54 48 30 31 4E 30 5F 4D 00"
+expect_hex = "81"
+expect_hex_offset = 0
+capture_hex = { sid = "17:1" }
+timeout_ms = 1500
+
+[[probe.step]]
+name = "open-session"
+send_hex = "01 05 00 16 00 01 00 00 78 80 00 ${sid} 00 00 00 06 00 04 02 95 00 00"
+timeout_ms = 1500
+
+[[probe.step]]
+name = "request-info"
+send_hex = "01 06 00 0E 00 02 00 00 00 00 00 ${sid} 04 00"
+expect_hex = "81"
+expect_hex_offset = 0
+timeout_ms = 1500
