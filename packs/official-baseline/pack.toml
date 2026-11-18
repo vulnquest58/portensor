@@ -1,0 +1,75 @@
+name = "official-baseline"
+description = "Read-only baseline checks for certificate hygiene, SMB hardening, unauthenticated Redis, and exposed Docker APIs"
+
+[[script]]
+name = "tls-certificate"
+description = "Reports expired, soon-to-expire, self-signed, and SHA-1/MD5-signed TLS certificates"
+category = "compliance"
+danger = "safe"
+command = ["python3", "checks.py", "tls-certificate"]
+services = [
+  "https",
+  "https-alt",
+  "imaps",
+  "pop3s",
+  "smtps",
+  "ldaps",
+  "ftps",
+  "winrm-https",
+  "docker-tls",
+  "mqtts",
+  "sip-tls",
+  "tls",
+  "ftp-starttls",
+  "smtp-starttls",
+  "pop3-starttls",
+  "imap-starttls",
+  "starttls",
+  "docker",
+  "kubernetes",
+  "kubernetes-kubelet",
+  "etcd",
+  "elasticsearch",
+  "opensearch",
+  "vault",
+  "portainer",
+  "mongodb",
+  "mqtt",
+  "kafka",
+  "rabbitmq",
+  "winrm",
+  "smtp",
+  "imap",
+  "pop3",
+  "ftp",
+  "postgresql",
+  "mysql",
+]
+timeout_ms = 3000
+
+[[script]]
+name = "smb-hardening"
+description = "Reports SMB signing not required and servers that accept SMBv1 negotiation"
+category = "vulnerability"
+danger = "safe"
+command = ["python3", "checks.py", "smb-hardening"]
+services = ["smb", "microsoft-ds", "netbios-ssn"]
+timeout_ms = 3000
+
+[[script]]
+name = "redis-unauthenticated"
+description = "Reports Redis servers that answered INFO without authentication"
+category = "vulnerability"
+danger = "safe"
+command = ["python3", "checks.py", "redis-unauthenticated"]
+services = ["redis"]
+timeout_ms = 3000
+
+[[script]]
+name = "docker-unauthenticated"
+description = "Reports Docker Engine API endpoints that answered an unauthenticated version or ping request"
+category = "vulnerability"
+danger = "safe"
+command = ["python3", "checks.py", "docker-unauthenticated"]
+services = ["docker", "docker-tls"]
+timeout_ms = 3000

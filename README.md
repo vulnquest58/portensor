@@ -88,7 +88,7 @@ UDP probes.
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
 | Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`) |
 | Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 60 embedded probes (13 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
-| Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
+| Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), a read-only official baseline pack (`packs/official-baseline`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353), and BACnet/IP Who-Is (47808) via `--udp` flag, including IPv6 (`src/udp.rs`) |
 | OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` on Linux raw sockets (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8) and reports consensus family, port agreement, sample count, and hop count; Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
@@ -1129,6 +1129,32 @@ available for ad-hoc paths and is repeatable; every path (plus the library
 when `--scripts-library` is set) contributes packs to one registry and
 duplicate plugin names are rejected.
 
+#### Official baseline pack
+
+Release archives include `packs/official-baseline/`, a read-only pack for
+baseline hygiene checks. It requires Python 3.8+ on `PATH` and consumes only
+metadata already collected by the scan - it opens no additional connections.
+The manifest invokes `python3`; on Windows installations that only provide
+`python.exe`, edit the installed manifest's `command` entries accordingly.
+All four scripts are `danger = "safe"`:
+
+| Script | Finding |
+| :--- | :--- |
+| `tls-certificate` | Expired, not-yet-valid, expiring-soon, self-signed, and SHA-1/MD5-signed certificates |
+| `smb-hardening` | SMB signing not required, and SMBv1 negotiation accepted |
+| `redis-unauthenticated` | Redis answered `INFO` without authentication |
+| `docker-unauthenticated` | Docker Engine API answered a version/ping request without authentication |
+
+```bash
+rayscan scripts install ./packs/official-baseline
+rayscan scripts list
+rayscan scan -t 10.0.0.5 -p 443,445,6379,2375 --scripts-library --json
+```
+
+The pack is not installed automatically, so the scanner itself remains a
+single dependency-free binary. Install only packs you trust; sidecars run with
+your privileges.
+
 #### Remote marketplace
 
 A registry is a JSON index (schema 1) published over HTTP(S), so any static
@@ -1566,6 +1592,7 @@ man/rayscan.1               generated man page (plus one page per subcommand)
 Dockerfile                  multi-stage musl build → scratch image
 deny.toml                   cargo-deny license/advisory/source policy
 data/probes/                built-in probe packs (embedded via include_str!)
+packs/official-baseline/    read-only official script pack (Python sidecar)
 fuzz/                       cargo-fuzz targets for parsers and service detection
 scripts/sign-release.sh     optional GPG/cosign release signing
 tests/cli.rs                binary-level CLI and JSON tests

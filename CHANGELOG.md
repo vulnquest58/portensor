@@ -16,6 +16,16 @@ All notable changes to rayscan are documented here.
   fingerprinting and raw IPv6 remain unsupported. `rayscan doctor` now checks
   Npcap readiness and the selected route; CI compiles every Windows target and
   runs the shared raw-networking unit tests.
+- **Official baseline script pack**: release archives now include
+  `packs/official-baseline/`, a read-only Python sidecar pack (Python 3.8+
+  on `PATH`) that reports
+  expired, not-yet-valid, expiring-soon, self-signed, and SHA-1/MD5-signed TLS
+  certificates; SMB signing that is not required and accepted SMBv1
+  negotiation; Redis `INFO` without authentication; and Docker Engine API
+  version/ping responses without authentication. The checks consume only
+  metadata already gathered by the scan and open no additional connections.
+  Install with `rayscan scripts install ./packs/official-baseline` and run with
+  `--scripts-library`.
 - **Broker, database, and infrastructure probes**: the built-in library now
   includes RabbitMQ AMQP Connection.Start (5672 and AMQPS 5671), NATS INFO
   (4222), ZooKeeper `srvr` (2181), rsync daemon greeting (873), ClickHouse

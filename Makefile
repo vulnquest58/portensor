@@ -86,15 +86,17 @@ docker:
 dist: man
 	@mkdir -p dist
 	@rm -rf /tmp/rayscan-dist-linux /tmp/rayscan-dist-win
-	@mkdir -p /tmp/rayscan-dist-linux/bin /tmp/rayscan-dist-linux/share/man/man1
-	@mkdir -p /tmp/rayscan-dist-win/bin
+	@mkdir -p /tmp/rayscan-dist-linux/bin /tmp/rayscan-dist-linux/share/man/man1 /tmp/rayscan-dist-linux/packs
+	@mkdir -p /tmp/rayscan-dist-win/bin /tmp/rayscan-dist-win/packs
 	@cp rayscan-linux /tmp/rayscan-dist-linux/bin/
 	@cp rayscan-static-musl /tmp/rayscan-dist-linux/bin/
 	@cp man/*.1 /tmp/rayscan-dist-linux/share/man/man1/
 	@cp README.md CHANGELOG.md LICENSE /tmp/rayscan-dist-linux/
+	@cp -r packs/official-baseline /tmp/rayscan-dist-linux/packs/
 	@tar -czf dist/rayscan-$(VERSION)-linux-x86_64.tar.gz -C /tmp/rayscan-dist-linux .
 	@cp rayscan.exe /tmp/rayscan-dist-win/bin/
 	@cp README.md CHANGELOG.md LICENSE /tmp/rayscan-dist-win/
+	@cp -r packs/official-baseline /tmp/rayscan-dist-win/packs/
 	@python3 -c "import os, zipfile; base = '/tmp/rayscan-dist-win'; zf = zipfile.ZipFile('dist/rayscan-$(VERSION)-windows-x86_64.zip', 'w', zipfile.ZIP_DEFLATED); [zf.write(os.path.join(r, f), os.path.relpath(os.path.join(r, f), base)) for r, _, fs in os.walk(base) for f in fs]; zf.close()"
 	@cd dist && sha256sum rayscan-$(VERSION)-linux-x86_64.tar.gz rayscan-$(VERSION)-windows-x86_64.zip > SHA256SUMS
 	@echo "Release archives created in dist/:"
