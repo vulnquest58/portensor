@@ -693,6 +693,7 @@ pub(crate) async fn run_scan(
             retain,
             aimd: resolved.aimd,
             aimd_min_pps: resolved.aimd_min_pps,
+            anomaly_threshold: resolved.anomaly_threshold,
             jitter_ms: resolved.jitter.as_millis().min(u128::from(u64::MAX)) as u64,
             decoys: if resolved.ack_mode {
                 Vec::new()

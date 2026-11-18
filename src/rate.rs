@@ -79,11 +79,37 @@ impl Bucket {
     }
 }
 
-/// Adaptive rate controller for connect scans.
+/// Target feedback observed by the adaptive rate controller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetFeedback {
+    /// A normal completion (`open`, `closed`, or `unfiltered`).
+    Healthy,
+    /// A probe timed out or was classified as filtered.
+    Timeout,
+    /// The target or path returned an ICMP error / address-unreachable result.
+    Unreachable,
+    /// The handshake completed but the peer stayed mute (tarpit-like behavior).
+    Tarpit,
+}
+
+const ADAPTIVE_WINDOW: u64 = 500;
+const TIMEOUT_PRESSURE_RATIO: f64 = 0.25;
+const TIMEOUT_HEALTHY_RATIO: f64 = 0.05;
+const UNREACHABLE_PRESSURE_RATIO: f64 = 0.05;
+const TARPIT_PRESSURE_RATIO: f64 = 0.50;
+const TARPIT_HEALTHY_RATIO: f64 = 0.10;
+const TARPIT_PRESSURE_MIN: u64 = 32;
+
+/// Adaptive target-politeness controller for connect scans.
 ///
 /// Observes completed probes in fixed-size windows and adjusts the rate:
-/// - If > 25% of probes in a window time out (filtered), the rate is halved.
-/// - If < 5% time out, the rate is increased by 25% up to the ceiling.
+/// - Filtered/timeout ratios above 25% halve the rate.
+/// - ICMP-error/unreachable ratios at or above 5% halve the rate.
+/// - Tarpit-like handshake-silent bursts (at least 50% of a 500-probe window
+///   and at least 32 probes) halve the rate.
+/// - A window is healthy only with fewer than 5% timeouts, no unreachable
+///   feedback, and fewer than 10% tarpit-like results; healthy windows increase
+///   the rate by 25% up to the configured ceiling.
 /// - Otherwise the rate is held constant.
 ///
 /// The controller is not thread-safe; it lives in the scan receiver loop.
@@ -92,6 +118,8 @@ pub struct AdaptiveRate {
     window: u64,
     observed: u64,
     timeouts: u64,
+    unreachable: u64,
+    tarpits: u64,
     current: u64,
     floor: u64,
     ceiling: u64,
@@ -99,11 +127,14 @@ pub struct AdaptiveRate {
 
 impl AdaptiveRate {
     pub fn new(ceiling: u64, floor: u64) -> Self {
-        let ceiling = ceiling.max(floor).max(1);
+        let ceiling = ceiling.max(1);
+        let floor = floor.clamp(1, ceiling);
         Self {
-            window: 500,
+            window: ADAPTIVE_WINDOW,
             observed: 0,
             timeouts: 0,
+            unreachable: 0,
+            tarpits: 0,
             current: ceiling,
             floor,
             ceiling,
@@ -115,24 +146,39 @@ impl AdaptiveRate {
     }
 
     /// Record one probe result. Returns the new rate when it changes.
-    pub fn observe(&mut self, timed_out: bool) -> Option<u64> {
+    pub fn observe(&mut self, feedback: TargetFeedback) -> Option<u64> {
         self.observed += 1;
-        if timed_out {
-            self.timeouts += 1;
+        match feedback {
+            TargetFeedback::Healthy => {}
+            TargetFeedback::Timeout => self.timeouts += 1,
+            TargetFeedback::Unreachable => self.unreachable += 1,
+            TargetFeedback::Tarpit => self.tarpits += 1,
         }
         if self.observed < self.window {
             return None;
         }
-        let ratio = self.timeouts as f64 / self.observed as f64;
-        let new_rate = if ratio > 0.25 {
+
+        let observed = self.observed as f64;
+        let timeout_ratio = self.timeouts as f64 / observed;
+        let unreachable_ratio = self.unreachable as f64 / observed;
+        let tarpit_ratio = self.tarpits as f64 / observed;
+        let pressure = timeout_ratio > TIMEOUT_PRESSURE_RATIO
+            || unreachable_ratio >= UNREACHABLE_PRESSURE_RATIO
+            || (self.tarpits >= TARPIT_PRESSURE_MIN && tarpit_ratio >= TARPIT_PRESSURE_RATIO);
+        let healthy = timeout_ratio < TIMEOUT_HEALTHY_RATIO
+            && self.unreachable == 0
+            && tarpit_ratio < TARPIT_HEALTHY_RATIO;
+        let new_rate = if pressure {
             (self.current as f64 * 0.5).max(self.floor as f64) as u64
-        } else if ratio < 0.05 {
+        } else if healthy {
             (self.current as f64 * 1.25).min(self.ceiling as f64) as u64
         } else {
             self.current
         };
         self.observed = 0;
         self.timeouts = 0;
+        self.unreachable = 0;
+        self.tarpits = 0;
         if new_rate != self.current {
             self.current = new_rate;
             Some(new_rate)
@@ -177,12 +223,12 @@ mod tests {
         let mut adaptive = AdaptiveRate::new(1000, 100);
         adaptive.current = 500;
         for _ in 0..374 {
-            assert_eq!(adaptive.observe(false), None);
+            assert_eq!(adaptive.observe(TargetFeedback::Healthy), None);
         }
         for _ in 0..125 {
-            assert_eq!(adaptive.observe(true), None);
+            assert_eq!(adaptive.observe(TargetFeedback::Timeout), None);
         }
-        assert_eq!(adaptive.observe(true), Some(250));
+        assert_eq!(adaptive.observe(TargetFeedback::Timeout), Some(250));
     }
 
     #[test]
@@ -190,8 +236,51 @@ mod tests {
         let mut adaptive = AdaptiveRate::new(1000, 100);
         adaptive.current = 500;
         for _ in 0..499 {
-            assert_eq!(adaptive.observe(false), None);
+            assert_eq!(adaptive.observe(TargetFeedback::Healthy), None);
         }
-        assert_eq!(adaptive.observe(false), Some(625));
+        assert_eq!(adaptive.observe(TargetFeedback::Healthy), Some(625));
+    }
+
+    #[test]
+    fn adaptive_rate_halves_on_icmp_pressure() {
+        let mut adaptive = AdaptiveRate::new(1000, 100);
+        adaptive.current = 500;
+        for _ in 0..475 {
+            assert_eq!(adaptive.observe(TargetFeedback::Healthy), None);
+        }
+        for _ in 0..24 {
+            assert_eq!(adaptive.observe(TargetFeedback::Unreachable), None);
+        }
+        assert_eq!(adaptive.observe(TargetFeedback::Unreachable), Some(250));
+    }
+
+    #[test]
+    fn sparse_icmp_pressure_holds_the_rate_without_increasing() {
+        let mut adaptive = AdaptiveRate::new(1000, 100);
+        adaptive.current = 500;
+        for _ in 0..499 {
+            assert_eq!(adaptive.observe(TargetFeedback::Healthy), None);
+        }
+        assert_eq!(adaptive.observe(TargetFeedback::Unreachable), None);
+        assert_eq!(adaptive.current_rate(), 500);
+    }
+
+    #[test]
+    fn adaptive_rate_halves_on_tarpit_burst() {
+        let mut adaptive = AdaptiveRate::new(1000, 100);
+        adaptive.current = 500;
+        for _ in 0..250 {
+            assert_eq!(adaptive.observe(TargetFeedback::Healthy), None);
+        }
+        for _ in 0..249 {
+            assert_eq!(adaptive.observe(TargetFeedback::Tarpit), None);
+        }
+        assert_eq!(adaptive.observe(TargetFeedback::Tarpit), Some(250));
+    }
+
+    #[test]
+    fn adaptive_floor_never_exceeds_the_configured_ceiling() {
+        let adaptive = AdaptiveRate::new(50, 100);
+        assert_eq!(adaptive.current_rate(), 50);
     }
 }

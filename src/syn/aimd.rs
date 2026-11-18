@@ -10,11 +10,28 @@
 //! applies an additive increase (`rate += step_pps`).  Both `min_pps` and
 //! `max_pps` clamp the resulting rate.
 //!
+//! Explicit target-politeness feedback bypasses the normal ratio logic:
+//! ICMP-error bursts and tarpit-like SYN-open pressure always trigger a
+//! multiplicative decrease, including when the response ratio is too low for
+//! the ordinary silent-path floor to act.
+//!
 //! # Thread safety
 //!
 //! `AimdController` is `!Send`; it must live entirely in the TX thread.  The TX
 //! thread calls `update()` after draining each response batch; no locking is
 //! required.
+
+/// Explicit target-politeness feedback for one AIMD update window.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AimdFeedback {
+    /// ICMP Destination Unreachable (or equivalent) messages observed in the
+    /// window.  A ratio at or above `AimdConfig::icmp_error_threshold` forces a
+    /// multiplicative decrease.
+    pub icmp_errors: u64,
+    /// The coordinator observed a high-density SYN-open host in this window.
+    /// This is a tarpit/SYN-proxy signal and forces a multiplicative decrease.
+    pub tarpit_pressure: bool,
+}
 
 /// Configuration for the AIMD rate controller.
 #[derive(Clone, Debug)]
@@ -34,6 +51,9 @@ pub struct AimdConfig {
     /// Response ratio below which a multiplicative decrease is triggered.
     /// Expressed as a fraction in [0, 1].  Typical value: 0.80.
     pub loss_threshold: f64,
+    /// ICMP-error ratio at or above which a multiplicative decrease is forced.
+    /// Expressed as a fraction in [0, 1].  Typical value: 0.05.
+    pub icmp_error_threshold: f64,
     /// EMA smoothing coefficient α in [0, 1].  Higher means more weight on
     /// recent observations.  Typical value: 0.25.
     pub ema_alpha: f64,
@@ -48,6 +68,7 @@ impl Default for AimdConfig {
             step_pps: 100,
             decrease_factor: 2.0,
             loss_threshold: 0.80,
+            icmp_error_threshold: 0.05,
             ema_alpha: 0.25,
         }
     }
@@ -68,11 +89,27 @@ pub struct AimdController {
 
 impl AimdController {
     /// Create a new controller from the given configuration.
+    ///
+    /// The configured floor is clamped to the ceiling so a low `--rate` cap can
+    /// never be exceeded by the minimum-rate default.
     pub fn new(cfg: AimdConfig) -> Self {
         let enabled = cfg.initial_pps > 0;
-        let rate = cfg
-            .initial_pps
-            .clamp(cfg.min_pps, cfg.max_pps.max(cfg.min_pps));
+        let max_pps = if cfg.max_pps == 0 || cfg.max_pps == u64::MAX {
+            cfg.initial_pps.max(1)
+        } else {
+            cfg.max_pps
+        };
+        let min_pps = cfg.min_pps.min(max_pps).max(1);
+        let cfg = AimdConfig {
+            min_pps,
+            max_pps,
+            ..cfg
+        };
+        let rate = if enabled {
+            cfg.initial_pps.clamp(min_pps, max_pps)
+        } else {
+            0
+        };
         Self {
             cfg,
             rate,
@@ -93,44 +130,60 @@ impl AimdController {
     ///
     /// `sent` must be > 0; if `sent == 0` the controller is left unchanged.
     pub fn update(&mut self, sent: u64, received: u64) -> u64 {
+        self.update_with_feedback(sent, received, AimdFeedback::default())
+    }
+
+    /// Update the controller with response counts and explicit
+    /// target-politeness feedback.
+    pub fn update_with_feedback(
+        &mut self,
+        sent: u64,
+        received: u64,
+        feedback: AimdFeedback,
+    ) -> u64 {
         if !self.enabled || sent == 0 {
             return self.rate_pps();
+        }
+
+        let icmp_ratio = feedback.icmp_errors as f64 / sent as f64;
+        if feedback.icmp_errors > 0 && icmp_ratio >= self.cfg.icmp_error_threshold {
+            self.apply_decrease();
+            return self.rate;
+        }
+        if feedback.tarpit_pressure {
+            self.apply_decrease();
+            return self.rate;
         }
 
         // A silent path answers nothing regardless of the transmit rate: sub
         // 1-percent response samples carry no congestion signal and a decrease
         // would just stall the scan (firewalls and NATs commonly drop RST
         // replies).  Freeze the rate instead; partial responses still feed the
-        // regular AIMD logic.
+        // regular AIMD logic.  Explicit ICMP/tarpit feedback above bypasses
+        // this floor because it is direct evidence of target pressure.
         let ratio = (received as f64) / (sent as f64);
         if ratio < 0.01 {
             return self.rate_pps();
         }
 
-        let ratio = (received as f64) / (sent as f64);
         self.ema_ratio = self.cfg.ema_alpha * ratio + (1.0 - self.cfg.ema_alpha) * self.ema_ratio;
 
         if self.ema_ratio < self.cfg.loss_threshold {
-            // Multiplicative decrease
-            let new_rate = ((self.rate as f64) / self.cfg.decrease_factor).round() as u64;
-            self.rate = new_rate.clamp(self.cfg.min_pps, self.max_rate());
+            self.apply_decrease();
         } else {
             // Additive increase
             self.rate = self
                 .rate
                 .saturating_add(self.cfg.step_pps)
-                .clamp(self.cfg.min_pps, self.max_rate());
+                .clamp(self.cfg.min_pps, self.cfg.max_pps);
         }
 
         self.rate
     }
 
-    fn max_rate(&self) -> u64 {
-        if self.cfg.max_pps == 0 || self.cfg.max_pps == u64::MAX {
-            self.cfg.initial_pps.max(self.rate)
-        } else {
-            self.cfg.max_pps
-        }
+    fn apply_decrease(&mut self) {
+        let new_rate = ((self.rate as f64) / self.cfg.decrease_factor).round() as u64;
+        self.rate = new_rate.clamp(self.cfg.min_pps, self.cfg.max_pps);
     }
 }
 
@@ -146,6 +199,7 @@ mod tests {
             step_pps: 100,
             decrease_factor: 2.0,
             loss_threshold: 0.80,
+            icmp_error_threshold: 0.05,
             ema_alpha: 1.0, // instant EMA for deterministic tests
         })
     }
@@ -174,6 +228,77 @@ mod tests {
         ctrl.update(1000, 0);
         ctrl.update(4096, 1);
         assert_eq!(ctrl.rate_pps(), 1000);
+    }
+
+    #[test]
+    fn icmp_error_burst_decreases_even_without_responses() {
+        let mut ctrl = controller(1000);
+        ctrl.update_with_feedback(
+            100,
+            0,
+            AimdFeedback {
+                icmp_errors: 10,
+                tarpit_pressure: false,
+            },
+        );
+        assert_eq!(ctrl.rate_pps(), 500);
+    }
+
+    #[test]
+    fn icmp_error_pressure_overrides_a_healthy_response_ratio() {
+        let mut ctrl = controller(1000);
+        ctrl.update_with_feedback(
+            100,
+            100,
+            AimdFeedback {
+                icmp_errors: 5,
+                tarpit_pressure: false,
+            },
+        );
+        assert_eq!(ctrl.rate_pps(), 500);
+    }
+
+    #[test]
+    fn sparse_icmp_errors_do_not_break_the_silent_path_floor() {
+        let mut ctrl = controller(1000);
+        ctrl.update_with_feedback(
+            1000,
+            0,
+            AimdFeedback {
+                icmp_errors: 1,
+                tarpit_pressure: false,
+            },
+        );
+        assert_eq!(ctrl.rate_pps(), 1000);
+    }
+
+    #[test]
+    fn tarpit_pressure_decreases_the_rate() {
+        let mut ctrl = controller(1000);
+        ctrl.update_with_feedback(
+            100,
+            100,
+            AimdFeedback {
+                icmp_errors: 0,
+                tarpit_pressure: true,
+            },
+        );
+        assert_eq!(ctrl.rate_pps(), 500);
+    }
+
+    #[test]
+    fn minimum_rate_is_clamped_to_the_configured_ceiling() {
+        let ctrl = AimdController::new(AimdConfig {
+            initial_pps: 20,
+            min_pps: 100,
+            max_pps: 20,
+            step_pps: 10,
+            decrease_factor: 2.0,
+            loss_threshold: 0.80,
+            icmp_error_threshold: 0.05,
+            ema_alpha: 1.0,
+        });
+        assert_eq!(ctrl.rate_pps(), 20);
     }
 
     #[test]

@@ -31,7 +31,7 @@ pub(crate) mod v6;
 #[cfg(target_os = "windows")]
 mod win;
 
-pub use aimd::{AimdConfig, AimdController};
+pub use aimd::{AimdConfig, AimdController, AimdFeedback};
 pub use cookie::CookieKey;
 pub use packet::{
     ParsedFrame, build_syn_frame, fragment_syn_frame, ip_checksum, parse_frame, tcp_checksum,
@@ -80,6 +80,9 @@ pub struct SynScanOptions {
     pub aimd: bool,
     /// AIMD minimum rate floor in packets per second.
     pub aimd_min_pps: u64,
+    /// Per-host SYN-open count at which the raw engine treats the target as a
+    /// tarpit/SYN-proxy farm and forces AIMD backoff. 0 disables.
+    pub anomaly_threshold: u32,
     /// Maximum random delay inserted before each packet batch, in milliseconds.
     pub jitter_ms: u64,
     /// Spoofed source addresses for decoy probes (IPv4 only).
@@ -105,11 +108,84 @@ impl Default for SynScanOptions {
             retain: StateSet::all(),
             aimd: true,
             aimd_min_pps: 100,
+            anomaly_threshold: 1000,
             jitter_ms: 0,
             decoys: Vec::new(),
             fragment_size: None,
             ttl: DEFAULT_PROBE_TTL,
         }
+    }
+}
+
+/// Returns true when any host has at least `threshold` SYN-open results.
+/// The raw AIMD loop uses this as a mid-scan tarpit/SYN-proxy signal.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn has_high_density_open(
+    responses: &std::collections::HashMap<
+        (std::net::Ipv4Addr, u16),
+        (crate::model::PortState, std::time::Duration),
+    >,
+    threshold: u32,
+) -> bool {
+    if threshold == 0 {
+        return false;
+    }
+    let mut counts: std::collections::HashMap<std::net::Ipv4Addr, u32> =
+        std::collections::HashMap::new();
+    for (&(host, _), &(state, _)) in responses {
+        if state != crate::model::PortState::Open {
+            continue;
+        }
+        let count = counts.entry(host).or_default();
+        *count += 1;
+        if *count >= threshold {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "windows")))]
+mod tests {
+    use super::*;
+    use crate::model::PortState;
+    use std::collections::HashMap;
+    use std::net::Ipv4Addr;
+    use std::time::Duration;
+
+    fn responses(
+        host: Ipv4Addr,
+        ports: std::ops::Range<u16>,
+        state: PortState,
+    ) -> HashMap<(Ipv4Addr, u16), (PortState, Duration)> {
+        ports
+            .map(|port| ((host, port), (state, Duration::ZERO)))
+            .collect()
+    }
+
+    #[test]
+    fn high_density_open_detection_is_per_host_and_thresholded() {
+        let first = Ipv4Addr::new(10, 0, 0, 1);
+        let second = Ipv4Addr::new(10, 0, 0, 2);
+        let mut map = responses(first, 1..1000, PortState::Open);
+        assert!(!has_high_density_open(&map, 1000));
+
+        map.extend(responses(second, 1..999, PortState::Open));
+        assert!(!has_high_density_open(&map, 1000));
+
+        map.insert((first, 1000), (PortState::Open, Duration::ZERO));
+        assert!(has_high_density_open(&map, 1000));
+    }
+
+    #[test]
+    fn high_density_open_detection_ignores_non_open_states_and_disabled_threshold() {
+        let host = Ipv4Addr::new(10, 0, 0, 1);
+        let map = responses(host, 1..2000, PortState::Closed);
+        assert!(!has_high_density_open(&map, 1000));
+        assert!(!has_high_density_open(
+            &responses(host, 1..2000, PortState::Open),
+            0
+        ));
     }
 }
 

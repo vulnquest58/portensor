@@ -119,7 +119,12 @@ cannot occupy connect-worker slots and throttle the connect pipeline.
 `--host-concurrency N` is an opt-in per-target semaphore shared by the connect
 scanner and SYN-open verification; `0` keeps the default unlimited behavior.
 It bounds how many simultaneous connections one host sees without changing the
-global worker or rate limits. Adaptive target politeness remains future work.
+global worker or rate limits. Adaptive target politeness is available for
+connect scans with `--rate-auto`: a 500-probe window halves the rate on timeout,
+ICMP-unreachable, or tarpit/handshake-silent bursts and recovers by 25% when
+responses are healthy, always within the configured `--rate` ceiling. The raw
+SYN loop feeds ICMP errors and high-density SYN-open anomalies into AIMD using
+the same politeness intent.
 
 Remaining SYN-engine speed idea (not yet implemented): exploiting AIMD headroom
 above the configured rate on healthy paths.

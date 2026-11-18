@@ -94,7 +94,7 @@ UDP probes.
 | OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` on Linux raw sockets (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8) and reports consensus family, port agreement, sample count, and hop count; Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
 | Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `ot|ics|scada`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
-| Rate auto | Adaptive connect-scan rate controller that halves/doubles based on timeout ratios (`--rate-auto`) |
+| Rate auto | Adaptive target politeness for connect scans: backs off on timeout, ICMP-unreachable, and tarpit/handshake-silent bursts (`--rate-auto`); raw SYN AIMD also reacts to ICMP errors and high-density SYN-open anomalies |
 | Per-host concurrency | Optional cap on simultaneous connect attempts per target host (`--host-concurrency N`, 0 = unlimited); also applied to SYN-open verification |
 | Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes plus optional HTTPS (`--tls-cert`/`--tls-key`, `--ca-cert`) (`rayscan distributed`) |
 | Evasion | Random delay jitter, configurable TTL/hop limit, custom SYN source-port range, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--ttl`, `--source-port-range`, `--decoys`, `--fragment-size`) |
@@ -286,9 +286,13 @@ cycle results, environment caveats, and repro instructions live in
 - **Parallel-capacity engines can trip target rate limits even at 3k pps.**
   The scanme rate-limit event demonstrates the correct operational response:
   cap rates (`--rate`), limit full-range passes, and stop immediately when the
-  target starts dropping everything. Future work: an adaptive
-  target-politeness mode that detects mid-scan ICMP-error/tarpit behavior and
-  paces down automatically.
+  target starts dropping everything. Adaptive target politeness now covers the
+  common mid-scan signals: connect scans under `--rate-auto` back off on
+  timeout, ICMP-unreachable, and tarpit/handshake-silent bursts, while raw SYN
+  AIMD treats ICMP Destination Unreachable and high-density SYN-open anomalies
+  (`--anomaly-threshold`) as explicit pressure even when the ordinary response
+  ratio is high or below the silent-path floor. The configured `--rate` remains
+  the hard ceiling.
 - **Raw SYN egress through WSL2 NAT is fundamentally unavailable.** Internet
   raw SYN testing from this setup requires a Linux host/VM with a bridged
   NIC — the engine is correct (lab + NAT-gateway results), the transport

@@ -6,6 +6,16 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Adaptive target politeness**: `--rate-auto` now distinguishes timeout,
+  ICMP-unreachable, and tarpit/handshake-silent feedback in 500-probe windows;
+  it halves on adverse bursts and recovers by 25% when responses are healthy,
+  always within the configured `--rate` ceiling. Raw SYN AIMD now accepts
+  explicit ICMP-error and high-density SYN-open pressure, so it backs off even
+  when ICMP replies make the raw response ratio look healthy or when the
+  silent-path ratio floor would otherwise freeze it. The anomaly threshold is
+  wired into the raw engine, and adaptive floors are clamped to low rate caps.
+  Added deterministic tests for connect ICMP/tarpit feedback, AIMD pressure,
+  floor clamping, and per-host SYN-open detection.
 - **Windows raw SYN/ACK scanning**: `--syn` and `--ack` now work on Windows
   (IPv4 only) through a dynamically loaded Npcap `wpcap.dll`, with no new crate
   dependency. The backend uses `GetBestRoute`/`GetAdaptersInfo` for interface

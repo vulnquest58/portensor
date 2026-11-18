@@ -656,7 +656,8 @@ pub struct ScanArgs {
     #[arg(long)]
     pub no_aimd: bool,
 
-    /// Enable adaptive rate control for connect scans (detect rate limiting and back off).
+    /// Enable adaptive target-politeness for connect scans: back off on timeout,
+    /// ICMP-unreachable, and tarpit/handshake-silent bursts.
     #[arg(long)]
     pub rate_auto: bool,
 
@@ -674,8 +675,8 @@ pub struct ScanArgs {
     pub retry_rate: Option<u64>,
 
     /// Per-host SYN-open count above which the host is treated as anomalous
-    /// (tarpit/SYN-proxy farm) and verification is sampled.  0 disables.
-    /// Default: 1000.
+    /// (tarpit/SYN-proxy farm), verification is sampled, and raw pacing backs
+    /// off.  0 disables.  Default: 1000.
     #[arg(long, value_name = "N")]
     pub anomaly_threshold: Option<u32>,
 

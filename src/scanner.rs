@@ -12,12 +12,13 @@ use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
+use crate::accuracy;
 use crate::classify::{Failure, FailureKind, classify_io_error, classify_kind};
 use crate::discovery::socket_addr;
 use crate::error::AppError;
 use crate::limits::worker_count;
 use crate::model::{HostProgress, PortResult, PortState, ScanReport, StateCounts, StateSet};
-use crate::rate::{AdaptiveRate, RateLimiter};
+use crate::rate::{AdaptiveRate, RateLimiter, TargetFeedback};
 use crate::rtt::RttEstimator;
 use crate::service;
 
@@ -103,6 +104,15 @@ pub struct ScanOptions {
     pub shutdown: Arc<AtomicBool>,
 }
 
+fn target_feedback(state: PortState, port: u16) -> TargetFeedback {
+    match state {
+        PortState::Filtered => TargetFeedback::Timeout,
+        PortState::Unreachable => TargetFeedback::Unreachable,
+        PortState::Silent if !accuracy::is_known_binary_port(port) => TargetFeedback::Tarpit,
+        _ => TargetFeedback::Healthy,
+    }
+}
+
 impl ScanOptions {
     pub(crate) fn retains(&self, result: &PortResult) -> bool {
         self.retain.contains(result.state)
@@ -172,7 +182,7 @@ pub async fn scan(
         async_channel::bounded::<Vec<PortResult>>(batch_channel_capacity(workers));
 
     let mut adaptive = if options.rate_auto && options.rate > 0 {
-        let floor = (options.rate / 10).max(100);
+        let floor = (options.rate / 10).max(1);
         Some(AdaptiveRate::new(options.rate, floor))
     } else {
         None
@@ -215,7 +225,7 @@ pub async fn scan(
     while let Ok(batch) = receiver.recv().await {
         for result in batch {
             if let Some(adaptive) = adaptive.as_mut()
-                && let Some(new_rate) = adaptive.observe(result.state == PortState::Filtered)
+                && let Some(new_rate) = adaptive.observe(target_feedback(result.state, result.port))
             {
                 shared.limiter.set_rate(new_rate);
             }
@@ -946,6 +956,35 @@ mod tests {
             host_concurrency: 0,
             shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    #[test]
+    fn target_feedback_distinguishes_pressure_from_normal_results() {
+        assert_eq!(
+            target_feedback(PortState::Filtered, 80),
+            TargetFeedback::Timeout
+        );
+        assert_eq!(
+            target_feedback(PortState::Unreachable, 80),
+            TargetFeedback::Unreachable
+        );
+        assert_eq!(
+            target_feedback(PortState::Silent, 9000),
+            TargetFeedback::Tarpit
+        );
+        assert_eq!(
+            target_feedback(PortState::Silent, 5432),
+            TargetFeedback::Healthy,
+            "expected-silent client-first services are not tarpit evidence"
+        );
+        assert_eq!(
+            target_feedback(PortState::Open, 80),
+            TargetFeedback::Healthy
+        );
+        assert_eq!(
+            target_feedback(PortState::Closed, 80),
+            TargetFeedback::Healthy
+        );
     }
 
     #[test]

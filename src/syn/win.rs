@@ -11,7 +11,7 @@ use std::ptr;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use super::aimd::{AimdConfig, AimdController};
+use super::aimd::{AimdConfig, AimdController, AimdFeedback};
 use super::cookie::CookieKey;
 use super::pacer::Pacer;
 use super::packet;
@@ -375,14 +375,15 @@ fn scan_group(
     let mut pacer = Pacer::new(opts.rate_pps);
     let mut aimd = AimdController::new(AimdConfig {
         initial_pps: opts.rate_pps,
-        min_pps: opts.aimd_min_pps.max(1),
-        max_pps: opts.rate_pps.max(opts.aimd_min_pps.max(1)),
+        min_pps: opts.aimd_min_pps.min(opts.rate_pps.max(1)).max(1),
+        max_pps: opts.rate_pps.max(1),
         step_pps: (opts.rate_pps / 4).max(10),
         ..AimdConfig::default()
     });
     let mut aimd_last = Instant::now();
     let mut aimd_sent = 0u64;
     let mut aimd_received = 0u64;
+    let mut aimd_icmp_errors = 0u64;
     let mut last_response_count = 0u64;
 
     let sport_lo = opts.sport_range.0.max(1);
@@ -435,6 +436,7 @@ fn scan_group(
                 &mut answered,
                 &tx_times,
                 started,
+                &mut aimd_icmp_errors,
             )?;
             if let Some(callback) = progress {
                 callback(ProgressEvent::default());
@@ -449,11 +451,20 @@ fn scan_group(
             let new_responses = responses.len() as u64 - last_response_count;
             aimd_received = aimd_received.saturating_add(new_responses);
             last_response_count = responses.len() as u64;
-            let rate = aimd.update(aimd_sent, aimd_received);
+            let tarpit_pressure = super::has_high_density_open(&responses, opts.anomaly_threshold);
+            let rate = aimd.update_with_feedback(
+                aimd_sent,
+                aimd_received,
+                AimdFeedback {
+                    icmp_errors: aimd_icmp_errors,
+                    tarpit_pressure,
+                },
+            );
             pacer = Pacer::new(rate);
             aimd_last = Instant::now();
             aimd_sent = 0;
             aimd_received = 0;
+            aimd_icmp_errors = 0;
         }
     }
 
@@ -468,6 +479,7 @@ fn scan_group(
         &tx_times,
         started,
         progress,
+        &mut aimd_icmp_errors,
     )?;
 
     for _attempt in 0..opts.retries {
@@ -521,6 +533,7 @@ fn scan_group(
             &tx_times,
             started,
             progress,
+            &mut aimd_icmp_errors,
         )?;
         if let Some(callback) = progress {
             callback(ProgressEvent::default());
@@ -694,6 +707,7 @@ fn drain_available(
     answered: &mut HashMap<Ipv4Addr, u32>,
     tx_times: &HashMap<(Ipv4Addr, u16), Instant>,
     started: Instant,
+    icmp_errors: &mut u64,
 ) -> Result<(), String> {
     for _ in 0..2048 {
         let mut header: *mut PcapPkthdr = ptr::null_mut();
@@ -714,7 +728,14 @@ fn drain_available(
         // SAFETY: Npcap guarantees caplen readable bytes at data.
         let frame = unsafe { std::slice::from_raw_parts(data, record) };
         handle_frame(
-            frame, cookie_key, mode, responses, answered, tx_times, started,
+            frame,
+            cookie_key,
+            mode,
+            responses,
+            answered,
+            tx_times,
+            started,
+            icmp_errors,
         );
     }
     Ok(())
@@ -732,6 +753,7 @@ fn drain_until(
     tx_times: &HashMap<(Ipv4Addr, u16), Instant>,
     started: Instant,
     progress: Option<&ProgressCallback>,
+    icmp_errors: &mut u64,
 ) -> Result<(), String> {
     let mut drained = 0usize;
     while Instant::now() < deadline {
@@ -749,7 +771,14 @@ fn drain_until(
                 // SAFETY: Npcap guarantees caplen readable bytes at data.
                 let frame = unsafe { std::slice::from_raw_parts(data, record) };
                 handle_frame(
-                    frame, cookie_key, mode, responses, answered, tx_times, started,
+                    frame,
+                    cookie_key,
+                    mode,
+                    responses,
+                    answered,
+                    tx_times,
+                    started,
+                    icmp_errors,
                 );
                 drained += 1;
                 if drained.is_multiple_of(256)
@@ -763,6 +792,7 @@ fn drain_until(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_frame(
     frame: &[u8],
     cookie_key: &CookieKey,
@@ -771,6 +801,7 @@ fn handle_frame(
     answered: &mut HashMap<Ipv4Addr, u32>,
     tx_times: &HashMap<(Ipv4Addr, u16), Instant>,
     started: Instant,
+    icmp_errors: &mut u64,
 ) {
     let now = Instant::now();
     match packet::parse_frame(frame) {
@@ -787,6 +818,8 @@ fn handle_frame(
                     src_port,
                     PortState::Open,
                     now,
+                    false,
+                    icmp_errors,
                     responses,
                     answered,
                     tx_times,
@@ -813,6 +846,8 @@ fn handle_frame(
                     src_port,
                     state,
                     now,
+                    false,
+                    icmp_errors,
                     responses,
                     answered,
                     tx_times,
@@ -826,6 +861,8 @@ fn handle_frame(
                 dst_port,
                 PortState::Filtered,
                 now,
+                true,
+                icmp_errors,
                 responses,
                 answered,
                 tx_times,
@@ -842,6 +879,8 @@ fn record(
     port: u16,
     state: PortState,
     now: Instant,
+    icmp_error: bool,
+    icmp_errors: &mut u64,
     responses: &mut HashMap<(Ipv4Addr, u16), (PortState, Duration)>,
     answered: &mut HashMap<Ipv4Addr, u32>,
     tx_times: &HashMap<(Ipv4Addr, u16), Instant>,
@@ -851,6 +890,9 @@ fn record(
     let sent_at = tx_times.get(&key).copied().unwrap_or(started);
     let latency = now.saturating_duration_since(sent_at);
     *answered.entry(host).or_default() += 1;
+    if icmp_error {
+        *icmp_errors = icmp_errors.saturating_add(1);
+    }
     if let Some(&(PortState::Open | PortState::Unfiltered, _)) = responses.get(&key) {
         return;
     }

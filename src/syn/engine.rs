@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use super::aimd::{AimdConfig, AimdController};
+use super::aimd::{AimdConfig, AimdController, AimdFeedback};
 use super::cookie::CookieKey;
 use super::filter;
 use super::pacer::Pacer;
@@ -123,6 +123,7 @@ struct RxResponse {
     port: u16,
     state: PortState,
     timestamp: Instant,
+    icmp_error: bool,
 }
 
 /// Checks if the current process has the necessary permissions (`root` or `CAP_NET_RAW`)
@@ -308,6 +309,7 @@ fn dispatch_response(
     port: u16,
     state: PortState,
     timestamp: Instant,
+    icmp_error: bool,
 ) {
     if let Some(index) = plan.worker_index(host, port)
         && let Some(sender) = senders.get(index)
@@ -317,6 +319,7 @@ fn dispatch_response(
             port,
             state,
             timestamp,
+            icmp_error,
         });
     }
 }
@@ -483,6 +486,7 @@ fn rx_loop(
                             src_port,
                             PortState::Open,
                             now,
+                            false,
                         );
                     }
                 }
@@ -502,6 +506,7 @@ fn rx_loop(
                         src_port,
                         state,
                         now,
+                        false,
                     );
                 }
                 packet::ParsedFrame::IcmpUnreachable { dst_ip, dst_port } => {
@@ -512,6 +517,7 @@ fn rx_loop(
                         dst_port,
                         PortState::Filtered,
                         now,
+                        true,
                     );
                 }
                 packet::ParsedFrame::Other => {}
@@ -527,12 +533,16 @@ fn record_response(
     fallback: Instant,
     rtt: &mut HashMap<Ipv4Addr, RttEstimator>,
     answered: &mut HashMap<Ipv4Addr, u32>,
+    icmp_errors: &mut u64,
 ) {
     let key = (response.host, response.port);
     let tx_time = tx_times.get(&key).copied().unwrap_or(fallback);
     let latency = response.timestamp.saturating_duration_since(tx_time);
     rtt.entry(response.host).or_default().observe(latency);
     *answered.entry(response.host).or_default() += 1;
+    if response.icmp_error {
+        *icmp_errors = icmp_errors.saturating_add(1);
+    }
 
     if let Some(&(PortState::Open | PortState::Unfiltered, _)) = responses.get(&key) {
         return;
@@ -547,9 +557,18 @@ fn drain_responses(
     fallback: Instant,
     rtt: &mut HashMap<Ipv4Addr, RttEstimator>,
     answered: &mut HashMap<Ipv4Addr, u32>,
+    icmp_errors: &mut u64,
 ) {
     while let Ok(response) = result_rx.try_recv() {
-        record_response(response, tx_times, responses, fallback, rtt, answered);
+        record_response(
+            response,
+            tx_times,
+            responses,
+            fallback,
+            rtt,
+            answered,
+            icmp_errors,
+        );
     }
 }
 
@@ -869,6 +888,7 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
     let mut aimd_last_tick = Instant::now();
     let mut aimd_sent = 0u64;
     let mut aimd_received = 0u64;
+    let mut aimd_icmp_errors = 0u64;
     let mut responses_seen = 0u64;
 
     loop {
@@ -946,6 +966,7 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
                 start_time,
                 &mut rtt,
                 &mut answered,
+                &mut aimd_icmp_errors,
             );
             let new_responses = responses.len() as u64 - responses_seen;
             if !initial_done {
@@ -981,6 +1002,7 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
                 start_time,
                 &mut rtt,
                 &mut answered,
+                &mut aimd_icmp_errors,
             );
             let new_responses = responses.len() as u64 - responses_seen;
             aimd_received = aimd_received.saturating_add(new_responses);
@@ -1004,11 +1026,21 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
                 && aimd_sent >= 64
                 && aimd_last_tick.elapsed() >= Duration::from_secs(1)
             {
-                let new_rate = aimd.update(aimd_sent, aimd_received);
+                let tarpit_pressure =
+                    super::has_high_density_open(&responses, opts.anomaly_threshold);
+                let new_rate = aimd.update_with_feedback(
+                    aimd_sent,
+                    aimd_received,
+                    AimdFeedback {
+                        icmp_errors: aimd_icmp_errors,
+                        tarpit_pressure,
+                    },
+                );
                 initial_pacer = Pacer::new(new_rate);
                 aimd_last_tick = Instant::now();
                 aimd_sent = 0;
                 aimd_received = 0;
+                aimd_icmp_errors = 0;
             }
             if let Some(cb) = &job.progress {
                 cb(ProgressEvent::default());
@@ -1057,6 +1089,7 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
                             start_time,
                             &mut rtt,
                             &mut answered,
+                            &mut aimd_icmp_errors,
                         ),
                         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
                         Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
@@ -1073,6 +1106,7 @@ fn scan_shard(job: &ShardJob, tx_fd: i32) -> Result<ScanReport, AppError> {
         start_time,
         &mut rtt,
         &mut answered,
+        &mut aimd_icmp_errors,
     );
 
     // Aggregate the shard scan report
@@ -1511,6 +1545,7 @@ mod tests {
         let mut responses = HashMap::new();
         let mut rtt = HashMap::new();
         let mut answered = HashMap::new();
+        let mut icmp_errors = 0;
         let now = Instant::now();
 
         record_response(
@@ -1519,12 +1554,14 @@ mod tests {
                 port: 443,
                 state: PortState::Unfiltered,
                 timestamp: now,
+                icmp_error: false,
             },
             &tx_times,
             &mut responses,
             now,
             &mut rtt,
             &mut answered,
+            &mut icmp_errors,
         );
         record_response(
             RxResponse {
@@ -1532,17 +1569,20 @@ mod tests {
                 port: 443,
                 state: PortState::Filtered,
                 timestamp: now,
+                icmp_error: true,
             },
             &tx_times,
             &mut responses,
             now,
             &mut rtt,
             &mut answered,
+            &mut icmp_errors,
         );
 
         assert_eq!(
             responses.get(&(host, 443)).map(|entry| entry.0),
             Some(PortState::Unfiltered)
         );
+        assert_eq!(icmp_errors, 1);
     }
 }

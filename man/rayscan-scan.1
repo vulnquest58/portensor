@@ -233,7 +233,7 @@ TCP ACK scan to map firewall filtering (Linux root/CAP_NET_RAW; Windows Npcap + 
 Disable AIMD adaptive rate control during raw SYN scanning
 .TP
 \fB\-\-rate\-auto\fR
-Enable adaptive rate control for connect scans (detect rate limiting and back off)
+Enable adaptive target\-politeness for connect scans: back off on timeout, ICMP\-unreachable, and tarpit/handshake\-silent bursts
 .TP
 \fB\-\-host\-concurrency\fR \fI<N>\fR
 Maximum concurrent connect attempts per target host (0 = unlimited)
@@ -245,7 +245,7 @@ AIMD minimum rate floor in packets per second (default: 100)
 Rate used for SYN retransmission passes in packets per second. 0 means auto (rate / 4, minimum 100). Default: 0
 .TP
 \fB\-\-anomaly\-threshold\fR \fI<N>\fR
-Per\-host SYN\-open count above which the host is treated as anomalous (tarpit/SYN\-proxy farm) and verification is sampled.  0 disables. Default: 1000
+Per\-host SYN\-open count above which the host is treated as anomalous (tarpit/SYN\-proxy farm), verification is sampled, and raw pacing backs off.  0 disables.  Default: 1000
 .TP
 \fB\-\-resume\fR \fI<FILE>\fR
 Resume a previous interrupted scan from a saved state file. Ports already probed in the state file are skipped; results are merged
