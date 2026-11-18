@@ -86,7 +86,7 @@ UDP probes.
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
 | Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`) |
-| Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`) |
+| Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`); accepts rayscan JSON, state files, and Nmap XML |
 | Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 60 embedded probes (13 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
 | Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), a read-only official baseline pack (`packs/official-baseline`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
@@ -622,18 +622,26 @@ output when those fields are required.
 
 ### Network State Change Detection & Differential Auditing (`--diff` & `rayscan diff`)
 
-`rayscan` provides built-in differential change detection to track perimeter drift, newly opened ports, vanished services, version upgrades, and defense posture shifts without requiring external diff scripts:
+`rayscan` provides built-in differential change detection to track perimeter drift, newly opened ports, vanished services, version upgrades, and defense posture shifts without requiring external diff scripts. Baselines can be rayscan JSON reports, `--save-state` files, or Nmap XML reports (`nmap -oX`):
 
 ```bash
 # 1. Compare live scan against an existing baseline scan or state file:
 rayscan scan --target 192.168.100.37 --diff /tmp/baseline.json
 
-# 2. Standalone offline diff between any two saved JSON reports or state files:
+# 2. Standalone offline diff between any two saved JSON, state, or Nmap XML reports:
 rayscan diff /tmp/yesterday.json /tmp/today.json
 
-# 3. Machine-readable JSON diff output for CI/CD and security monitoring:
+# 3. Migrate a Nmap baseline without converting it first:
+rayscan diff /tmp/nmap-baseline.xml /tmp/today.json
+
+# 4. Machine-readable JSON diff output for CI/CD and security monitoring:
 rayscan diff /tmp/yesterday.json /tmp/today.json --json
 ```
+
+Nmap XML import reads TCP `<port>`, `<state>`, and `<service>` elements
+(including IPv6 hosts and XML entities). UDP ports and aggregate
+`<extraports>` counts are ignored because the diff model is TCP-only and
+cannot expand Nmap's aggregated closed-port ranges.
 
 **Differential Output Format:**
 ```text
@@ -674,7 +682,10 @@ rayscan diff /var/log/rayscan/baseline.json /var/log/rayscan/tuesday.json \
 (`status: no changes` or `status: changes detected` plus one line per change),
 so it can be tailed, shipped to a SIEM, or sent as a webhook payload. Update
 the baseline only after accepting the drift: `--save-baseline` writes the JSON
-report of the current run in the same format `--diff` consumes.
+report of the current run in the same format `--diff` consumes. Existing Nmap
+deployments can seed the same workflow with `nmap -oX`: pass the XML report to
+`--diff` or `rayscan diff` directly; subsequent `--save-baseline` files are
+rayscan JSON.
 
 ### Feeding Other Tools (`--format host-port`, `--exclude-ports`)
 

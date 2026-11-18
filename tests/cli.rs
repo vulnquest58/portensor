@@ -943,6 +943,93 @@ fn baseline_alerts_and_fail_on_change_drive_monitoring() {
     server.stop();
 }
 #[test]
+fn diff_accepts_nmap_xml_reports() {
+    let dir = std::env::temp_dir().join(format!("rayscan-nmap-diff-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create Nmap diff directory");
+    let baseline = dir.join("baseline.xml");
+    let current = dir.join("current.xml");
+
+    std::fs::write(
+        &baseline,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sS 127.0.0.1" start="1" version="7.94" xmloutputversion="1.05">
+  <host starttime="1" endtime="2">
+    <status state="up" reason="syn-ack"/>
+    <address addr="127.0.0.1" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="ssh" product="OpenSSH" version="8.9p1" method="probed" conf="10"/>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="http" product="nginx" version="1.24.0" method="probed" conf="10"/>
+      </port>
+    </ports>
+  </host>
+  <runstats><finished time="2" elapsed="1.00"/></runstats>
+</nmaprun>"#,
+    )
+    .expect("write Nmap XML baseline");
+    std::fs::write(
+        &current,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sS 127.0.0.1" start="3" version="7.94" xmloutputversion="1.05">
+  <host starttime="3" endtime="4">
+    <status state="up" reason="syn-ack"/>
+    <address addr="127.0.0.1" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="ssh" product="OpenSSH" version="8.9p1" method="probed" conf="10"/>
+      </port>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="https" product="nginx" version="1.24.0" method="probed" conf="10"/>
+      </port>
+    </ports>
+  </host>
+  <runstats><finished time="4" elapsed="1.00"/></runstats>
+</nmaprun>"#,
+    )
+    .expect("write Nmap XML current report");
+
+    let output = rayscan()
+        .args([
+            "diff",
+            baseline.to_str().expect("baseline path"),
+            current.to_str().expect("current path"),
+            "--json",
+        ])
+        .output()
+        .expect("run Nmap XML diff");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let diff: Value = serde_json::from_slice(&output.stdout).expect("diff JSON");
+    assert_eq!(diff["summary"]["new_ports"], 1);
+    assert_eq!(diff["summary"]["gone_ports"], 1);
+    assert_eq!(diff["summary"]["modified_ports"], 0);
+    let changes = diff["port_changes"].as_array().expect("port changes");
+    assert!(
+        changes
+            .iter()
+            .any(|change| { change["port"] == 443 && change["kind"] == "new" })
+    );
+    assert!(
+        changes
+            .iter()
+            .any(|change| { change["port"] == 80 && change["kind"] == "gone" })
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn explain_shows_probe_identification_and_facts() {
     let server = banner_server();
     let port = server.port().to_string();

@@ -125,7 +125,7 @@ pub struct ScanDiff {
     pub summary: DiffSummary,
 }
 
-/// Baseline port snapshot extracted from any supported JSON format.
+/// Baseline port snapshot extracted from any supported report or state format.
 #[derive(Clone, Debug, Default)]
 pub struct BaselineEntry {
     pub state: PortState,
@@ -645,7 +645,325 @@ fn service_display(res: &PortResult) -> String {
     out
 }
 
-/// Parse any supported rayscan JSON file (standard `--json` report or `--save-state` file).
+struct XmlTag {
+    name: String,
+    closing: bool,
+    self_closing: bool,
+    attrs: Vec<(String, String)>,
+}
+
+impl XmlTag {
+    fn attr(&self, name: &str) -> Option<&str> {
+        self.attrs
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+struct NmapPort {
+    port: u16,
+    state: Option<PortState>,
+    service_label: Option<String>,
+}
+
+fn invalid_nmap_xml(path: &Path, detail: &str) -> AppError {
+    AppError::usage(format!(
+        "baseline file {} is not a valid Nmap XML report: {detail}",
+        path.display()
+    ))
+}
+
+fn find_xml_tag_end(text: &str, offset: usize) -> Result<usize, String> {
+    let bytes = text.as_bytes();
+    let mut quote = None;
+    let mut index = offset;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if let Some(active) = quote {
+            if byte == active {
+                quote = None;
+            }
+        } else {
+            match byte {
+                b'"' | b'\'' => quote = Some(byte),
+                b'>' => return Ok(index),
+                _ => {}
+            }
+        }
+        index += 1;
+    }
+    Err("unterminated XML tag".to_string())
+}
+
+fn parse_xml_tag(inner: &str) -> Result<XmlTag, String> {
+    let mut body = inner.trim();
+    if body.is_empty() {
+        return Err("empty XML tag".to_string());
+    }
+    let closing = body.starts_with('/');
+    if closing {
+        body = body[1..].trim_start();
+    }
+    let self_closing = body.ends_with('/');
+    if self_closing {
+        body = body[..body.len() - 1].trim_end();
+    }
+    let name_end = body
+        .find(|character: char| character.is_whitespace())
+        .unwrap_or(body.len());
+    let name = &body[..name_end];
+    if name.is_empty() {
+        return Err("XML tag has no name".to_string());
+    }
+
+    let mut attrs = Vec::new();
+    let bytes = body.as_bytes();
+    let mut cursor = name_end;
+    while cursor < bytes.len() {
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= bytes.len() {
+            break;
+        }
+        let key_start = cursor;
+        while cursor < bytes.len() && !bytes[cursor].is_ascii_whitespace() && bytes[cursor] != b'='
+        {
+            cursor += 1;
+        }
+        if cursor == key_start {
+            return Err("XML attribute has no name".to_string());
+        }
+        let key = &body[key_start..cursor];
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        let value = if cursor < bytes.len() && bytes[cursor] == b'=' {
+            cursor += 1;
+            while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                cursor += 1;
+            }
+            if cursor >= bytes.len() {
+                return Err(format!("XML attribute {key} has no value"));
+            }
+            let quote = bytes[cursor];
+            if quote == b'"' || quote == b'\'' {
+                cursor += 1;
+                let value_start = cursor;
+                while cursor < bytes.len() && bytes[cursor] != quote {
+                    cursor += 1;
+                }
+                if cursor >= bytes.len() {
+                    return Err(format!("XML attribute {key} is unterminated"));
+                }
+                let value = &body[value_start..cursor];
+                cursor += 1;
+                value
+            } else {
+                let value_start = cursor;
+                while cursor < bytes.len() && !bytes[cursor].is_ascii_whitespace() {
+                    cursor += 1;
+                }
+                &body[value_start..cursor]
+            }
+        } else {
+            ""
+        };
+        attrs.push((key.to_string(), decode_xml_entities(value)));
+    }
+
+    Ok(XmlTag {
+        name: name.rsplit(':').next().unwrap_or(name).to_string(),
+        closing,
+        self_closing,
+        attrs,
+    })
+}
+
+fn decode_xml_entities(value: &str) -> String {
+    let mut decoded = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(index) = rest.find('&') {
+        decoded.push_str(&rest[..index]);
+        let candidate = &rest[index + 1..];
+        let Some(end) = candidate.find(';') else {
+            decoded.push('&');
+            rest = candidate;
+            continue;
+        };
+        let entity = &candidate[..end];
+        let replacement = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            _ => entity
+                .strip_prefix("#x")
+                .or_else(|| entity.strip_prefix("#X"))
+                .and_then(|digits| u32::from_str_radix(digits, 16).ok())
+                .or_else(|| {
+                    entity
+                        .strip_prefix('#')
+                        .and_then(|digits| digits.parse::<u32>().ok())
+                })
+                .and_then(char::from_u32),
+        };
+        if let Some(character) = replacement {
+            decoded.push(character);
+        } else {
+            decoded.push('&');
+            decoded.push_str(entity);
+            decoded.push(';');
+        }
+        rest = &candidate[end + 1..];
+    }
+    decoded.push_str(rest);
+    decoded
+}
+
+fn parse_xml_tags(xml: &str) -> Result<Vec<XmlTag>, String> {
+    let mut tags = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(relative) = xml[cursor..].find('<') {
+        let start = cursor + relative;
+        let rest = &xml[start..];
+        if rest.starts_with("<!--") {
+            let end = rest
+                .find("-->")
+                .ok_or_else(|| "unterminated XML comment".to_string())?;
+            cursor = start + end + 3;
+        } else if rest.starts_with("<?") {
+            let end = rest
+                .find("?>")
+                .ok_or_else(|| "unterminated XML declaration".to_string())?;
+            cursor = start + end + 2;
+        } else if rest.starts_with("<!") {
+            let end = find_xml_tag_end(rest, 2)?;
+            cursor = start + end + 1;
+        } else {
+            let end = find_xml_tag_end(rest, 1)?;
+            tags.push(parse_xml_tag(&rest[1..end])?);
+            cursor = start + end + 1;
+        }
+    }
+    Ok(tags)
+}
+
+fn nmap_port_state(value: &str) -> Option<PortState> {
+    match value {
+        "open" => Some(PortState::Open),
+        "closed" => Some(PortState::Closed),
+        "filtered" | "open|filtered" | "closed|filtered" => Some(PortState::Filtered),
+        "unfiltered" => Some(PortState::Unfiltered),
+        _ => None,
+    }
+}
+
+fn nmap_service_label(tag: &XmlTag) -> Option<String> {
+    let name = tag.attr("name").unwrap_or_default().trim();
+    let product = tag.attr("product").unwrap_or_default().trim();
+    let version = tag.attr("version").unwrap_or_default().trim();
+    let mut label = String::new();
+    if !name.is_empty() {
+        label.push_str(name);
+    }
+    if !product.is_empty() {
+        if !label.is_empty() {
+            label.push(' ');
+        }
+        label.push_str(product);
+    }
+    if !version.is_empty() {
+        label.push('/');
+        label.push_str(version);
+    }
+    (!label.is_empty()).then_some(label)
+}
+
+fn load_nmap_xml(content: &str, path: &Path) -> Result<BaselineSnapshot, AppError> {
+    let tags = parse_xml_tags(content).map_err(|reason| invalid_nmap_xml(path, &reason))?;
+    let Some(root) = tags.first() else {
+        return Err(invalid_nmap_xml(path, "no XML elements found"));
+    };
+    if root.name != "nmaprun" || root.closing {
+        return Err(invalid_nmap_xml(path, "missing <nmaprun> root element"));
+    }
+    if !tags.iter().any(|tag| tag.name == "nmaprun" && tag.closing) {
+        return Err(invalid_nmap_xml(path, "unterminated <nmaprun> element"));
+    }
+
+    let mut snapshot = BaselineSnapshot::default();
+    let mut host = None;
+    let mut port: Option<NmapPort> = None;
+
+    for tag in &tags {
+        match tag.name.as_str() {
+            "host" if tag.closing || !tag.self_closing => {
+                host = None;
+                port = None;
+            }
+            "address" if !tag.closing && host.is_none() => {
+                let addr_type = tag.attr("addrtype").unwrap_or_default();
+                if matches!(addr_type, "ipv4" | "ipv6")
+                    && let Some(address) = tag
+                        .attr("addr")
+                        .and_then(|value| value.parse::<IpAddr>().ok())
+                {
+                    host = Some(address);
+                }
+            }
+            "port" if !tag.closing && !tag.self_closing => {
+                port = None;
+                if host.is_some()
+                    && tag
+                        .attr("protocol")
+                        .is_some_and(|value| value.eq_ignore_ascii_case("tcp"))
+                    && let Some(portid) = tag
+                        .attr("portid")
+                        .and_then(|value| value.parse::<u16>().ok())
+                {
+                    port = Some(NmapPort {
+                        port: portid,
+                        state: None,
+                        service_label: None,
+                    });
+                }
+            }
+            "state" if !tag.closing && port.is_some() => {
+                if let Some(active) = port.as_mut() {
+                    active.state = tag.attr("state").and_then(nmap_port_state);
+                }
+            }
+            "service" if !tag.closing && port.is_some() => {
+                if let Some(active) = port.as_mut() {
+                    active.service_label = nmap_service_label(tag);
+                }
+            }
+            "port" if tag.closing => {
+                if let (Some(host), Some(active)) = (host, port.take())
+                    && let Some(state) = active.state
+                {
+                    snapshot.ports.insert(
+                        (host, active.port),
+                        BaselineEntry {
+                            state,
+                            service_label: active.service_label,
+                            confidence: None,
+                            advisories: Vec::new(),
+                        },
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(snapshot)
+}
+
+/// Parse any supported baseline file (rayscan JSON report, state file, or Nmap XML).
 pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         AppError::runtime(format!(
@@ -653,6 +971,14 @@ pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
             path.display()
         ))
     })?;
+
+    let trimmed = content
+        .strip_prefix('\u{feff}')
+        .unwrap_or(&content)
+        .trim_start();
+    if trimmed.starts_with('<') {
+        return load_nmap_xml(trimmed, path);
+    }
 
     // Try parsing as standard rayscan JSON report
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -841,7 +1167,7 @@ pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
     }
 
     Err(AppError::usage(format!(
-        "baseline file {} is not a valid rayscan JSON report or state file",
+        "baseline file {} is not a valid rayscan JSON report, state file, or Nmap XML report",
         path.display()
     )))
 }
@@ -1106,6 +1432,90 @@ mod tests {
         let rendered = diff.render_terminal(false);
         assert!(rendered.contains("advisories +2 -1"));
         assert!(rendered.contains("New critical advisories: 1"));
+    }
+
+    #[test]
+    fn nmap_xml_baseline_imports_tcp_ports_and_services() {
+        let path =
+            std::env::temp_dir().join(format!("rayscan-nmap-baseline-{}.xml", std::process::id()));
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sS 192.0.2.0/24" start="1" version="7.94" xmloutputversion="1.05">
+  <host starttime="1" endtime="2">
+    <status state="up" reason="syn-ack"/>
+    <address addr="AA:BB:CC:DD:EE:FF" addrtype="mac"/>
+    <address addr="192.0.2.10" addrtype="ipv4"/>
+    <ports>
+      <extraports state="closed" count="997"/>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="ssh" product="OpenSSH" version="8.9p1" method="probed" conf="10"/>
+      </port>
+      <port protocol="tcp" portid="8080">
+        <state state="open|filtered" reason="no-response" reason_ttl="0"/>
+        <service name="http" product="Caddy &amp; Co" version="2.7.6"/>
+      </port>
+      <port protocol="udp" portid="53">
+        <state state="open" reason="udp-response"/>
+        <service name="domain"/>
+      </port>
+    </ports>
+  </host>
+  <host starttime="1" endtime="2">
+    <address addr="2001:db8::10" addrtype="ipv6"/>
+    <ports>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack"/>
+        <service name="https" product="nginx" version="1.24.0"/>
+      </port>
+    </ports>
+  </host>
+  <runstats><finished time="2" elapsed="1.00"/></runstats>
+</nmaprun>"#,
+        )
+        .expect("write Nmap XML baseline");
+
+        let snapshot = load_baseline(&path).expect("Nmap XML must load");
+        assert_eq!(snapshot.ports.len(), 3);
+
+        let host: IpAddr = "192.0.2.10".parse().unwrap();
+        let ssh = snapshot.ports.get(&(host, 22)).expect("port 22");
+        assert_eq!(ssh.state, PortState::Open);
+        assert_eq!(ssh.service_label.as_deref(), Some("ssh OpenSSH/8.9p1"));
+        assert_eq!(ssh.confidence, None);
+
+        let filtered = snapshot.ports.get(&(host, 8080)).expect("port 8080");
+        assert_eq!(filtered.state, PortState::Filtered);
+        assert_eq!(
+            filtered.service_label.as_deref(),
+            Some("http Caddy & Co/2.7.6")
+        );
+
+        let ipv6: IpAddr = "2001:db8::10".parse().unwrap();
+        let https = snapshot.ports.get(&(ipv6, 443)).expect("port 443");
+        assert_eq!(https.state, PortState::Open);
+        assert_eq!(https.service_label.as_deref(), Some("https nginx/1.24.0"));
+        assert!(!snapshot.ports.contains_key(&(host, 53)));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rejects_xml_that_is_not_an_nmap_report() {
+        let path = std::env::temp_dir().join(format!(
+            "rayscan-invalid-nmap-baseline-{}.xml",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            r#"<report><host><address addr="192.0.2.10" addrtype="ipv4"/></host></report>"#,
+        )
+        .expect("write invalid XML baseline");
+        let error = load_baseline(&path).expect_err("non-Nmap XML must fail");
+        assert!(error.to_string().contains("Nmap XML"));
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

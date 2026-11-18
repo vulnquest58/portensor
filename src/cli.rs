@@ -231,11 +231,11 @@ pub struct DbIntelArgs {
 
 #[derive(Debug, Args)]
 pub struct DiffArgs {
-    /// Baseline JSON report or state file.
+    /// Baseline report: rayscan JSON, state file, or Nmap XML.
     #[arg(value_name = "BASELINE_FILE")]
     pub baseline: PathBuf,
 
-    /// Current/comparison JSON report or state file.
+    /// Current report: rayscan JSON, state file, or Nmap XML.
     #[arg(value_name = "CURRENT_FILE")]
     pub current: PathBuf,
 
@@ -709,7 +709,7 @@ pub struct ScanArgs {
     #[arg(long)]
     pub no_db_update: bool,
 
-    /// Compare scan results against a previous scan JSON report or state file to detect changes.
+    /// Compare scan results against a previous JSON, state, or Nmap XML report.
     #[arg(
         long,
         visible_alias = "compare",

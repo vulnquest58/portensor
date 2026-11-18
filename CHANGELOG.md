@@ -26,6 +26,12 @@ All notable changes to rayscan are documented here.
   metadata already gathered by the scan and open no additional connections.
   Install with `rayscan scripts install ./packs/official-baseline` and run with
   `--scripts-library`.
+- **Nmap XML baselines**: `--diff`, `--compare-to`/`--compare`, and
+  `rayscan diff` now accept Nmap XML reports (`nmap -oX`) as either the
+  baseline or current snapshot. TCP port state and service name/product/version
+  are imported for IPv4 and IPv6 hosts, including XML entities; UDP ports and
+  aggregate `<extraports>` counts are ignored because the differential model is
+  TCP-only. `--save-baseline` continues to write rayscan JSON.
 - **Broker, database, and infrastructure probes**: the built-in library now
   includes RabbitMQ AMQP Connection.Start (5672 and AMQPS 5671), NATS INFO
   (4222), ZooKeeper `srvr` (2181), rsync daemon greeting (873), ClickHouse
