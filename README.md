@@ -751,12 +751,17 @@ for i in 0 1 2 3; do
     --json -o "shard-$i.json"
 done
 
-# Merge reports (JSON or JSONL); open results win, advisories are unioned:
+# Merge reports (JSON or JSONL); open results win and evidence is preserved:
 rayscan merge shard-0.json shard-1.json shard-2.json shard-3.json -o merged.json
 
 # Merge JSONL shards into JSONL:
 rayscan merge --jsonl shard-0.jsonl shard-1.jsonl -o merged.jsonl
 ```
+
+Duplicate `host:port` entries keep the stronger state and confidence, but union
+evidence, detail tags, script findings, advisories, and compatible service
+metadata. Conflicting service identities are recorded in `evidence` instead of
+being silently discarded.
 
 `--shard-index` and `--shard-count` must be supplied together; the count ranges
 from 1 to 1024. Resume/progress state is per shard, so each parallel invocation
@@ -791,7 +796,7 @@ The coordinator forces `--format json`, owns `--output`/`--shard-*`, and
 rejects job-local side effects (`--resume`, `--save-state`, `--diff`,
 `--stream`, alert flags). Workers heartbeat while scanning; expired leases are
 requeued up to `--max-attempts` (default 3), and finished shards merge with the
-same open-wins/advisory-union rules as `rayscan merge`. The coordinator writes
+same evidence-preserving rules as `rayscan merge`. The coordinator writes
 `--out` and exits nonzero if any shard ultimately failed. Empty shards are
 reported as empty merges rather than errors.
 

@@ -1,9 +1,12 @@
 //! Merge independent scan reports produced by sharded/distributed scans.
 //!
 //! Results are deduplicated by `(host, port)`: an open result wins over any
-//! non-open state, and ties keep the result with the higher confidence.  The
-//! merged document uses the same JSON schema as `rayscan scan --json`, so it
-//! can feed `--diff`, SIEM ingestion, or the Markdown/SARIF renderers.
+//! non-open state, and ties keep the result with the higher confidence.
+//! Duplicate evidence, detail tags, findings, advisories, and compatible
+//! service metadata are unioned; conflicting service identities are recorded
+//! in the evidence string.  The merged document uses the same JSON schema as
+//! `rayscan scan --json`, so it can feed `--diff`, SIEM ingestion, or the
+//! Markdown/SARIF renderers.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -290,11 +293,11 @@ fn insert_result(value: &Value, merged: &mut MergedReport) {
                 merged.counted.add(state_of(value));
                 merged.summary_adjust.remove(state_of(existing));
                 let mut replacement = value.clone();
-                merge_advisories(&mut replacement, existing);
+                merge_duplicate(&mut replacement, existing);
                 *existing = replacement;
             } else {
                 merged.summary_adjust.remove(state_of(value));
-                merge_advisories(existing, value);
+                merge_duplicate(existing, value);
             }
         }
     }
@@ -334,6 +337,14 @@ fn prefer(new: &Value, old: &Value) -> bool {
     confidence(new) > confidence(old)
 }
 
+fn merge_duplicate(kept: &mut Value, other: &Value) {
+    merge_advisories(kept, other);
+    merge_findings(kept, other);
+    merge_text_field(kept, other, "detail", ",");
+    merge_text_field(kept, other, "evidence", " | ");
+    merge_service_metadata(kept, other);
+}
+
 fn merge_advisories(kept: &mut Value, other: &Value) {
     let Some(kept_object) = kept.as_object_mut() else {
         return;
@@ -367,6 +378,212 @@ fn merge_advisories(kept: &mut Value, other: &Value) {
     if !advisories.is_empty() {
         kept_object.insert("advisories".to_string(), Value::Array(advisories));
     }
+}
+
+fn merge_findings(kept: &mut Value, other: &Value) {
+    let Some(kept_object) = kept.as_object_mut() else {
+        return;
+    };
+    let mut findings: Vec<Value> = kept_object
+        .get("findings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut index: BTreeMap<(String, String), usize> = findings
+        .iter()
+        .enumerate()
+        .map(|(index, finding)| (finding_key(finding), index))
+        .collect();
+
+    for finding in other
+        .get("findings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let key = finding_key(finding);
+        match index.get(&key).copied() {
+            Some(existing) => {
+                if finding_confidence(finding) > finding_confidence(&findings[existing]) {
+                    findings[existing] = finding.clone();
+                }
+            }
+            None => {
+                index.insert(key, findings.len());
+                findings.push(finding.clone());
+            }
+        }
+    }
+    if !findings.is_empty() {
+        kept_object.insert("findings".to_string(), Value::Array(findings));
+    }
+}
+
+fn finding_key(finding: &Value) -> (String, String) {
+    (
+        finding
+            .get("plugin")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        finding
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+    )
+}
+
+fn finding_confidence(finding: &Value) -> f64 {
+    finding
+        .get("confidence")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+}
+
+fn merge_text_field(kept: &mut Value, other: &Value, field: &str, separator: &str) {
+    let Some(kept_object) = kept.as_object_mut() else {
+        return;
+    };
+    let mut values = split_text_field(
+        kept_object.get(field).and_then(Value::as_str).unwrap_or(""),
+        separator,
+    );
+    let mut seen: BTreeSet<String> = values.iter().cloned().collect();
+    for value in split_text_field(
+        other.get(field).and_then(Value::as_str).unwrap_or(""),
+        separator,
+    ) {
+        if seen.insert(value.clone()) {
+            values.push(value);
+        }
+    }
+    if values.is_empty() {
+        kept_object.remove(field);
+    } else {
+        kept_object.insert(field.to_string(), Value::String(values.join(separator)));
+    }
+}
+
+fn split_text_field(text: &str, separator: &str) -> Vec<String> {
+    text.split(separator)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn merge_service_metadata(kept: &mut Value, other: &Value) {
+    let Some(other_service) = other.get("service").and_then(Value::as_object) else {
+        return;
+    };
+    let Some(kept_object) = kept.as_object_mut() else {
+        return;
+    };
+
+    if kept_object.get("service").is_none() {
+        kept_object.insert("service".to_string(), Value::Object(other_service.clone()));
+        append_merge_note(kept_object, "merge: adopted service identification");
+    } else {
+        let mut notes = Vec::new();
+        {
+            let Some(kept_service) = kept_object
+                .get_mut("service")
+                .and_then(Value::as_object_mut)
+            else {
+                return;
+            };
+            let kept_name = kept_service
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let other_name = other_service
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            if kept_name != other_name {
+                notes.push(format!(
+                    "merge conflict: service '{kept_name}' vs '{other_name}'"
+                ));
+            } else {
+                for field in ["product", "version", "cpe"] {
+                    match (
+                        kept_service.get(field).filter(|value| !value.is_null()),
+                        other_service.get(field).filter(|value| !value.is_null()),
+                    ) {
+                        (None, Some(value)) => {
+                            kept_service.insert(field.to_string(), value.clone());
+                        }
+                        (Some(kept_value), Some(other_value)) if kept_value != other_value => {
+                            notes.push(format!("merge conflict: service.{field}"));
+                        }
+                        _ => {}
+                    }
+                }
+                merge_service_info(&mut notes, kept_service, other_service);
+            }
+        }
+        for note in notes {
+            append_merge_note(kept_object, &note);
+        }
+    }
+
+    for field in ["banner", "tls", "rdp"] {
+        if kept_object.get(field).is_none()
+            && let Some(value) = other.get(field)
+            && !value.is_null()
+        {
+            kept_object.insert(field.to_string(), value.clone());
+        }
+    }
+}
+
+fn merge_service_info(
+    notes: &mut Vec<String>,
+    kept_service: &mut Map<String, Value>,
+    other: &Map<String, Value>,
+) {
+    let mut info = kept_service
+        .get("info")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for (key, value) in other
+        .get("info")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+    {
+        match info.get(key) {
+            None => {
+                info.insert(key.clone(), value.clone());
+            }
+            Some(existing) if existing != value => {
+                notes.push(format!("merge conflict: service.info.{key}"));
+            }
+            _ => {}
+        }
+    }
+    if !info.is_empty() {
+        kept_service.insert("info".to_string(), Value::Object(info));
+    }
+}
+
+fn append_merge_note(object: &mut Map<String, Value>, note: &str) {
+    let evidence = object
+        .get("evidence")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if evidence.split(" | ").any(|part| part.trim() == note) {
+        return;
+    }
+    let evidence = if evidence.is_empty() {
+        note.to_string()
+    } else {
+        format!("{evidence} | {note}")
+    };
+    object.insert("evidence".to_string(), Value::String(evidence));
 }
 
 fn render_report(merged: &MergedReport) -> Value {
@@ -551,6 +768,119 @@ mod tests {
 
         let _ = std::fs::remove_file(first_path);
         let _ = std::fs::remove_file(second_path);
+    }
+
+    #[test]
+    fn duplicate_results_union_evidence_tags_findings_and_metadata() {
+        let mut merged = MergedReport::default();
+        insert_result(
+            &json!({
+                "host": "192.0.2.1", "port": 80, "state": "open", "confidence": 0.95,
+                "detail": "plugin:appliances/jenkins-root,http",
+                "evidence": "handshake:ok | banner:nginx",
+                "service": {"name": "http", "product": "nginx", "confidence": 0.95},
+                "findings": [{"id": "f1", "title": "first", "severity": "medium",
+                               "confidence": 0.8, "plugin": "p1"}],
+                "advisories": [{"id": "CVE-2024-0001"}]
+            }),
+            &mut merged,
+        );
+        insert_result(
+            &json!({
+                "host": "192.0.2.1", "port": 80, "state": "open", "confidence": 0.90,
+                "detail": "http,plugin:appliances/grafana-health",
+                "evidence": "probe match plugin:appliances/grafana-health | handshake:ok",
+                "service": {"name": "http", "version": "1.21.0", "confidence": 0.90,
+                             "info": {"server": "nginx"}},
+                "findings": [
+                    {"id": "f1", "title": "first improved", "severity": "medium",
+                     "confidence": 0.9, "plugin": "p1"},
+                    {"id": "f2", "title": "second", "severity": "low",
+                     "confidence": 0.7, "plugin": "p2"}
+                ],
+                "advisories": [{"id": "CVE-2024-0002"}]
+            }),
+            &mut merged,
+        );
+
+        let rendered = render_report(&merged);
+        let open = &rendered["open"][0];
+        assert_eq!(open["service"]["product"], "nginx");
+        assert_eq!(open["service"]["version"], "1.21.0");
+        assert_eq!(open["service"]["info"]["server"], "nginx");
+        assert_eq!(
+            open["detail"],
+            "plugin:appliances/jenkins-root,http,plugin:appliances/grafana-health"
+        );
+        let evidence = open["evidence"].as_str().unwrap();
+        assert!(evidence.contains("handshake:ok"));
+        assert!(evidence.contains("banner:nginx"));
+        assert!(evidence.contains("probe match plugin:appliances/grafana-health"));
+        assert_eq!(open["findings"].as_array().unwrap().len(), 2);
+        assert_eq!(open["findings"][0]["title"], "first improved");
+        assert_eq!(open["advisories"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn conflicting_service_identifications_are_recorded() {
+        let mut merged = MergedReport::default();
+        insert_result(
+            &json!({
+                "host": "192.0.2.1", "port": 22, "state": "open", "confidence": 0.99,
+                "evidence": "handshake:ok",
+                "service": {"name": "http", "product": "nginx"}
+            }),
+            &mut merged,
+        );
+        insert_result(
+            &json!({
+                "host": "192.0.2.1", "port": 22, "state": "open", "confidence": 0.90,
+                "evidence": "banner:ssh",
+                "service": {"name": "ssh", "product": "OpenSSH"}
+            }),
+            &mut merged,
+        );
+
+        let rendered = render_report(&merged);
+        let open = &rendered["open"][0];
+        assert_eq!(open["service"]["name"], "http");
+        assert_eq!(open["service"]["product"], "nginx");
+        let evidence = open["evidence"].as_str().unwrap();
+        assert!(evidence.contains("banner:ssh"));
+        assert!(evidence.contains("merge conflict: service 'http' vs 'ssh'"));
+    }
+
+    #[test]
+    fn duplicate_results_adopt_service_metadata_from_corroborating_report() {
+        let mut merged = MergedReport::default();
+        insert_result(
+            &json!({
+                "host": "192.0.2.1", "port": 8080, "state": "open", "confidence": 0.99
+            }),
+            &mut merged,
+        );
+        insert_result(
+            &json!({
+                "host": "192.0.2.1", "port": 8080, "state": "open", "confidence": 0.90,
+                "banner": "HTTP/1.1 200 OK",
+                "service": {"name": "http", "product": "nginx"},
+                "tls": {"sni": "example.test"}
+            }),
+            &mut merged,
+        );
+
+        let rendered = render_report(&merged);
+        let open = &rendered["open"][0];
+        assert_eq!(open["service"]["name"], "http");
+        assert_eq!(open["service"]["product"], "nginx");
+        assert_eq!(open["banner"], "HTTP/1.1 200 OK");
+        assert_eq!(open["tls"]["sni"], "example.test");
+        assert!(
+            open["evidence"]
+                .as_str()
+                .unwrap()
+                .contains("merge: adopted service identification")
+        );
     }
 
     #[test]

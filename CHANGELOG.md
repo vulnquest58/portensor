@@ -30,6 +30,12 @@ All notable changes to rayscan are documented here.
   `expect_hex_offset` anchors a binary expectation at a zero-based response
   offset. The PCWorx probe uses these features to echo the PLC-generated
   session ID across its second and third requests.
+- **Evidence-preserving report merge**: duplicate `host:port` results now union
+  evidence strings, detail tags, script findings, advisories, banners, TLS/RDP
+  metadata, and non-conflicting service fields. Conflicting service identities
+  or `info` values are recorded in `evidence` instead of being silently
+  discarded, so distributed and sharded reports retain the observations that
+  led to the retained result.
 - **Raw TCP ACK firewall mapping**: `--ack` sends stateless ACK probes over
   IPv4 and IPv6 and reports firewall behavior as `unfiltered` when a RST echoes
   the probe cookie (the packet reached a host or stateless device) and
