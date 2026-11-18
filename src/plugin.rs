@@ -1717,6 +1717,7 @@ expect = "HELLO"
             "iec-104",
             "niagara-fox",
             "fins",
+            "hart-ip",
             "vnc",
             "mqtt",
             "kafka",

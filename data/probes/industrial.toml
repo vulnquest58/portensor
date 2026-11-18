@@ -102,3 +102,13 @@ confidence = 0.92
 send_hex = "46 49 4E 53 00 00 00 0C 00 00 00 00 00 00 00 00 00 00 00 00"
 expect_hex = "46 49 4E 53 00 00 00 10 00 00 00 01"
 timeout_ms = 1500
+
+[[probe]]
+name = "hart-ip-session"
+service = "hart-ip"
+ports = [5094]
+product = "HART-IP Server"
+confidence = 0.90
+send_hex = "01 00 00 00 00 01 00 0D 01 00 00 4E 20"
+expect_hex = "01 01 00 00"
+timeout_ms = 1500

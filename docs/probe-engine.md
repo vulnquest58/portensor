@@ -159,7 +159,7 @@ run; nothing is auto-discovered from the working directory.
 
 ## Built-in library
 
-The following packs are compiled into the binary (49 probes, 12 TLS-aware).
+The following packs are compiled into the binary (50 probes, 12 TLS-aware).
 TLS-aware probes are named after their transport (for example `-tls` or
 `-https`):
 
@@ -167,7 +167,7 @@ TLS-aware probes are named after their transport (for example `-tls` or
 | :--- | :--- | :--- |
 | `databases` | `redis-info`, `elasticsearch-root`, `elasticsearch-root-tls`, `opensearch-root`, `opensearch-root-tls`, `couchdb-root`, `memcached-stats`, `cassandra-options`, `postgresql-startup`, `mysql-greeting`, `mongodb-hello`, `mongodb-hello-tls` | Redis mode/OS/uptime/config file; Elasticsearch cluster/build; OpenSearch distribution; CouchDB vendor/features; memcached connections/uptime; CQL version; PostgreSQL auth method/database; MySQL/MariaDB/Percona/TiDB version; MongoDB identity |
 | `containers` | `docker-version`, `docker-ping`, `docker-ping-tls`, `docker-registry`, `kubernetes-version`, `kubernetes-api-tls`, `kubernetes-kubelet`, `kubernetes-kubelet-tls`, `kubelet-pods`, `etcd-version`, `etcd-version-tls`, `consul-agent-self`, `vault-health`, `vault-health-tls` | Docker API/Go/OS/kernel; registry API version; Kubernetes platform/Go/build date; etcd cluster version; Consul datacenter/node/server role; Vault initialization/seal state |
-| `industrial` | `modbus-device-id`, `s7-comm`, `dnp3-link-status`, `ethernet-ip-list-services`, `opcua-hello`, `iec-104-startdt`, `niagara-fox`, `omron-fins` | Protocol identity and liveness via standard identification PDUs; OPC UA HEL/ACK, IEC 60870-5-104 STARTDT, Niagara Fox, and OMRON FINS/TCP handshakes |
+| `industrial` | `modbus-device-id`, `s7-comm`, `dnp3-link-status`, `ethernet-ip-list-services`, `opcua-hello`, `iec-104-startdt`, `niagara-fox`, `omron-fins`, `hart-ip-session` | Protocol identity and liveness via standard identification PDUs; OPC UA HEL/ACK, IEC 60870-5-104 STARTDT, Niagara Fox, OMRON FINS/TCP, and HART-IP session handshakes |
 | `remote` | `vnc-handshake`, `winrm-wsman`, `winrm-wsman-tls` | RFB version; WinRM WSMan challenge response |
 | `appliances` | `jenkins-root`, `grafana-health`, `prometheus-buildinfo`, `kibana-status`, `rabbitmq-overview`, `portainer-status`, `portainer-https`, `sonarqube-status` | Product version plus server/database/commit/branch/Erlang/node/status details |
 | `messaging` | `mqtt-connect`, `mqtt-connect-tls`, `kafka-apiversions`, `kafka-apiversions-tls` | MQTT broker CONNACK; Kafka ApiVersions negotiation |

@@ -12,10 +12,11 @@ All notable changes to rayscan are documented here.
   GE SRTP, ProConOS, Red Lion, HMI HTTP(S), and SNMP. The built-in industrial
   pack now identifies OPC UA servers with a binary HEL/ACK handshake on 4840,
   IEC 60870-5-104 stations with STARTDT activation on 2404, Tridium Niagara
-  Fox stations on 1911/4911 (extracting the application version), and OMRON
-  FINS/TCP PLCs with a node-address exchange on 9600. `--udp` recognizes
-  BACnet/IP I-Am replies on 47808 (device instance and vendor ID) alongside
-  the existing UDP inspectors.
+  Fox stations on 1911/4911 (extracting the application version), OMRON
+  FINS/TCP PLCs with a node-address exchange on 9600, and HART-IP servers
+  with a session-initiate handshake on 5094. `--udp` recognizes BACnet/IP
+  I-Am replies on 47808 (device instance and vendor ID) alongside the
+  existing UDP inspectors.
 - **Raw TCP ACK firewall mapping**: `--ack` sends stateless ACK probes over
   IPv4 and IPv6 and reports firewall behavior as `unfiltered` when a RST echoes
   the probe cookie (the packet reached a host or stateless device) and
