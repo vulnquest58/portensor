@@ -171,7 +171,7 @@ class ReportTests(unittest.TestCase):
                 "cpu_count": 2,
                 "memory_kb": 2048,
                 "python": "3.12",
-                "versions": {"rayscan": "rayscan 0.6.0"},
+                "versions": {"rayscan": "rayscan 0.7.0"},
             },
             "scenario": {
                 "target": validate.HOST,

@@ -31,9 +31,12 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           mkdir -p "dist/rayscan-${version}-linux-x86_64/bin"
           mkdir -p "dist/rayscan-${version}-linux-x86_64/share/man/man1"
+          mkdir -p "dist/rayscan-${version}-linux-x86_64/packs"
           cp target/x86_64-unknown-linux-musl/release/rayscan \
             "dist/rayscan-${version}-linux-x86_64/bin/"
-          cp man/rayscan.1 "dist/rayscan-${version}-linux-x86_64/share/man/man1/"
+          cp man/*.1 "dist/rayscan-${version}-linux-x86_64/share/man/man1/"
+          cp -r packs/official-baseline \
+            "dist/rayscan-${version}-linux-x86_64/packs/"
           cp README.md CHANGELOG.md LICENSE "dist/rayscan-${version}-linux-x86_64/"
           tar -czf "dist/rayscan-${version}-linux-x86_64.tar.gz" \
             -C "dist/rayscan-${version}-linux-x86_64" .
@@ -60,7 +63,9 @@ jobs:
           $version = $env:GITHUB_REF_NAME -replace '^v', ''
           $dir = "dist/rayscan-$version-windows-x86_64"
           New-Item -ItemType Directory -Force -Path "$dir/bin" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dir/packs" | Out-Null
           Copy-Item "target/x86_64-pc-windows-gnu/release/rayscan.exe" "$dir/bin/"
+          Copy-Item -Recurse "packs/official-baseline" "$dir/packs/"
           Copy-Item README.md,CHANGELOG.md,LICENSE $dir
           Compress-Archive -Path "$dir/*" -DestinationPath "dist/rayscan-$version-windows-x86_64.zip"
       - uses: actions/upload-artifact@v4

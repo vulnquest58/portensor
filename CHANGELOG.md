@@ -2,7 +2,7 @@
 
 All notable changes to rayscan are documented here.
 
-## [Unreleased]
+## [0.7.0] - 2026-11-19
 
 ### Added
 
@@ -190,6 +190,38 @@ All notable changes to rayscan are documented here.
 - **Empty shard reports**: sharded scans whose target hash selects no targets
   now emit a valid empty JSON report instead of failing, so distributed plans
   and coordinators can merge them normally.
+
+### Security
+
+- Updated Wasmtime to 50.0.2, resolving RUSTSEC-2026-0566 through
+  RUSTSEC-2026-0573. `cargo audit` and `cargo deny check` now pass; the only
+  remaining audit warning is the explicitly allowed unmaintained `fxhash`
+  transitive dependency.
+
+### Validation
+
+- Linux x86_64 glibc, static-musl, and Windows x86_64 GNU release builds.
+- `cargo fmt --check`, clippy with `-D warnings`, the full Rust test suite,
+  `cargo audit`, `cargo deny`, and the Python benchmark-harness tests.
+- Exact localhost gate, matched-mode baseline validation, 5%/20% loss
+  validation, the 30-second soak, and the 256-host-concurrency soak.
+- Distributed pull, push, rejected-token, and graceful-shutdown smoke tests.
+- Windows connect-mode smoke test; Npcap raw mode remains covered by the
+  Windows CI compile/unit checks and requires Npcap plus elevation at runtime.
+
+### Known limitations
+
+- The privileged raw-SYN/SYN-proxy lab gate and the self-hosted namespace lab
+  were not available on the release host (no passwordless sudo). The
+  unprivileged netem loss gate, localhost gate, and Windows raw-unavailable
+  failure path still ran.
+- Npcap is not installed on the release host, so Windows raw SYN/ACK runtime
+  behavior was not exercised locally.
+- External OT/ICS and live-target certification was not performed for this
+  release; results in this repository are loopback, namespace, or previously
+  documented live-lab measurements.
+- Locally built archives are unsigned; signing is performed by the release
+  workflow when GPG or cosign secrets are configured.
 
 ## [0.6.0] - 2026-11-17
 

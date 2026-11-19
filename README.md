@@ -1,7 +1,7 @@
 # rayscan
 
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](https://github.com/vulnquest58/rayscan)
-[![Version](https://img.shields.io/badge/version-v0.6.0-blue.svg)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-v0.7.0-blue.svg)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.99.1%20pinned-orange.svg)](rust-toolchain.toml)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20Static%20musl-informational.svg)](#cross-platform-binaries)
 [![Author](https://img.shields.io/badge/author-vulnquest58-blueviolet.svg)](https://github.com/vulnquest58)
@@ -10,7 +10,7 @@
 An accuracy-first TCP/UDP port scanner with passive OS fingerprinting, written in Rust.  
 Maintained by **vulnquest58** ([@vulnquest58](https://github.com/vulnquest58)).
 
-**Status: Production Ready (v0.6.0).** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `rayscan` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
+**Status: Production Ready (v0.7.0).** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `rayscan` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
 
 Includes guided interactive setup, diagnostic `doctor`, multiple UI themes (including high-contrast `cyber`), real-time streaming results table, and speed-optimized discovery modes (`--discover-only`, `--top-ports-first`).
 
@@ -55,7 +55,11 @@ In our controlled benchmark lab simulating an enterprise perimeter with tarpits 
 | **nmap** (`-sS -T4`) | 48.6s | 16 / 16 | 0 | 100% | 100% |
 | **rayscan** (v0.6.0) | **0.86s** | **16 / 16** | **0** | **100%** | **100%** |
 
-*For full engineering details and lab reproduction, see [Why Accuracy-First Matters](docs/why-accuracy-first-matters.md).*
+*The rayscan row records the v0.6.0 controlled-lab measurement; matched-mode
+v0.7.0 validation is recorded in
+[Benchmark Validation](docs/benchmark-validation.md). For full engineering
+details and lab reproduction, see
+[Why Accuracy-First Matters](docs/why-accuracy-first-matters.md).*
 
 ---
 
@@ -1364,6 +1368,7 @@ make musl     # static binary → target/x86_64-unknown-linux-musl/release/raysc
 make install  # install to /usr/local/bin and /usr/local/share/man/man1
 make docker   # docker build -t rayscan:latest .
 make man      # regenerate man/rayscan.1 from CLI definition
+make dist     # package the prebuilt Linux/Windows binaries and SHA256SUMS
 ```
 
 ### Profiles
@@ -1546,15 +1551,15 @@ Measured on the documented WSL2 machine (5 runs, release build of this tree):
 
 ```text
 tool             mode       ports exact    runs  median_s    p95_s    cpu_s   rss_mib
-rayscan          verified      20 yes    5/5        1.116    1.147    0.080      12.8
-nmap             handshake     20 no     5/5        0.067    0.070    0.040      14.4
-rayscan-connect  handshake     18 yes    5/5        0.134    0.168    0.050      12.6
-nmap-speed       handshake     18 yes    5/5        0.043    0.053    0.030      14.5
+rayscan          verified      20 yes    5/5        1.117    1.125    0.070      12.6
+nmap             handshake     20 no     5/5        0.039    0.065    0.020      14.5
+rayscan-connect  handshake     18 yes    5/5        0.101    0.103    0.050      12.5
+nmap-speed       handshake     18 yes    5/5        0.039    0.051    0.030      14.5
 ```
 
 Verified rayscan found all eight banner services with no false positives;
 nmap's handshake scan reported both tarpits as open. On the matched 18-port
-handshake scenario both tools were exact, and nmap was about 3.1x faster.
+handshake scenario both tools were exact, and nmap was about 2.6x faster.
 Verified mode rechecks an ambiguous silent result so a banner lost after the
 handshake is recovered; because one connection cannot distinguish that from a
 tarpit, the safety can cost up to two extra probe windows per tarpit
@@ -1565,7 +1570,7 @@ The suite writes `bench/results/validation.json` and
 regressions. `--netem-loss` reruns it inside an unprivileged network namespace
 with `tc netem`; with the 1.5 s timeout floor and bounded retries, the measured
 5% and 20% runs are now exact for both rayscan modes while nmap remains fast.
-The 20% case costs about 10.6 s because lost SYNs and banners consume full retry
+The 20% case costs about 8.3 s because lost SYNs and banners consume full retry
 windows. See
 [`docs/benchmark-validation.md`](docs/benchmark-validation.md) for the full
 table. The privileged lab suite below remains the multi-target loss gate.
@@ -1585,9 +1590,9 @@ The default checks 1,024 ports per round with 512 workers, records wall/CPU/peak
 RSS, and exits nonzero on any missing or extra open port or RSS above
 `--max-rss-mb` (default 512 MiB). Use `--discover-only` to stress handshake
 concurrency without service verification. A 30-second run on the documented
-WSL2 machine completed 96/96 exact rounds over 1,024 ports at 0.302 s median,
-0.350 s p95, and 25.2 MiB peak RSS; a 512-worker/256-host-concurrency run
-finished 5/5 exact at 0.276 s median.
+WSL2 machine completed 102/102 exact rounds over 1,024 ports at 0.293 s median,
+0.326 s p95, and 25.0 MiB peak RSS; a 512-worker/256-host-concurrency run
+finished 5/5 exact at 0.273 s median.
 
 The full localhost gate checks all 65,535 ports against an exact expected open
 set:
@@ -1626,7 +1631,10 @@ sudo -E make lab-check
 ```
 
 This split is intentional: a green unprivileged CI must not pretend it tested
-packet capture.
+packet capture. The v0.7.0 release was validated with the unprivileged
+localhost, loss, soak, and distributed gates; the privileged raw-SYN lab,
+Npcap-backed Windows raw mode, and external live-target certification remain
+environment-specific gates and are called out in the release notes.
 
 ## Phase gates
 
