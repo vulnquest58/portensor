@@ -8,10 +8,12 @@ use serde_json::Value;
 
 use super::tls::ClientTls;
 use super::{
-    Capabilities, ClaimRequest, ClaimResponse, HeartbeatRequest, ResultRequest, execute_job,
-    new_worker_id, normalize_base, post_json, resolve_token, syn_available, worker_name,
+    Capabilities, ClaimRequest, ClaimResponse, HeartbeatRequest, HttpError, ResultRequest,
+    execute_job, new_worker_id, normalize_base, post_json, resolve_token, syn_available,
+    worker_name,
 };
 use crate::cli::DistributedWorkerArgs;
+use crate::diag::{self, Level};
 use crate::error::AppError;
 
 fn encode<T: serde::Serialize>(value: &T) -> Result<Value, String> {
@@ -25,7 +27,7 @@ async fn post(
     body: Value,
     timeout: Duration,
     client_tls: &ClientTls,
-) -> Result<Value, String> {
+) -> Result<Value, HttpError> {
     let base = base.to_string();
     let token = token.to_string();
     let path = path.to_string();
@@ -34,7 +36,7 @@ async fn post(
         post_json(&base, &token, &path, &body, timeout, &client_tls)
     })
     .await
-    .map_err(|error| format!("request task failed: {error}"))?
+    .map_err(|error| HttpError::transport(format!("request task failed: {error}")))?
 }
 
 async fn heartbeat_loop(
@@ -43,13 +45,24 @@ async fn heartbeat_loop(
     worker_id: String,
     job_id: usize,
     lease_secs: u64,
-    stop: Arc<AtomicBool>,
+    mut stop: tokio::sync::watch::Receiver<bool>,
     client_tls: ClientTls,
 ) {
     let interval = Duration::from_secs((lease_secs / 3).clamp(1, 30));
-    while !stop.load(Ordering::SeqCst) {
-        tokio::time::sleep(interval).await;
-        if stop.load(Ordering::SeqCst) {
+    loop {
+        if *stop.borrow() {
+            break;
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {}
+            changed = stop.changed() => {
+                if changed.is_err() || *stop.borrow() {
+                    break;
+                }
+                continue;
+            }
+        }
+        if *stop.borrow() {
             break;
         }
         let request = HeartbeatRequest {
@@ -74,7 +87,17 @@ async fn heartbeat_loop(
         .await
         {
             Ok(_) => {}
-            Err(error) => eprintln!("[worker] heartbeat for job {job_id} failed: {error}"),
+            Err(error) => {
+                diag::event(
+                    Level::Warn,
+                    "heartbeat_failed",
+                    &[
+                        ("job_id", serde_json::json!(job_id)),
+                        ("error", serde_json::json!(error.to_string())),
+                    ],
+                );
+                eprintln!("[worker] heartbeat for job {job_id} failed: {error}");
+            }
         }
     }
 }
@@ -100,8 +123,33 @@ async fn send_result(
         {
             Ok(value) => return Ok(value),
             Err(error) => {
-                last = error;
+                last = error.to_string();
+                if !error.retryable() {
+                    diag::event(
+                        Level::Error,
+                        "result_rejected",
+                        &[
+                            ("job_id", serde_json::json!(request.job_id)),
+                            ("status", serde_json::json!(error.status())),
+                            ("error", serde_json::json!(last)),
+                        ],
+                    );
+                    eprintln!(
+                        "[worker] coordinator rejected job {} result: {last}",
+                        request.job_id
+                    );
+                    return Err(last);
+                }
                 if attempt < 5 {
+                    diag::event(
+                        Level::Warn,
+                        "result_retry",
+                        &[
+                            ("job_id", serde_json::json!(request.job_id)),
+                            ("attempt", serde_json::json!(attempt)),
+                            ("error", serde_json::json!(last)),
+                        ],
+                    );
                     eprintln!(
                         "[worker] cannot submit job {} result (attempt {attempt}/5): {last}",
                         request.job_id
@@ -132,13 +180,22 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
         "[worker] {name} ({worker_id}) polling {base} (syn={})",
         capabilities.syn
     );
+    diag::event(
+        Level::Info,
+        "worker_start",
+        &[
+            ("worker_id", serde_json::json!(worker_id)),
+            ("name", serde_json::json!(name)),
+            ("coordinator", serde_json::json!(base)),
+            ("syn", serde_json::json!(capabilities.syn)),
+        ],
+    );
 
     let stop = Arc::new(AtomicBool::new(false));
     let signal_stop = stop.clone();
     tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            signal_stop.store(true, Ordering::SeqCst);
-        }
+        crate::shutdown::wait_for_shutdown().await;
+        signal_stop.store(true, Ordering::SeqCst);
     });
 
     let mut completed = 0u64;
@@ -165,12 +222,12 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
         {
             Ok(value) => serde_json::from_value::<ClaimResponse>(value),
             Err(error) => {
-                if error.contains("invalid or missing bearer token") {
+                if error.status() == Some(401) {
                     return Err(AppError::runtime(
                         "the coordinator rejected the distributed bearer token",
                     ));
                 }
-                if args.once {
+                if args.once || !error.retryable() {
                     return Err(AppError::runtime(format!("cannot claim a job: {error}")));
                 }
                 eprintln!("[worker] cannot claim a job: {error}");
@@ -195,22 +252,32 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
             job.shard_count,
             job.lease_secs
         );
+        diag::event(
+            Level::Info,
+            "job_claimed",
+            &[
+                ("job_id", serde_json::json!(job.job_id)),
+                ("shard_index", serde_json::json!(job.shard_index)),
+                ("shard_count", serde_json::json!(job.shard_count)),
+                ("lease_secs", serde_json::json!(job.lease_secs)),
+            ],
+        );
         let job_id = job.job_id;
         let lease_secs = job.lease_secs;
-        let heartbeat_stop = Arc::new(AtomicBool::new(false));
+        let (heartbeat_stop, heartbeat_stop_rx) = tokio::sync::watch::channel(false);
         let heartbeat = tokio::spawn(heartbeat_loop(
             base.clone(),
             token.clone(),
             worker_id.clone(),
             job_id,
             lease_secs,
-            heartbeat_stop.clone(),
+            heartbeat_stop_rx,
             client_tls.clone(),
         ));
 
         let job_to_execute = job;
         let outcome = tokio::task::spawn_blocking(move || execute_job(&job_to_execute)).await;
-        heartbeat_stop.store(true, Ordering::SeqCst);
+        let _ = heartbeat_stop.send(true);
         let _ = heartbeat.await;
 
         let result = match outcome {
@@ -229,17 +296,39 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
                 elapsed_ms: 0,
             },
         };
-        if let Err(error) = send_result(&base, &token, &result, &client_tls).await {
-            eprintln!(
-                "[worker] job {job_id} finished but its result was not accepted: {error}. \
-                 The coordinator will requeue the shard after the lease expires."
-            );
-            if args.once {
-                return Err(AppError::runtime(format!(
-                    "cannot submit job {job_id} result: {error}"
-                )));
+        let accepted = match send_result(&base, &token, &result, &client_tls).await {
+            Ok(_) => true,
+            Err(error) => {
+                diag::event(
+                    Level::Warn,
+                    "result_not_accepted",
+                    &[
+                        ("job_id", serde_json::json!(job_id)),
+                        ("error", serde_json::json!(error.to_string())),
+                    ],
+                );
+                eprintln!(
+                    "[worker] job {job_id} finished but its result was not accepted: {error}. \
+                     The coordinator will requeue the shard after the lease expires."
+                );
+                if args.once {
+                    return Err(AppError::runtime(format!(
+                        "cannot submit job {job_id} result: {error}"
+                    )));
+                }
+                false
             }
-        }
+        };
+        diag::event(
+            Level::Info,
+            "job_finished",
+            &[
+                ("job_id", serde_json::json!(job_id)),
+                ("accepted", serde_json::json!(accepted)),
+                ("elapsed_ms", serde_json::json!(result.elapsed_ms)),
+                ("has_report", serde_json::json!(result.report.is_some())),
+            ],
+        );
 
         completed += 1;
         if args.once || (args.max_jobs > 0 && completed >= args.max_jobs) {
@@ -248,5 +337,35 @@ pub async fn run(args: DistributedWorkerArgs) -> Result<(), AppError> {
     }
 
     eprintln!("[worker] stopped after {completed} job(s)");
+    diag::event(
+        Level::Info,
+        "worker_stopped",
+        &[("completed", serde_json::json!(completed))],
+    );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn heartbeat_stops_during_its_sleep() {
+        let (stop, stop_rx) = tokio::sync::watch::channel(false);
+        let task = tokio::spawn(heartbeat_loop(
+            "http://127.0.0.1:1".to_string(),
+            "token".to_string(),
+            "worker".to_string(),
+            1,
+            300,
+            stop_rx,
+            ClientTls::default(),
+        ));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        stop.send(true).expect("heartbeat task is alive");
+        tokio::time::timeout(Duration::from_millis(500), task)
+            .await
+            .expect("heartbeat stops promptly")
+            .expect("heartbeat task does not panic");
+    }
 }

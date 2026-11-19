@@ -19,6 +19,7 @@ use super::{
     resolve_token, validate_report,
 };
 use crate::cli::DistributedAgentArgs;
+use crate::diag::{self, Level};
 use crate::error::AppError;
 
 struct Agent {
@@ -69,6 +70,15 @@ pub async fn serve(args: DistributedAgentArgs) -> Result<(), AppError> {
             "[agent] listening on https://{}/ (concurrency {concurrency})",
             args.listen
         );
+        diag::event(
+            Level::Info,
+            "agent_start",
+            &[
+                ("listen", serde_json::json!(args.listen)),
+                ("scheme", serde_json::json!("https")),
+                ("concurrency", serde_json::json!(concurrency)),
+            ],
+        );
         axum::serve(listener, app)
             .with_graceful_shutdown(shutdown())
             .await
@@ -90,6 +100,15 @@ pub async fn serve(args: DistributedAgentArgs) -> Result<(), AppError> {
         "[agent] listening on http://{}/ (concurrency {concurrency})",
         args.listen
     );
+    diag::event(
+        Level::Info,
+        "agent_start",
+        &[
+            ("listen", serde_json::json!(args.listen)),
+            ("scheme", serde_json::json!("http")),
+            ("concurrency", serde_json::json!(concurrency)),
+        ],
+    );
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())
         .await
@@ -98,7 +117,7 @@ pub async fn serve(args: DistributedAgentArgs) -> Result<(), AppError> {
 }
 
 async fn shutdown() {
-    let _ = tokio::signal::ctrl_c().await;
+    crate::shutdown::wait_for_shutdown().await;
 }
 
 async fn authorize(State(agent): State<Arc<Agent>>, request: Request, next: Next) -> Response {
@@ -128,11 +147,21 @@ async fn execute_handler(
     })?;
     agent.running.fetch_add(1, Ordering::SeqCst);
     let job = request.job;
+    let job_id = job.job_id;
     eprintln!(
         "[agent] executing job {} shard {}/{}",
         job.job_id,
         job.shard_index + 1,
         job.shard_count
+    );
+    diag::event(
+        Level::Info,
+        "agent_job_start",
+        &[
+            ("job_id", serde_json::json!(job.job_id)),
+            ("shard_index", serde_json::json!(job.shard_index)),
+            ("shard_count", serde_json::json!(job.shard_count)),
+        ],
     );
     let outcome = tokio::task::spawn_blocking(move || execute_job(&job)).await;
     agent.running.fetch_sub(1, Ordering::SeqCst);
@@ -140,6 +169,16 @@ async fn execute_handler(
 
     let outcome = outcome
         .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    diag::event(
+        Level::Info,
+        "agent_job_finished",
+        &[
+            ("job_id", serde_json::json!(job_id)),
+            ("elapsed_ms", serde_json::json!(outcome.elapsed_ms)),
+            ("has_report", serde_json::json!(outcome.report.is_some())),
+            ("error", serde_json::json!(outcome.error)),
+        ],
+    );
     match outcome.report {
         Some(report) => {
             validate_report(&report)

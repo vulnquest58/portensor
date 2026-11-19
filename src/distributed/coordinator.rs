@@ -13,7 +13,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
-use tokio::sync::{Notify, watch};
+use tokio::sync::{Notify, Semaphore, watch};
 
 use super::tls::{self, ClientTls, TlsListener};
 use super::{
@@ -22,7 +22,12 @@ use super::{
     resolve_token, validate_report, write_report,
 };
 use crate::cli::DistributedServeArgs;
+use crate::diag::{self, Level};
 use crate::error::AppError;
+
+/// Bound simultaneous control-plane requests. Long-poll claims, result
+/// uploads, status checks, and report downloads all share this budget.
+const MAX_INFLIGHT_REQUESTS: usize = 128;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -83,6 +88,7 @@ struct Core {
 pub struct Coordinator {
     token: String,
     core: Mutex<Core>,
+    requests: Arc<Semaphore>,
     notify: Notify,
     complete_tx: watch::Sender<bool>,
     out: PathBuf,
@@ -161,6 +167,7 @@ impl Coordinator {
                 merge_error: None,
                 discarded: 0,
             }),
+            requests: Arc::new(Semaphore::new(MAX_INFLIGHT_REQUESTS)),
             notify: Notify::new(),
             complete_tx,
             out,
@@ -542,6 +549,7 @@ pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
         .route("/v1/healthz", get(health_handler))
         .with_state(coordinator.clone())
         .layer(DefaultBodyLimit::max(256 * 1024 * 1024))
+        .layer(middleware::from_fn(request_timeout))
         .layer(middleware::from_fn_with_state(
             coordinator.clone(),
             authorize,
@@ -557,6 +565,19 @@ pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
         args.listen,
         coordinator.core.lock().unwrap().jobs.len(),
         mode.as_str()
+    );
+    diag::event(
+        Level::Info,
+        "coordinator_start",
+        &[
+            ("listen", serde_json::json!(args.listen)),
+            ("scheme", serde_json::json!(scheme)),
+            (
+                "jobs",
+                serde_json::json!(coordinator.core.lock().unwrap().jobs.len()),
+            ),
+            ("mode", serde_json::json!(mode.as_str())),
+        ],
     );
 
     if mode == Mode::Push {
@@ -607,6 +628,16 @@ pub async fn serve(args: DistributedServeArgs) -> Result<(), AppError> {
     eprintln!(
         "[distributed] complete: {done} shard(s) done, {failed} failed, {discarded} stale result(s) discarded"
     );
+    diag::event(
+        Level::Info,
+        "coordinator_complete",
+        &[
+            ("done", serde_json::json!(done)),
+            ("failed", serde_json::json!(failed)),
+            ("discarded", serde_json::json!(discarded)),
+            ("report_ready", serde_json::json!(report_ready)),
+        ],
+    );
     if let Some(error) = merge_error {
         return Err(AppError::runtime(format!(
             "cannot merge shard reports: {error}"
@@ -636,7 +667,7 @@ async fn wait_for_completion(coordinator: Arc<Coordinator>) {
                     return;
                 }
             }
-            _ = tokio::signal::ctrl_c() => return,
+            _ = crate::shutdown::wait_for_shutdown() => return,
         }
     }
 }
@@ -703,7 +734,7 @@ fn spawn_push_loop(
             heartbeat.abort();
             let _ = heartbeat.await;
             let mut stale = false;
-            match response {
+            let retry_later = match response {
                 Ok(Ok(value)) => {
                     if let Some(report) = value.get("report") {
                         let request = ResultRequest {
@@ -719,6 +750,7 @@ fn spawn_push_loop(
                         if coordinator.submit(&request).is_err() {
                             stale = true;
                         }
+                        false
                     } else {
                         let request = ResultRequest {
                             worker_id: worker_id.clone(),
@@ -730,21 +762,42 @@ fn spawn_push_loop(
                         if coordinator.submit(&request).is_err() {
                             stale = true;
                         }
+                        true
                     }
                 }
                 Ok(Err(error)) => {
+                    diag::event(
+                        Level::Warn,
+                        "push_job_failed",
+                        &[
+                            ("job_id", serde_json::json!(job_id)),
+                            ("status", serde_json::json!(error.status())),
+                            ("error", serde_json::json!(error.to_string())),
+                        ],
+                    );
+                    eprintln!("[distributed] push job {job_id} failed: {error}");
                     let request = ResultRequest {
                         worker_id: worker_id.clone(),
                         job_id,
                         report: None,
-                        error: Some(error),
+                        error: Some(error.to_string()),
                         elapsed_ms: 0,
                     };
                     if coordinator.submit(&request).is_err() {
                         stale = true;
                     }
+                    true
                 }
                 Err(error) => {
+                    diag::event(
+                        Level::Warn,
+                        "push_job_failed",
+                        &[
+                            ("job_id", serde_json::json!(job_id)),
+                            ("error", serde_json::json!(format!("task failed: {error}"))),
+                        ],
+                    );
+                    eprintln!("[distributed] push job {job_id} task failed: {error}");
                     let request = ResultRequest {
                         worker_id: worker_id.clone(),
                         job_id,
@@ -755,14 +808,32 @@ fn spawn_push_loop(
                     if coordinator.submit(&request).is_err() {
                         stale = true;
                     }
+                    true
                 }
-            }
+            };
             if stale {
                 coordinator.discard();
             }
             coordinator.maintain().await;
+            if retry_later {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
         }
     });
+}
+
+/// Bound request handling so a stalled upload or half-open client cannot hold
+/// coordinator resources indefinitely. Result bodies are still accepted up to
+/// the configured body limit; this only limits total request lifetime.
+async fn request_timeout(request: Request, next: Next) -> Response {
+    match tokio::time::timeout(Duration::from_secs(300), next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => ApiError::new(
+            StatusCode::REQUEST_TIMEOUT,
+            "coordinator request exceeded 300s",
+        )
+        .into_response(),
+    }
 }
 
 async fn authorize(
@@ -770,11 +841,21 @@ async fn authorize(
     request: Request,
     next: Next,
 ) -> Response {
-    match bearer(request.headers()) {
-        Some(token) if constant_time_eq(&coordinator.token, token) => next.run(request).await,
-        _ => ApiError::new(StatusCode::UNAUTHORIZED, "invalid or missing bearer token")
-            .into_response(),
+    if !matches!(
+        bearer(request.headers()),
+        Some(token) if constant_time_eq(&coordinator.token, token)
+    ) {
+        return ApiError::new(StatusCode::UNAUTHORIZED, "invalid or missing bearer token")
+            .into_response();
     }
+    let Ok(_permit) = coordinator.requests.clone().try_acquire_owned() else {
+        return ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "coordinator is at its request concurrency limit; retry later",
+        )
+        .into_response();
+    };
+    next.run(request).await
 }
 
 async fn health_handler() -> Json<Value> {

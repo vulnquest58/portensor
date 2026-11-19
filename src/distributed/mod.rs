@@ -17,6 +17,7 @@ pub mod coordinator;
 pub mod tls;
 pub mod worker;
 
+use std::fmt;
 use std::io::Write as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -290,6 +291,45 @@ pub fn bearer(headers: &HeaderMap) -> Option<&str> {
         .strip_prefix("Bearer ")
 }
 
+/// A control-plane request failure with enough classification to decide
+/// whether retrying can help. Transport failures are retryable; explicit
+/// client errors such as 401/403/409/422 are not.
+#[derive(Clone, Debug)]
+pub struct HttpError {
+    status: Option<u16>,
+    message: String,
+}
+
+impl HttpError {
+    pub fn transport(message: impl Into<String>) -> Self {
+        Self {
+            status: None,
+            message: message.into(),
+        }
+    }
+
+    pub fn status(&self) -> Option<u16> {
+        self.status
+    }
+
+    pub fn retryable(&self) -> bool {
+        match self.status {
+            None => true,
+            Some(408 | 425 | 429) => true,
+            Some(500..=599) => true,
+            Some(_) => false,
+        }
+    }
+}
+
+impl fmt::Display for HttpError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for HttpError {}
+
 pub fn post_json(
     base: &str,
     token: &str,
@@ -297,7 +337,7 @@ pub fn post_json(
     body: &Value,
     timeout: Duration,
     tls: &tls::ClientTls,
-) -> Result<Value, String> {
+) -> Result<Value, HttpError> {
     let agent = tls.agent(timeout);
     let response = agent
         .post(&format!("{base}{path}"))
@@ -305,9 +345,9 @@ pub fn post_json(
         .set("Content-Type", "application/json")
         .send_json(body.clone());
     match response {
-        Ok(response) => response
-            .into_json::<Value>()
-            .map_err(|error| format!("invalid JSON response from {base}{path}: {error}")),
+        Ok(response) => response.into_json::<Value>().map_err(|error| {
+            HttpError::transport(format!("invalid JSON response from {base}{path}: {error}"))
+        }),
         Err(ureq::Error::Status(code, response)) => {
             let detail = response
                 .into_json::<Value>()
@@ -319,9 +359,14 @@ pub fn post_json(
                         .map(str::to_string)
                 })
                 .unwrap_or_else(|| format!("HTTP {code}"));
-            Err(detail)
+            Err(HttpError {
+                status: Some(code),
+                message: detail,
+            })
         }
-        Err(error) => Err(format!("cannot reach {base}{path}: {error}")),
+        Err(error) => Err(HttpError::transport(format!(
+            "cannot reach {base}{path}: {error}"
+        ))),
     }
 }
 
@@ -616,6 +661,20 @@ pub fn write_report(path: &Path, output: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn control_plane_errors_classify_retryability() {
+        assert!(HttpError::transport("connection reset").retryable());
+        let status = |code| HttpError {
+            status: Some(code),
+            message: String::new(),
+        };
+        assert!(status(429).retryable());
+        assert!(status(503).retryable());
+        assert!(!status(401).retryable());
+        assert!(!status(409).retryable());
+        assert!(!status(422).retryable());
+    }
 
     fn scan(args: &[&str]) -> Vec<String> {
         std::iter::once("scan".to_string())
