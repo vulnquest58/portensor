@@ -14,6 +14,7 @@ use tokio::task::JoinSet;
 
 use crate::accuracy;
 use crate::classify::{Failure, FailureKind, classify_io_error, classify_kind};
+use crate::diag::{self, Level};
 use crate::discovery::socket_addr;
 use crate::error::AppError;
 use crate::limits::worker_count;
@@ -23,6 +24,14 @@ use crate::rtt::RttEstimator;
 use crate::service;
 
 const MIN_CONNECT_TIMEOUT: Duration = Duration::from_millis(1_500);
+/// Upper bound on application-level timeout retries per port. Each retry can
+/// cost a full connect timeout, so a high `--retries` value must not turn a
+/// filtered port into a multi-second delay.
+const MAX_TIMEOUT_RETRIES: u32 = 3;
+/// Verification reconnects are bounded separately from connect retries. A
+/// silent tarpit looks identical to a lost banner, so an aggressive profile
+/// must not turn every tarpit into many full probe windows.
+const MAX_VERIFICATION_RETRIES: u32 = 2;
 const SERVICE_BANNER_LIMIT: usize = 1024;
 const SERVICE_BANNER_IDLE: Duration = Duration::from_millis(50);
 const SERVICE_BANNER_GRACE: Duration = Duration::from_millis(100);
@@ -128,6 +137,12 @@ struct Shared {
     options: ScanOptions,
     limiter: RateLimiter,
     rtt: Vec<Mutex<RttEstimator>>,
+    /// Responses that prove the host is reachable. Used to distinguish an
+    /// isolated dropped SYN from a host where every probe is filtered.
+    healthy: Vec<AtomicU64>,
+    /// Timeout attempts observed per target, including attempts that are
+    /// retried. This keeps timeout retries proportional to observed loss.
+    timeouts: Vec<AtomicU64>,
     host_gates: Vec<Semaphore>,
     jobs: u64,
 }
@@ -160,6 +175,8 @@ pub async fn scan(
     let rtt = (0..targets.len())
         .map(|_| Mutex::new(RttEstimator::new()))
         .collect();
+    let healthy = (0..targets.len()).map(|_| AtomicU64::new(0)).collect();
+    let timeouts = (0..targets.len()).map(|_| AtomicU64::new(0)).collect();
     let host_gates = if options.host_concurrency > 0 {
         (0..targets.len())
             .map(|_| Semaphore::new(options.host_concurrency))
@@ -174,6 +191,8 @@ pub async fn scan(
         options: options.clone(),
         limiter: RateLimiter::new(options.rate),
         rtt,
+        healthy,
+        timeouts,
         host_gates,
         jobs,
     });
@@ -201,9 +220,9 @@ pub async fn scan(
     for _ in 0..verifier_count {
         let ver_rx = ver_rx.clone();
         let sender = sender.clone();
-        let options = options.clone();
+        let shared = Arc::clone(&shared);
         tasks.spawn(async move {
-            run_verifier(ver_rx, sender, &options).await;
+            run_verifier(ver_rx, sender, shared).await;
         });
     }
     for _ in 0..workers {
@@ -406,6 +425,8 @@ async fn verify_candidate(
     // SYN retransmit (~1s) cannot tell a lossy SYN from a filtered port.
     let timeout = options.timeout.max(MIN_CONNECT_TIMEOUT);
     let mut attempt = 0u32;
+    let mut timeout_attempts = 0u32;
+    let mut verify_attempts = 0u32;
     let mut best: Option<PortResult> = None;
 
     loop {
@@ -417,7 +438,8 @@ async fn verify_candidate(
 
         match outcome {
             Err(_) => {
-                if attempt < options.retries {
+                if timeout_attempts < options.retries.min(MAX_TIMEOUT_RETRIES) {
+                    timeout_attempts += 1;
                     attempt += 1;
                     tokio::time::sleep(retry_delay(attempt)).await;
                     continue;
@@ -455,8 +477,9 @@ async fn verify_candidate(
                 // that case Open instead of Silent).
                 let ambiguous = matches!(result.state, PortState::Closed | PortState::Silent)
                     || (result.state == PortState::Open && result.service.is_none());
-                if ambiguous && attempt < options.retries {
+                if ambiguous && verify_attempts < options.retries.min(MAX_VERIFICATION_RETRIES) {
                     best = Some(prefer_best_evidence(best, result));
+                    verify_attempts += 1;
                     attempt += 1;
                     tokio::time::sleep(retry_delay(attempt)).await;
                     continue;
@@ -525,6 +548,7 @@ async fn run_worker(
 /// A connected stream waiting for banner/verification work.
 struct VerifyJob {
     stream: TcpStream,
+    target_index: usize,
     host: IpAddr,
     port: u16,
     latency: Duration,
@@ -540,20 +564,12 @@ enum ProbeOutcome {
 async fn run_verifier(
     ver_rx: async_channel::Receiver<VerifyJob>,
     sender: Sender<Vec<PortResult>>,
-    options: &ScanOptions,
+    shared: Arc<Shared>,
 ) {
     let mut batch: Vec<PortResult> = Vec::with_capacity(RESULT_BATCH);
     let mut last_flush = Instant::now();
     while let Ok(job) = ver_rx.recv().await {
-        let result = verify_service(
-            job.stream,
-            job.host,
-            job.port,
-            job.latency,
-            options.probe_timeout,
-            options.service_detection,
-        )
-        .await;
+        let result = verify_connected(&shared, job).await;
         batch.push(result);
         let flush = batch.len() >= RESULT_BATCH
             || (!batch.is_empty() && last_flush.elapsed() >= BATCH_FLUSH_INTERVAL);
@@ -567,6 +583,125 @@ async fn run_verifier(
     }
     if !batch.is_empty() {
         let _ = sender.send(batch).await;
+    }
+}
+
+fn verification_is_ambiguous(result: &PortResult) -> bool {
+    matches!(result.state, PortState::Closed | PortState::Silent)
+        || (result.state == PortState::Open && result.service.is_none())
+}
+
+/// Verify an accepted connection, reconnecting when the peer accepted the
+/// handshake but the banner was lost. Packet loss after a successful handshake
+/// otherwise turns a live service into `Silent`.
+async fn verify_connected(shared: &Shared, job: VerifyJob) -> PortResult {
+    let mut attempt = 0u32;
+    let mut best: Option<PortResult> = None;
+    let mut stream = Some(job.stream);
+
+    loop {
+        let result = verify_service(
+            stream.take().expect("verification stream is present"),
+            job.host,
+            job.port,
+            job.latency,
+            shared.options.probe_timeout,
+            shared.options.service_detection,
+        )
+        .await;
+
+        if verification_is_ambiguous(&result)
+            && attempt < shared.options.retries.min(MAX_VERIFICATION_RETRIES)
+        {
+            diag::event(
+                Level::Debug,
+                "verification_retry",
+                &[
+                    ("target", serde_json::json!(job.host.to_string())),
+                    ("port", serde_json::json!(job.port)),
+                    ("attempt", serde_json::json!(attempt + 1)),
+                    ("state", serde_json::json!(result.state.as_str())),
+                ],
+            );
+            best = Some(prefer_best_evidence(best, result));
+            attempt += 1;
+            tokio::time::sleep(retry_delay(attempt)).await;
+            match reconnect_for_verification(shared, job.target_index, job.host, job.port).await {
+                Ok(new_stream) => {
+                    stream = Some(new_stream);
+                }
+                Err(result) => return prefer_best_evidence(best, *result),
+            }
+            continue;
+        }
+
+        return prefer_best_evidence(best, result);
+    }
+}
+
+async fn reconnect_for_verification(
+    shared: &Shared,
+    target_index: usize,
+    host: IpAddr,
+    port: u16,
+) -> Result<TcpStream, Box<PortResult>> {
+    let address = socket_addr(host, port);
+    let mut attempt = 0u32;
+    loop {
+        shared.limiter.acquire().await;
+        apply_jitter(shared.options.jitter).await;
+        let _host_permit = match shared.host_gates.get(target_index) {
+            Some(gate) => Some(
+                gate.acquire()
+                    .await
+                    .expect("host concurrency gate stays open"),
+            ),
+            None => None,
+        };
+        let timeout = current_timeout(shared, target_index);
+        let started = Instant::now();
+        let outcome = tokio::time::timeout(timeout, TcpStream::connect(address)).await;
+        let elapsed = started.elapsed();
+        match outcome {
+            Ok(Ok(stream)) => {
+                record_sample(shared, target_index, elapsed);
+                return Ok(stream);
+            }
+            Ok(Err(error)) => {
+                let kind = classify_kind(&error);
+                if kind.retryable() && attempt < shared.options.retries {
+                    attempt += 1;
+                    tokio::time::sleep(retry_delay(attempt)).await;
+                    continue;
+                }
+                let state = kind.state();
+                return Err(Box::new(result_with_detail(
+                    shared,
+                    state,
+                    host,
+                    port,
+                    elapsed,
+                    || classify_io_error(&error).detail,
+                )));
+            }
+            Err(_) => {
+                shared.timeouts[target_index].fetch_add(1, Ordering::Relaxed);
+                if attempt < shared.options.retries.min(MAX_TIMEOUT_RETRIES) {
+                    attempt += 1;
+                    tokio::time::sleep(retry_delay(attempt)).await;
+                    continue;
+                }
+                record_timeout(shared, target_index);
+                return Err(Box::new(result_with_detail(
+                    shared,
+                    FailureKind::Filtered.state(),
+                    host,
+                    port,
+                    elapsed,
+                    || Failure::timed_out(timeout).detail,
+                )));
+            }
+        }
     }
 }
 
@@ -584,6 +719,7 @@ async fn apply_jitter(jitter: Duration) {
 async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) -> ProbeOutcome {
     let address = socket_addr(host, port);
     let mut attempt = 0u32;
+    let mut timeout_attempts = 0u32;
 
     loop {
         shared.limiter.acquire().await;
@@ -603,6 +739,31 @@ async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) ->
 
         match outcome {
             Err(_) => {
+                let timeout_count =
+                    shared.timeouts[target_index].fetch_add(1, Ordering::Relaxed) + 1;
+                let healthy = shared.healthy[target_index].load(Ordering::Relaxed);
+                if should_retry_timeout(
+                    healthy,
+                    timeout_count,
+                    timeout_attempts,
+                    shared.options.retries,
+                ) {
+                    diag::event(
+                        Level::Debug,
+                        "timeout_retry",
+                        &[
+                            ("target", serde_json::json!(host.to_string())),
+                            ("port", serde_json::json!(port)),
+                            ("attempt", serde_json::json!(attempt + 1)),
+                            ("healthy", serde_json::json!(healthy)),
+                            ("timeouts", serde_json::json!(timeout_count)),
+                        ],
+                    );
+                    timeout_attempts += 1;
+                    attempt += 1;
+                    tokio::time::sleep(retry_delay(attempt)).await;
+                    continue;
+                }
                 record_timeout(shared, target_index);
                 return ProbeOutcome::Result(Box::new(result_with_detail(
                     shared,
@@ -645,6 +806,7 @@ async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) ->
                 }
                 return ProbeOutcome::Verify(VerifyJob {
                     stream,
+                    target_index,
                     host,
                     port,
                     latency: elapsed,
@@ -655,10 +817,31 @@ async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) ->
 }
 
 fn current_timeout(shared: &Shared, target_index: usize) -> Duration {
+    let maximum = shared.options.timeout.max(MIN_CONNECT_TIMEOUT);
     shared.rtt[target_index]
         .lock()
         .expect("RTT estimator lock poisoned")
-        .timeout(MIN_CONNECT_TIMEOUT, shared.options.timeout)
+        .timeout(MIN_CONNECT_TIMEOUT, maximum)
+}
+
+/// Retry a timed-out connect only while the host is demonstrably responding and
+/// timeouts are not the dominant outcome.
+///
+/// A lost SYN and a filtered port look identical in isolation. Retrying every
+/// timeout triples the cost of scanning a filtered host, so the policy uses
+/// per-target evidence: if other probes are producing handshakes or refusals,
+/// timeouts are likely packet loss and worth retrying. If timeouts dominate,
+/// they are probably filtering. The first timeout is retried even without a
+/// healthy sample, which covers low-worker scans and a host whose only live
+/// port lost the first SYN.
+fn should_retry_timeout(healthy: u64, timeouts: u64, timeout_attempts: u32, retries: u32) -> bool {
+    if timeout_attempts >= retries.min(MAX_TIMEOUT_RETRIES) {
+        return false;
+    }
+    if healthy == 0 {
+        return timeouts == 1;
+    }
+    timeouts <= healthy
 }
 
 /// Build a result, allocating its detail string only when the state will be
@@ -681,6 +864,7 @@ fn result_with_detail(
 }
 
 fn record_sample(shared: &Shared, target_index: usize, sample: Duration) {
+    shared.healthy[target_index].fetch_add(1, Ordering::Relaxed);
     shared.rtt[target_index]
         .lock()
         .expect("RTT estimator lock poisoned")
@@ -956,6 +1140,34 @@ mod tests {
             host_concurrency: 0,
             shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    #[test]
+    fn timeout_retries_are_bounded_and_loss_aware() {
+        assert!(
+            should_retry_timeout(0, 1, 0, 2),
+            "an isolated first timeout may be a dropped SYN"
+        );
+        assert!(
+            !should_retry_timeout(0, 2, 0, 2),
+            "a host that only times out must not pay for extra attempts"
+        );
+        assert!(
+            should_retry_timeout(18, 1, 0, 2),
+            "one timeout among healthy responses looks like loss"
+        );
+        assert!(
+            should_retry_timeout(18, 18, 1, 2),
+            "a timeout share up to half is still treated as loss"
+        );
+        assert!(
+            !should_retry_timeout(2, 3, 0, 2),
+            "timeout-heavy hosts are assumed to filter"
+        );
+        assert!(
+            !should_retry_timeout(18, 0, 3, 10),
+            "the timeout retry budget overrides a large --retries value"
+        );
     }
 
     #[test]
@@ -1349,6 +1561,31 @@ mod tests {
 
         assert_eq!(report.counts.open, 1);
         assert_eq!(report.results[0].state, PortState::Open);
+    }
+
+    #[tokio::test]
+    async fn connect_scan_retries_when_the_banner_is_lost() {
+        let (port, server) = flaky_http_server().await;
+        let mut options = options(false);
+        options.retries = 2;
+        options.probe_timeout = Duration::from_millis(500);
+
+        let report = scan(&[host()], &[port], &options, None).await.unwrap();
+        server.abort();
+
+        assert_eq!(report.counts.open, 1);
+        let open = report
+            .results
+            .iter()
+            .find(|result| result.port == port)
+            .unwrap();
+        assert_eq!(open.state, PortState::Open);
+        assert_eq!(
+            open.service
+                .as_ref()
+                .and_then(|service| service.product.as_deref()),
+            Some("retry-lab")
+        );
     }
 
     #[tokio::test]

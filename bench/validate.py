@@ -191,22 +191,30 @@ def reserve_port(
     raise RuntimeError(f"could not reserve a free port in {low}-{high}")
 
 
-def build_scenario(seed: int = 0) -> Scenario:
+def build_scenario(
+    seed: int = 0,
+    banners: int = BANNER_COUNT,
+    tarpits: int = TARPIT_COUNT,
+    closed: int = CLOSED_COUNT,
+) -> Scenario:
+    total = banners + tarpits + closed
+    if total > PORT_HIGH - PORT_LOW + 1:
+        raise ValueError("scenario has more ports than the reserved range")
     rng = random.Random(seed)
     used: set[int] = set()
     scenario = Scenario()
     try:
-        for _ in range(BANNER_COUNT):
+        for _ in range(banners):
             port, listener = reserve_port(rng, used)
             scenario.banner_ports.append(port)
             scenario.servers.append(
                 BannerServer(listener, b"rayscan-bench/1.0\r\n")
             )
-        for _ in range(TARPIT_COUNT):
+        for _ in range(tarpits):
             port, listener = reserve_port(rng, used)
             scenario.tarpit_ports.append(port)
             scenario.servers.append(TarpitServer(listener))
-        for _ in range(CLOSED_COUNT):
+        for _ in range(closed):
             port, listener = reserve_port(rng, used)
             scenario.closed_ports.append(port)
             scenario.reservations.append(listener)
@@ -616,11 +624,22 @@ def network_condition(loss: float | None, delay_ms: float) -> str:
     return condition
 
 
+def find_network_tool(name: str) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    for directory in ("/usr/sbin", "/sbin", "/usr/local/sbin"):
+        candidate = Path(directory) / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def run_in_network_namespace(
     argv: list[str], loss: float, delay_ms: float
 ) -> int:
     required = ("unshare", "ip", "tc")
-    missing = [name for name in required if shutil.which(name) is None]
+    missing = [name for name in required if find_network_tool(name) is None]
     if missing:
         print(
             "cannot create a lossy network namespace; missing: "
@@ -634,8 +653,10 @@ def run_in_network_namespace(
         *argv,
         "--inside-netns",
     ]
-    setup = "set -e; ip link set lo up; tc qdisc add dev lo root netem loss " + (
-        f"{loss:g}%"
+    setup = (
+        "set -e; export PATH=\"/usr/sbin:/sbin:$PATH\"; "
+        "ip link set lo up; tc qdisc add dev lo root netem loss "
+        + f"{loss:g}%"
     )
     if delay_ms:
         setup += f" delay {delay_ms:g}ms"
@@ -805,7 +826,9 @@ def main(argv: list[str] | None = None) -> int:
             spec.required = spec.name in required
         print(
             f"validating {', '.join(names)} over {len(ports)} loopback ports "
-            f"({BANNER_COUNT} banner, {TARPIT_COUNT} tarpit, {CLOSED_COUNT} closed); "
+            f"({len(scenario.banner_ports)} banner, "
+            f"{len(scenario.tarpit_ports)} tarpit, "
+            f"{len(scenario.closed_ports)} closed); "
             f"handshake timing on {len(speed_ports)} non-tarpit ports; "
             f"condition: {network_condition(args.netem_loss, args.netem_delay_ms)}"
         )

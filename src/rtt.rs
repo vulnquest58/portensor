@@ -46,8 +46,12 @@ impl RttEstimator {
     }
 
     /// Return the current timeout clamped to the caller's bounds.
+    ///
+    /// A maximum below the minimum is raised to the minimum: the caller's
+    /// floor exists to leave room for a dropped SYN to be retransmitted by the
+    /// kernel, so silently lowering it would defeat the reliability guarantee.
     pub fn timeout(&self, minimum: Duration, maximum: Duration) -> Duration {
-        let minimum = minimum.min(maximum);
+        let maximum = maximum.max(minimum);
         let base = match self.srtt {
             Some(srtt) => srtt.saturating_add(self.rttvar.saturating_mul(4)),
             None => Duration::from_secs(1),
@@ -104,6 +108,15 @@ mod tests {
         assert_eq!(
             estimator.timeout(Duration::from_millis(50), Duration::from_millis(250)),
             Duration::from_millis(250)
+        );
+    }
+
+    #[test]
+    fn maximum_below_minimum_keeps_the_floor() {
+        let estimator = RttEstimator::new();
+        assert_eq!(
+            estimator.timeout(Duration::from_millis(1_500), Duration::from_secs(1)),
+            Duration::from_millis(1_500)
         );
     }
 }

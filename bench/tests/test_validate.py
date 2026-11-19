@@ -113,13 +113,14 @@ class NetworkConditionTests(unittest.TestCase):
     def test_netem_requires_namespace_tools(self) -> None:
         stderr = io.StringIO()
         with mock.patch("bench.validate.shutil.which", return_value=None):
-            with redirect_stderr(stderr):
-                self.assertEqual(
-                    validate.run_in_network_namespace(
-                        ["--repeat", "1"], 5.0, 0.0
-                    ),
-                    1,
-                )
+            with mock.patch("bench.validate.os.access", return_value=False):
+                with redirect_stderr(stderr):
+                    self.assertEqual(
+                        validate.run_in_network_namespace(
+                            ["--repeat", "1"], 5.0, 0.0
+                        ),
+                        1,
+                    )
         self.assertIn("missing: unshare, ip, tc", stderr.getvalue())
 
 
