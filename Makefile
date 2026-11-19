@@ -7,7 +7,7 @@ PREFIX      ?= /usr/local
 DESTDIR     ?=
 
 .PHONY: all build release test fmt lint audit deny fuzz sign ci \
-        lab lab-down lab-check bench bench-test bench-validate localhost-gate \
+        lab lab-down lab-check bench bench-test bench-validate soak localhost-gate \
         syn-gate service-gate syn-service-gate loss-gate loss-lab \
         musl install docker man dist clean
 
@@ -126,6 +126,11 @@ bench:
 
 bench-validate:
 	python3 bench/validate.py
+
+## High-concurrency loopback soak. Override SOAK_SECONDS for a longer run.
+SOAK_SECONDS ?= 30
+soak:
+	python3 bench/soak.py --duration $(SOAK_SECONDS) --output bench/results/soak.json
 
 localhost-gate:
 	python3 bench/localhost_gate.py
