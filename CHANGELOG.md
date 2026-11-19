@@ -6,6 +6,20 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Standardized benchmark validation**: `bench/validate.py` (and
+  `make bench-validate`) creates a reproducible loopback scenario with banner
+  services, silent tarpits, and closed ports, then runs interleaved warmup and
+  measured rounds. It validates verified-mode exactness against nmap on all
+  ports and compares handshake-only rayscan with nmap on the same non-tarpit
+  ports for matched speed, CPU, and peak-RSS measurements. It writes
+  `bench/results/validation.json` plus a Markdown summary, enforces accuracy
+  and resource ceilings, and exits non-zero on regression. The shared harness
+  now measures per-run CPU and peak RSS with GNU `time -v` instead of the
+  non-per-process `ru_maxrss` value, with a CPU-only `getrusage` fallback.
+  `--netem-loss` reruns the suite in an unprivileged network namespace with
+  `tc netem`; 5% and 20% diagnostics exposed occasional default-retry misses in
+  connect mode, which the suite reports as failures. Measured results and limits
+  are recorded in `docs/benchmark-validation.md`.
 - **Vendor-aware advisory confidence**: NVD correlation now stores exact CPE
   vendor/product identities (database schema 2) and prefers a plugin-supplied
   `service.cpe` over the product alias table, preventing cross-vendor false

@@ -78,8 +78,29 @@ test even though the TCP handshake succeeded.
 The harness records:
 
 - wall time from `time.perf_counter()`;
-- child CPU time from `getrusage(RUSAGE_CHILDREN)` deltas;
-- max RSS from `ru_maxrss` (diagnostic only).
+- per-run CPU (user + system) and peak RSS from GNU `time -v` when
+  `/usr/bin/time` is available;
+- CPU-only fallback from `getrusage(RUSAGE_CHILDREN)` deltas when GNU time is
+  unavailable. The fallback does not report peak RSS, because `ru_maxrss` is the
+  maximum across every child the harness has reaped, not the current run.
 
 It does not pin CPUs or control background load. Those belong in the
 performance phase, where the benchmark hardware must be fixed and documented.
+
+## Validation suite
+
+`bench/validate.py` is the standardized unprivileged comparison. It creates a
+loopback scenario with banner services, silent tarpits, and closed ports, then
+runs interleaved warmup and measured rounds. Verified rayscan and nmap are
+scored over all ports to expose handshake-only false positives. A
+handshake-only rayscan mode and nmap are scored over the non-tarpit subset so
+their wall time, CPU, and peak RSS are compared with matched discovery
+semantics.
+
+The suite writes `bench/results/validation.json` and
+`bench/results/validation.md`, and exits non-zero when verified or
+handshake-equivalent rayscan accuracy is not exact or when the configured wall,
+CPU, or RSS ceilings are exceeded. By default loopback runs inject no packet
+loss; `--netem-loss PERCENT` re-executes the same suite inside an unprivileged
+network namespace with `tc netem` for loss profiles. The privileged
+`bench/accuracy_suite.py` remains the multi-target lab loss gate.

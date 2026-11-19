@@ -80,6 +80,19 @@ class MetricTests(unittest.TestCase):
         self.assertEqual(metrics.precision, 0.5)
 
 
+class ResourceTests(unittest.TestCase):
+    def test_parse_gnu_time(self) -> None:
+        text = (
+            "\tUser time (seconds): 1.25\n"
+            "\tSystem time (seconds): 0.50\n"
+            "\tMaximum resident set size (kbytes): 4096\n"
+        )
+        self.assertEqual(bench.parse_gnu_time(text), (1.75, 4096))
+
+    def test_parse_gnu_time_without_fields(self) -> None:
+        self.assertEqual(bench.parse_gnu_time(""), (None, None))
+
+
 class CommandTests(unittest.TestCase):
     def test_rayscan_command_matches_contract(self) -> None:
         command = bench.build_command(

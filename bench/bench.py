@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import resource
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -67,7 +69,8 @@ class Run:
     open_ports: set[Target] = field(default_factory=set)
     metrics: Metrics | None = None
     cpu_seconds: float | None = None
-    max_rss_kb: int | None = None
+    peak_rss_kb: int | None = None
+    measurement: str | None = None
     error: str | None = None
 
     @property
@@ -87,7 +90,8 @@ class Run:
             ],
             "metrics": self.metrics.to_dict() if self.metrics else None,
             "cpu_seconds": self.cpu_seconds,
-            "max_rss_kb": self.max_rss_kb,
+            "peak_rss_kb": self.peak_rss_kb,
+            "measurement": self.measurement,
             "error": self.error,
             "stdout_tail": self.stdout[-2000:],
             "stderr_tail": self.stderr[-2000:],
@@ -282,6 +286,38 @@ def build_command(
     raise ValueError(f"unknown tool: {tool}")
 
 
+def gnu_time_binary() -> str | None:
+    """Return GNU time when available, so CPU and RSS are per-process."""
+    if os.name != "posix":
+        return None
+    for candidate in ("/usr/bin/time", shutil.which("time")):
+        if candidate and Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def parse_gnu_time(text: str) -> tuple[float | None, int | None]:
+    user: float | None = None
+    system: float | None = None
+    peak_rss_kb: int | None = None
+    for line in text.splitlines():
+        key, _, value = line.partition(":")
+        key = key.strip()
+        value = value.strip()
+        if key == "User time (seconds)":
+            user = float(value)
+        elif key == "System time (seconds)":
+            system = float(value)
+        elif key == "Maximum resident set size (kbytes)":
+            peak_rss_kb = int(value)
+    cpu_seconds = (
+        round(user + system, 4)
+        if user is not None and system is not None
+        else None
+    )
+    return cpu_seconds, peak_rss_kb
+
+
 def run_tool(
     tool: str,
     command: list[str],
@@ -293,13 +329,25 @@ def run_tool(
     result = Run(tool=tool, command=command)
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
     started = time.perf_counter()
+    time_binary = gnu_time_binary()
+    report_path: Path | None = None
+    timed_command = command
+    env: dict[str, str] | None = None
+    if time_binary is not None:
+        handle, report_name = tempfile.mkstemp(prefix="rayscan-bench-", suffix=".time")
+        os.close(handle)
+        report_path = Path(report_name)
+        timed_command = [time_binary, "-v", "-o", str(report_path), "--", *command]
+        env = os.environ.copy()
+        env["LC_ALL"] = "C"
     try:
         completed = subprocess.run(
-            command,
+            timed_command,
             capture_output=True,
             text=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
     except FileNotFoundError:
         result.error = "executable not found"
@@ -313,13 +361,26 @@ def run_tool(
         return result
     finally:
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
-        result.cpu_seconds = round(
+        fallback_cpu = round(
             (after.ru_utime - before.ru_utime) + (after.ru_stime - before.ru_stime),
             4,
         )
-        result.max_rss_kb = after.ru_maxrss
+        if report_path is not None:
+            if report_path.is_file():
+                cpu_seconds, peak_rss_kb = parse_gnu_time(
+                    report_path.read_text(encoding="utf-8", errors="replace")
+                )
+                if cpu_seconds is not None:
+                    result.cpu_seconds = cpu_seconds
+                    result.measurement = "gnu-time"
+                if peak_rss_kb is not None:
+                    result.peak_rss_kb = peak_rss_kb
+            report_path.unlink(missing_ok=True)
+        if result.cpu_seconds is None:
+            result.cpu_seconds = fallback_cpu
+            result.measurement = "getrusage"
+        result.elapsed_seconds = round(time.perf_counter() - started, 4)
 
-    result.elapsed_seconds = round(time.perf_counter() - started, 4)
     result.exit_code = completed.returncode
     result.stdout = completed.stdout or ""
     result.stderr = completed.stderr or ""

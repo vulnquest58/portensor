@@ -7,7 +7,7 @@ PREFIX      ?= /usr/local
 DESTDIR     ?=
 
 .PHONY: all build release test fmt lint audit deny fuzz sign ci \
-        lab lab-down lab-check bench bench-test localhost-gate \
+        lab lab-down lab-check bench bench-test bench-validate localhost-gate \
         syn-gate service-gate syn-service-gate loss-gate loss-lab \
         musl install docker man dist clean
 
@@ -123,6 +123,9 @@ bench-test:
 
 bench:
 	python3 bench/bench.py --lab
+
+bench-validate:
+	python3 bench/validate.py
 
 localhost-gate:
 	python3 bench/localhost_gate.py

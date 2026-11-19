@@ -105,7 +105,7 @@ UDP probes.
 | Packaging | Static musl binary (`make musl`), Dockerfile (scratch), man page (`make man`) |
 | Safety | Global token-bucket rate limit, file-descriptor-aware workers, target caps |
 | Lab | WSL2/Linux network namespace with open/closed/DROP/tarpit/rate-limited/SYN-proxy targets |
-| Benchmarks | Dependency-free harness for rayscan, nmap, masscan, and rustscan, plus exact SYN gate |
+| Benchmarks | Dependency-free lab harness plus matched-mode localhost validation for rayscan, nmap, masscan, and rustscan |
 | Docs | Architecture, benchmark contract, Phase 0-6 gates, Phase 8-9 gates, live validation |
 
 ## Live Validation — Metasploitable 2
@@ -1476,7 +1476,9 @@ requires the kernel's `ipt_SYNPROXY` module; the current WSL2 kernel provides it
 ## Benchmark harness
 
 The harness scores scanner output against `lab/ground_truth.json`. It computes
-recall, precision, and F1, and records wall time, CPU time, and max RSS.
+recall, precision, and F1, and records wall time, CPU time, and peak RSS. CPU and
+RSS come from GNU time when it is available; the fallback uses `getrusage` for
+CPU only, because `ru_maxrss` is not per-process.
 
 ```bash
 sudo make lab
@@ -1500,6 +1502,38 @@ proof of a useful service or a real backend.
 The JSON report is written to `bench/results/latest.json` unless `--no-save` is
 used. Missing tools are reported as skipped, not treated as failures, unless
 `--require-all` is supplied.
+
+The standardized localhost validation suite compares verified rayscan against
+nmap on a scenario with banner services, silent tarpits, and closed ports. It
+also compares a handshake-only rayscan mode against nmap on the same non-tarpit
+ports, so speed is measured with matched discovery semantics. Every tool runs
+in interleaved warmup and measured rounds; the report includes median/p95 wall
+time, CPU, peak RSS, exactness, and the rayscan-to-nmap handshake ratio.
+
+```bash
+make bench-validate
+```
+
+Measured on the documented WSL2 machine (5 runs, released 0.6.0 binary):
+
+```text
+tool             mode       ports exact    runs  median_s    p95_s    cpu_s   rss_mib
+rayscan          verified      20 yes    5/5        0.443    0.450    0.070      12.5
+nmap             handshake     20 no     5/5        0.040    0.053    0.030      14.5
+rayscan-connect  handshake     18 yes    5/5        0.093    0.097    0.040      12.6
+nmap-speed       handshake     18 yes    5/5        0.034    0.045    0.030      14.5
+```
+
+Verified rayscan found all eight banner services with no false positives;
+nmap's handshake scan reported both tarpits as open. On the matched 18-port
+handshake scenario both tools were exact, and nmap was about 2.7x faster.
+The suite writes `bench/results/validation.json` and
+`bench/results/validation.md` and exits non-zero on accuracy or resource
+regressions. `--netem-loss` reruns it inside an unprivileged network namespace
+with `tc netem`; the measured 5% and 20% diagnostics show occasional default
+connect-scan misses while nmap recovers, so those runs fail the exactness gate
+until loss resilience is improved. The privileged lab suite below remains the
+multi-target loss gate.
 
 The full localhost gate checks all 65,535 ports against an exact expected open
 set:
@@ -1619,6 +1653,7 @@ lab/lab.sh                  namespace and veth lifecycle
 lab/targets.py              ground-truth TCP services
 lab/verify_lab.py           ground-truth checker
 bench/bench.py              runner, parsers, and metrics
+bench/validate.py           matched-mode localhost validation with reports
 bench/localhost_gate.py     exact 1-65535 localhost gate
 bench/syn_gate.py           exact raw-SYN lab accuracy gate
 bench/accuracy_suite.py     multi-profile accuracy runner (0%/5%/20% packet loss)
@@ -1626,6 +1661,7 @@ bench/tests/                offline harness tests
 docs/architecture.md        boundaries and design rules
 docs/probe-engine.md        probe schema, built-in library, and authoring guide
 docs/benchmark-contract.md  CLI/JSON contract
+docs/benchmark-validation.md  measured matched-mode validation results
 docs/phase0-gate.md         Phase 0 evidence
 docs/phase1-gate.md         Phase 1 evidence
 docs/phase2-gate.md         Phase 2 evidence
