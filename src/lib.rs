@@ -6,6 +6,7 @@ pub mod cli;
 pub mod config;
 pub mod db;
 pub mod defense;
+pub mod diag;
 pub mod diff;
 pub mod discovery;
 pub mod distributed;
@@ -30,6 +31,7 @@ pub mod scope;
 pub mod script;
 pub mod service;
 pub mod shard;
+pub mod shutdown;
 pub mod smb;
 pub mod syn;
 pub mod targets;
@@ -55,10 +57,12 @@ use crate::theme::{Theme, color_enabled};
 pub async fn run(cli: Cli) -> Result<(), AppError> {
     let Cli {
         theme,
+        log_level,
         db_dir,
         scripts_dir,
         command,
     } = cli;
+    diag::init(log_level);
     match command {
         Command::Scan(args) => {
             run_scan(args, theme, db_dir.as_deref(), scripts_dir.as_deref()).await
@@ -494,10 +498,9 @@ pub(crate) async fn run_scan(
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_signal = Arc::clone(&shutdown);
     tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            eprintln!("\n[rayscan] interrupted — saving partial results…");
-            shutdown_signal.store(true, Ordering::Relaxed);
-        }
+        shutdown::wait_for_shutdown().await;
+        eprintln!("\n[rayscan] interrupted — saving partial results…");
+        shutdown_signal.store(true, Ordering::Relaxed);
     });
 
     let stream_enabled = resolved.stream;
@@ -627,6 +630,23 @@ pub(crate) async fn run_scan(
         host_concurrency: resolved.host_concurrency,
         shutdown: Arc::clone(&shutdown),
     };
+
+    diag::event(
+        diag::Level::Info,
+        "scan_start",
+        &[
+            ("targets", serde_json::json!(targets.len())),
+            ("ports", serde_json::json!(ports.len())),
+            ("jobs", serde_json::json!(jobs)),
+            ("workers", serde_json::json!(resolved.workers)),
+            ("retries", serde_json::json!(resolved.retries)),
+            (
+                "timeout_ms",
+                serde_json::json!(resolved.timeout.as_millis()),
+            ),
+            ("mode", serde_json::json!(scan_mode)),
+        ],
+    );
 
     let hosts_resume = host_plan.is_some();
     let mut report = if let Some(plan) = host_plan {
@@ -1155,6 +1175,22 @@ pub(crate) async fn run_scan(
             args.quiet,
         )?;
     }
+
+    diag::event(
+        diag::Level::Info,
+        "scan_finished",
+        &[
+            ("targets", serde_json::json!(report.targets)),
+            ("jobs", serde_json::json!(report.jobs)),
+            ("open", serde_json::json!(report.counts.open)),
+            ("closed", serde_json::json!(report.counts.closed)),
+            ("filtered", serde_json::json!(report.counts.filtered)),
+            ("silent", serde_json::json!(report.counts.silent)),
+            ("error", serde_json::json!(report.counts.error)),
+            ("partial", serde_json::json!(report.partial)),
+            ("elapsed_ms", serde_json::json!(report.elapsed.as_millis())),
+        ],
+    );
 
     output::emit(
         &report,

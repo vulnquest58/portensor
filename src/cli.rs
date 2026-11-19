@@ -37,6 +37,10 @@ pub struct Cli {
     #[arg(long, global = true, value_enum, value_name = "THEME")]
     pub theme: Option<Theme>,
 
+    /// Structured diagnostic level for stderr (also RAYSCAN_LOG).
+    #[arg(long, global = true, value_enum, value_name = "LEVEL")]
+    pub log_level: Option<crate::diag::Level>,
+
     /// Directory for the local NVD advisory database.
     #[arg(long, global = true, value_name = "DIR")]
     pub db_dir: Option<PathBuf>,
@@ -519,7 +523,10 @@ pub struct ScanArgs {
     #[arg(long, value_name = "N")]
     pub workers: Option<usize>,
 
-    /// Retries for local resource failures such as EMFILE.
+    /// Retries for lost probes and local resource failures such as EMFILE.
+    ///
+    /// Connect scans retry timeouts while the host is responding, plus one
+    /// retry for an isolated first timeout; retries are capped at three per port.
     #[arg(long, value_name = "N")]
     pub retries: Option<u32>,
 
@@ -1825,6 +1832,20 @@ mod tests {
         invalid.ndp = true;
         invalid.ndp_timeout_ms = Some(10);
         assert_eq!(invalid.resolve().unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
+    fn global_log_level_parses_before_or_after_subcommand() {
+        for args in [
+            ["rayscan", "--log-level", "debug", "db", "status"],
+            ["rayscan", "db", "status", "--log-level", "debug"],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert_eq!(cli.log_level, Some(crate::diag::Level::Debug));
+        }
+        let error = Cli::try_parse_from(["rayscan", "--log-level", "verbose", "db", "status"])
+            .expect_err("unknown diagnostic level must fail");
+        assert!(error.to_string().contains("verbose"));
     }
 
     #[test]
