@@ -61,6 +61,9 @@ partitioned and merged into one result. Raw SYN-ACKs are candidates: by default
 each candidate is connect-verified before it appears in `open`. For raw
 diagnostics, `--syn --connect-only` reports the layer-3/4 result directly.
 `--retries N` controls both raw retransmission and connect-verification retries.
+Connect scans cap timeout retries at `min(N, 3)` and recheck an ambiguous
+verification result up to `min(N, 2)` times while retaining the strongest
+evidence seen.
 
 The exact SYN lab gate is `bench/syn_gate.py` (`make syn-gate`). It scores the
 same `open` list against `lab/ground_truth.json` and requires an exact set, so a

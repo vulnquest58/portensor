@@ -4,7 +4,7 @@
 .SH NAME
 rayscan \- An accuracy\-first TCP port scanner
 .SH SYNOPSIS
-\fBrayscan\fR [\fB\-\-theme\fR] [\fB\-\-db\-dir\fR] [\fB\-\-scripts\-dir\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+\fBrayscan\fR [\fB\-\-theme\fR] [\fB\-\-log\-level\fR] [\fB\-\-db\-dir\fR] [\fB\-\-scripts\-dir\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
 An accuracy\-first TCP/UDP scanner. Rayscan uses a bounded worker pool, adaptive per\-host timeouts, a global rate limit, and a short service\-verification read so a bare handshake from a tarpit or SYN proxy is not reported as an open service. Responsive services are identified from their banners, including common products and versions. With raw\-socket support (Linux root/CAP_NET_RAW, or Windows with Npcap), \-\-syn performs raw SYN discovery and verifies responsive candidates over TCP. A UDP scanner is available for service detection on ports that accept UDP traffic.
 .SH OPTIONS
@@ -26,6 +26,27 @@ hacker
 minimal
 .IP \(bu 2
 cyber
+.RE
+.TP
+\fB\-\-log\-level\fR \fI<LEVEL>\fR
+Structured diagnostic level for stderr (also RAYSCAN_LOG)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+off
+.IP \(bu 2
+error
+.IP \(bu 2
+warn
+.IP \(bu 2
+info
+.IP \(bu 2
+debug
+.IP \(bu 2
+trace
 .RE
 .TP
 \fB\-\-db\-dir\fR \fI<DIR>\fR

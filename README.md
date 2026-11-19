@@ -99,7 +99,8 @@ UDP probes.
 | Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes plus optional HTTPS (`--tls-cert`/`--tls-key`, `--ca-cert`) (`rayscan distributed`) |
 | Evasion | Random delay jitter, configurable TTL/hop limit, custom SYN source-port range, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--ttl`, `--source-port-range`, `--decoys`, `--fragment-size`) |
 | Resumable scans | Smart `--resume FILE` with pre-scan gap analysis audit + `--save-state FILE` (`src/resume.rs`) |
-| Signal handling | Graceful Ctrl-C: workers stop, partial results printed, state saved |
+| Signal handling | Graceful Ctrl-C/SIGTERM: workers stop, partial results printed, state saved |
+| Diagnostics | Opt-in structured JSON stderr logs (`--log-level`, `RAYSCAN_LOG`) for scan retries, distributed job lifecycle, and delivery failures; secrets and payloads are omitted |
 | Output formats | `table`, `json`, `jsonl`, `csv`, `host-port`, `nmap-xml`, `greppable`, `sarif`, `markdown`; dark/light/hacker/minimal themes |
 | Supply chain | `cargo audit`/`cargo deny`, fuzz targets, checksums, optional GPG/cosign signing (`make deny`, `make fuzz`, `make sign`) |
 | Packaging | Static musl binary (`make musl`), Dockerfile (scratch), man page (`make man`) |
@@ -831,6 +832,14 @@ same evidence-preserving rules as `rayscan merge`. The coordinator writes
 `--out` and exits nonzero if any shard ultimately failed. Empty shards are
 reported as empty merges rather than errors.
 
+Control-plane requests have a 300-second lifetime and a 128-request in-flight
+cap, so a stalled client cannot pin the coordinator indefinitely. Transient
+transport, 408/425/429, and 5xx failures are retried with backoff; terminal
+401/403/409/422 responses fail fast instead of burning the retry budget.
+Ctrl-C and SIGTERM take the same graceful shutdown path on the coordinator,
+workers, and agents. Use `--log-level info` (or `RAYSCAN_LOG=info`) for
+structured job and delivery diagnostics on stderr.
+
 Authentication is a shared bearer token (`--token` or
 `RAYSCAN_DISTRIBUTED_TOKEN`, minimum 16 characters). The control plane speaks
 HTTP/JSON by default. Enable HTTPS directly on the coordinator and push agents
@@ -1425,6 +1434,25 @@ Progress is written to stderr; JSON on stdout stays clean. Use `--output FILE`
 to write to a file instead of stdout, and `--quiet` to suppress progress and
 status messages.
 
+### Diagnostic logging
+
+Structured diagnostics are opt-in and always go to stderr, so `--json` and
+`--stream` output stays clean:
+
+```bash
+RAYSCAN_LOG=info rayscan scan -t 10.0.0.0/24 -p 22,80,443 --no-db-update
+rayscan --log-level debug scan -t 10.0.0.1 -p 1-1024 --timeout 2
+```
+
+Each line is a JSON object with `ts_ms`, `level`, `event`, and event-specific
+fields. Levels are `off` (default), `error`, `warn`, `info`, `debug`, and
+`trace`;
+`--log-level` overrides `RAYSCAN_LOG`. Scan events record target/port counts,
+mode, retry decisions, and final state counts. Distributed events record worker
+start/stop, claimed jobs, heartbeat and result-delivery failures, and
+coordinator completion. Tokens, banners, payloads, and report contents are never
+logged.
+
 The benchmark JSON contract is in
 [`docs/benchmark-contract.md`](docs/benchmark-contract.md). Exit status is `0`
 for a completed scan, `1` for a runtime failure, and `2` for invalid arguments
@@ -1514,26 +1542,52 @@ time, CPU, peak RSS, exactness, and the rayscan-to-nmap handshake ratio.
 make bench-validate
 ```
 
-Measured on the documented WSL2 machine (5 runs, released 0.6.0 binary):
+Measured on the documented WSL2 machine (5 runs, release build of this tree):
 
 ```text
 tool             mode       ports exact    runs  median_s    p95_s    cpu_s   rss_mib
-rayscan          verified      20 yes    5/5        0.443    0.450    0.070      12.5
-nmap             handshake     20 no     5/5        0.040    0.053    0.030      14.5
-rayscan-connect  handshake     18 yes    5/5        0.093    0.097    0.040      12.6
-nmap-speed       handshake     18 yes    5/5        0.034    0.045    0.030      14.5
+rayscan          verified      20 yes    5/5        1.116    1.147    0.080      12.8
+nmap             handshake     20 no     5/5        0.067    0.070    0.040      14.4
+rayscan-connect  handshake     18 yes    5/5        0.134    0.168    0.050      12.6
+nmap-speed       handshake     18 yes    5/5        0.043    0.053    0.030      14.5
 ```
 
 Verified rayscan found all eight banner services with no false positives;
 nmap's handshake scan reported both tarpits as open. On the matched 18-port
-handshake scenario both tools were exact, and nmap was about 2.7x faster.
+handshake scenario both tools were exact, and nmap was about 3.1x faster.
+Verified mode rechecks an ambiguous silent result so a banner lost after the
+handshake is recovered; because one connection cannot distinguish that from a
+tarpit, the safety can cost up to two extra probe windows per tarpit
+(`--retries` controls the budget). `--retries 0` disables the recheck when
+speed matters more than loss recovery.
 The suite writes `bench/results/validation.json` and
 `bench/results/validation.md` and exits non-zero on accuracy or resource
 regressions. `--netem-loss` reruns it inside an unprivileged network namespace
-with `tc netem`; the measured 5% and 20% diagnostics show occasional default
-connect-scan misses while nmap recovers, so those runs fail the exactness gate
-until loss resilience is improved. The privileged lab suite below remains the
-multi-target loss gate.
+with `tc netem`; with the 1.5 s timeout floor and bounded retries, the measured
+5% and 20% runs are now exact for both rayscan modes while nmap remains fast.
+The 20% case costs about 10.6 s because lost SYNs and banners consume full retry
+windows. See
+[`docs/benchmark-validation.md`](docs/benchmark-validation.md) for the full
+table. The privileged lab suite below remains the multi-target loss gate.
+
+For saturation and leak-style repeatability, the soak harness scans a
+configurable open/closed loopback scenario with high worker and per-host
+concurrency and checks the exact open set every round:
+
+```bash
+make soak                     # 30-second high-concurrency soak
+python3 bench/soak.py --rounds 20 --open-ports 64 --closed-ports 960 \
+  --workers 512 --host-concurrency 256
+python3 bench/soak.py --duration 3600 --output bench/results/soak-hour.json
+```
+
+The default checks 1,024 ports per round with 512 workers, records wall/CPU/peak
+RSS, and exits nonzero on any missing or extra open port or RSS above
+`--max-rss-mb` (default 512 MiB). Use `--discover-only` to stress handshake
+concurrency without service verification. A 30-second run on the documented
+WSL2 machine completed 96/96 exact rounds over 1,024 ports at 0.302 s median,
+0.350 s p95, and 25.2 MiB peak RSS; a 512-worker/256-host-concurrency run
+finished 5/5 exact at 0.276 s median.
 
 The full localhost gate checks all 65,535 ports against an exact expected open
 set:
@@ -1654,6 +1708,7 @@ lab/targets.py              ground-truth TCP services
 lab/verify_lab.py           ground-truth checker
 bench/bench.py              runner, parsers, and metrics
 bench/validate.py           matched-mode localhost validation with reports
+bench/soak.py               high-concurrency and long-duration loopback soak
 bench/localhost_gate.py     exact 1-65535 localhost gate
 bench/syn_gate.py           exact raw-SYN lab accuracy gate
 bench/accuracy_suite.py     multi-profile accuracy runner (0%/5%/20% packet loss)

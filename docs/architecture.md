@@ -78,6 +78,8 @@ output. `--connect-only` bypasses that recheck and exposes raw SYN semantics.
 | `syn::aimd` | AIMD rate controller for the TX loop — additive increase on success, multiplicative decrease on loss |
 | `verify` | Connect-plus-banner verification of SYN-open candidates and state/count merging |
 | `anomaly` | Flags hosts with anomalously large open-port counts for pre-verification scrutiny |
+| `diag` | Opt-in structured JSON diagnostics on stderr |
+| `shutdown` | Shared SIGINT/SIGTERM graceful-shutdown signal handling |
 
 ## Job model
 
@@ -132,9 +134,15 @@ above the configured rate on healthy paths.
 Timeouts do not provide RTT samples (Karn's rule); they increase a bounded
 per-host backoff. Successful connects and RTT-bearing refusals update SRTT and
 RTTVAR. The minimum connect timeout is 1.5 seconds so a dropped SYN has room for
-the kernel's normal retransmission even under lab loss. Only local resource
-failures (`EMFILE`, `ENFILE`, `ENOBUFS`, `ENOMEM`) are retried; they are never
-reported as a port state.
+the kernel's normal retransmission even under lab loss. A timed-out connect is
+retried only while per-target healthy responses show the host is reachable
+(one retry is allowed for an isolated first timeout), with the timeout budget
+capped by `min(--retries, 3)`; a host whose timeouts dominate is treated as
+filtering. Local resource failures (`EMFILE`, `ENFILE`,
+`ENOBUFS`, `ENOMEM`) are retried separately and never reported as a port state.
+When banner verification is ambiguous (`closed`, `silent`, or open with no
+service identity), verified scans reconnect and retry up to
+`min(--retries, 2)` times, retaining the strongest evidence seen.
 
 ## SYN engine (`--syn`, Linux + CAP_NET_RAW)
 

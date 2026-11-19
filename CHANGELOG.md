@@ -6,6 +6,30 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
+- **Loss-aware connect recovery**: a timed-out connect is retried only while
+  the target is producing healthy responses, except for one retry of an
+  isolated first timeout. The timeout budget is capped at three. A minimum
+  1.5 s timeout floor now survives a smaller configured ceiling. When packet loss drops a banner after a successful handshake,
+  verified connect scans reconnect and retry an ambiguous `closed`/`silent`/
+  no-service result up to two times instead of reporting a live service as
+  silent. Retries retain the strongest evidence seen, honor rate/host
+  concurrency limits, and are visible with `--log-level debug`.
+- **Soak and saturation harness**: `bench/soak.py` and `make soak` repeatedly
+  scan a configurable high-concurrency loopback scenario, require the exact
+  open set, and report wall/CPU/peak RSS over time. It supports a fixed round
+  count or a long `--duration` soak and JSON output for trend analysis.
+- **Structured diagnostics**: opt-in JSON-lines stderr logging via global
+  `--log-level` or `RAYSCAN_LOG` (`error`, `warn`, `info`, `debug`, `trace`;
+  default off). Events cover scan start/finish, timeout and verification retries,
+  distributed claims, heartbeat/result failures, and coordinator completion.
+  Tokens, banners, payloads, and report contents are never logged.
+- **Distributed resilience**: coordinator requests now have a 300 s lifetime
+  and a 128-request in-flight cap; workers classify 401/403/409/422 errors as
+  terminal instead of retrying them, while transport/429/5xx failures back off
+  and retry. Push-mode failures apply backoff before requeueing. Ctrl-C and
+  SIGTERM share the same graceful path for coordinator, worker, and agent, and
+  a worker's heartbeat sleep is cancelled as soon as its job finishes instead
+  of delaying `--max-jobs` exit by up to 30 seconds.
 - **Standardized benchmark validation**: `bench/validate.py` (and
   `make bench-validate`) creates a reproducible loopback scenario with banner
   services, silent tarpits, and closed ports, then runs interleaved warmup and
@@ -17,9 +41,10 @@ All notable changes to rayscan are documented here.
   now measures per-run CPU and peak RSS with GNU `time -v` instead of the
   non-per-process `ru_maxrss` value, with a CPU-only `getrusage` fallback.
   `--netem-loss` reruns the suite in an unprivileged network namespace with
-  `tc netem`; 5% and 20% diagnostics exposed occasional default-retry misses in
-  connect mode, which the suite reports as failures. Measured results and limits
-  are recorded in `docs/benchmark-validation.md`.
+  `tc netem`; both 5% and 20% loss profiles now pass exactness for connect and
+  verified modes, and the suite still exits non-zero on any regression.
+  Measured results and limits are recorded in
+  `docs/benchmark-validation.md`.
 - **Vendor-aware advisory confidence**: NVD correlation now stores exact CPE
   vendor/product identities (database schema 2) and prefers a plugin-supplied
   `service.cpe` over the product alias table, preventing cross-vendor false

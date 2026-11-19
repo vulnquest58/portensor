@@ -124,7 +124,9 @@ Global probes per second. 0 means unlimited
 Worker count. 0 means automatic: cores × 32 capped at 512, bounded by RLIMIT_NOFILE
 .TP
 \fB\-\-retries\fR \fI<N>\fR
-Retries for local resource failures such as EMFILE
+Retries for lost probes and local resource failures such as EMFILE.
+
+Connect scans retry timeouts while the host is responding, plus one retry for an isolated first timeout; retries are capped at three per port.
 .TP
 \fB\-\-randomize\fR
 Shuffle target and port order
