@@ -192,7 +192,7 @@ jobs:
           sbom="dist/portensor-${version}.cdx.json"
           test -f "$sbom"
           cd dist
-          sha256sum *.tar.gz *.zip *.cdx.json > SHA256SUMS
+          sha256sum ./*.tar.gz ./*.zip ./*.cdx.json > SHA256SUMS
           grep -Fq "  portensor-${version}.cdx.json" SHA256SUMS
           sha256sum -c SHA256SUMS
       - name: Sign checksums (GPG)

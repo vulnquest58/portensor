@@ -1,6 +1,6 @@
 [package]
 name = "portensor"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 rust-version = "1.99"
 authors = ["vulnquest58 <https://github.com/vulnquest58>"]

@@ -4,6 +4,28 @@ All notable changes to portensor are documented here.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-25
+
+### Portensor 0.7.2
+
+- First published release under the `portensor` name after the repository,
+  crate, CLI, configuration, paths, packaging, and release assets were renamed
+  from `rayscan`.
+- The Linux static-musl archive includes the binary, regenerated man pages,
+  official pack, README, changelog, and license. The Windows GNU archive
+  includes the binary, official pack, README, changelog, and license. The
+  release also publishes a CycloneDX SBOM, signed `SHA256SUMS`, the public
+  signing key, and GitHub build-provenance and SBOM attestations.
+- P4 packaging, registry, key-custody, and independent OT review remain open
+  external requirements; this release does not claim P4 closure.
+
+### Release workflow fix
+
+- Fixed the release checksum step to use explicit `./` globs so actionlint's
+  shellcheck pass accepts the pinned release workflow.
+- No scanner behavior changed from 0.7.1. The 0.7.1 tag remains immutable, but
+  no 0.7.1 GitHub release was published.
+
 ## [0.7.1] - 2026-11-25
 
 ### Portensor rebrand
