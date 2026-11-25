@@ -152,7 +152,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sbom
-          path: dist/*.cdx.json
+          path: dist/portensor-*.cdx.json
 
   publish:
     name: publish
@@ -192,7 +192,7 @@ jobs:
           sbom="dist/portensor-${version}.cdx.json"
           test -f "$sbom"
           cd dist
-          sha256sum ./*.tar.gz ./*.zip ./*.cdx.json > SHA256SUMS
+          sha256sum -- *.tar.gz *.zip *.cdx.json > SHA256SUMS
           grep -Fq "  portensor-${version}.cdx.json" SHA256SUMS
           sha256sum -c SHA256SUMS
       - name: Sign checksums (GPG)

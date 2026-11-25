@@ -465,7 +465,7 @@ def check_workflows(audit: Audit) -> None:
         "actions/attest-sbom@",
         "id-token: write",
         "attestations: write",
-        "sha256sum ./*.tar.gz ./*.zip ./*.cdx.json",
+        "sha256sum -- *.tar.gz *.zip *.cdx.json",
         "sha256sum -c SHA256SUMS",
         "grep -Fq \"  portensor-${version}.cdx.json\" SHA256SUMS",
         "rust-toolchain@",

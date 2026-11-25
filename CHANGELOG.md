@@ -21,8 +21,11 @@ All notable changes to portensor are documented here.
 
 ### Release workflow fix
 
-- Fixed the release checksum step to use explicit `./` globs so actionlint's
-  shellcheck pass accepts the pinned release workflow.
+- Fixed the release checksum step to use `--`-prefixed globs so actionlint's
+  shellcheck pass accepts the pinned release workflow without breaking the
+  SBOM checksum lookup.
+- Restricted the SBOM artifact upload to `portensor-*.cdx.json` so historical
+  `rayscan` evidence cannot enter a new release.
 - No scanner behavior changed from 0.7.1. The 0.7.1 tag remains immutable, but
   no 0.7.1 GitHub release was published.
 
