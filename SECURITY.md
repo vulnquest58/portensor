@@ -92,9 +92,11 @@ Out of scope:
 
 ## Release verification
 
-Release artifacts are signed with GPG and/or cosign, and the release workflow
-publishes checksums, an SBOM, and provenance/SBOM attestations. Verify
-`dist/SHA256SUMS`, its signature, and the recorded signing identity before use.
+Release artifacts are signed with GPG and/or cosign, and releases publish
+checksums and an SBOM. The release workflow is configured to create provenance
+and SBOM attestations, but attestations are not present for every release;
+check the release page before relying on them. Verify `dist/SHA256SUMS`, its
+signature, and the recorded signing identity before use.
 The production signing-key fingerprint and custody details are not yet
 published; until they are, do not treat a local test signature as a production
 release attestation. See [release-process.md](docs/release-process.md),

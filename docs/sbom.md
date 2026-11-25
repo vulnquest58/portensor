@@ -1,8 +1,9 @@
 # Software bill of materials
 
 Portensor ships a CycloneDX JSON SBOM with each release. The SBOM is covered by
-the release checksum manifest and by GitHub OIDC attestations. It is not a
-substitute for production key custody or independent verification.
+the release checksum manifest and, when attestations are published, by GitHub
+OIDC attestations. It is not a substitute for production key custody or
+independent verification.
 
 ## Format
 

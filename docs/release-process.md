@@ -130,6 +130,19 @@ The tag was not rewritten. The permanent fix is the workflow lint gate above:
 a malformed workflow now fails CI, and the release workflow refuses to build
 artifacts if any workflow is invalid.
 
+## v0.7.2 publish incident
+
+The `v0.7.2` build jobs succeeded, but the `publish` job failed at `Checksums`.
+The shellcheck-safe `./` globs changed the `SHA256SUMS` entries to `./...`, so
+the subsequent `grep` for `portensor-0.7.2.cdx.json` failed. The SBOM artifact
+also included the committed `dist/rayscan-0.7.0.cdx.json` because the upload
+path matched every CycloneDX file.
+
+The tag was not rewritten. The CI-built archives and new SBOM were checksummed,
+GPG-signed, verified, and published manually. No GitHub OIDC attestations were
+created for this release. Commit `37d5474` fixes the checksum globs and restricts
+the SBOM upload on `main` for future tags.
+
 ## P0 completion evidence
 
 - `.github/actionlint.yaml` added for the `portensor-lab` label.

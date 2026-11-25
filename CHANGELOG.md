@@ -14,8 +14,10 @@ All notable changes to portensor are documented here.
 - The Linux static-musl archive includes the binary, regenerated man pages,
   official pack, README, changelog, and license. The Windows GNU archive
   includes the binary, official pack, README, changelog, and license. The
-  release also publishes a CycloneDX SBOM, signed `SHA256SUMS`, the public
-  signing key, and GitHub build-provenance and SBOM attestations.
+  release also publishes a CycloneDX SBOM, signed `SHA256SUMS`, and the public
+  signing key. GitHub OIDC build-provenance and SBOM attestations were not
+  created because the automated publish step failed before attestation; the
+  workflow fix on `main` applies to future tags.
 - P4 packaging, registry, key-custody, and independent OT review remain open
   external requirements; this release does not claim P4 closure.
 
@@ -26,6 +28,8 @@ All notable changes to portensor are documented here.
   SBOM checksum lookup.
 - Restricted the SBOM artifact upload to `portensor-*.cdx.json` so historical
   `rayscan` evidence cannot enter a new release.
+- The v0.7.2 tag predates the workflow fix; its successful CI-built assets were
+  checksummed, GPG-signed, verified, and published manually.
 - No scanner behavior changed from 0.7.1. The 0.7.1 tag remains immutable, but
   no 0.7.1 GitHub release was published.
 
