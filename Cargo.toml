@@ -1,11 +1,11 @@
 [package]
-name = "rayscan"
-version = "0.7.0"
+name = "portensor"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.99"
 authors = ["vulnquest58 <https://github.com/vulnquest58>"]
-repository = "https://github.com/vulnquest58/rayscan"
-homepage = "https://github.com/vulnquest58/rayscan"
+repository = "https://github.com/vulnquest58/portensor"
+homepage = "https://github.com/vulnquest58/portensor"
 description = "An accuracy-first TCP/UDP port scanner with OS fingerprinting"
 license = "MIT"
 readme = "README.md"
@@ -13,7 +13,7 @@ keywords = ["port-scanner", "network", "security", "tcp", "nmap"]
 categories = ["command-line-utilities", "network-programming"]
 
 [[bin]]
-name = "rayscan"
+name = "portensor"
 path = "src/main.rs"
 
 [[bin]]

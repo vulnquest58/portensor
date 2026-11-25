@@ -1,6 +1,6 @@
 //! Distributed scanning.
 //!
-//! The coordinator hands out deterministic target shards as `rayscan scan`
+//! The coordinator hands out deterministic target shards as `portensor scan`
 //! command lines. Workers and push agents execute the same binary locally, so
 //! every node runs the full verification pipeline, and the coordinator merges
 //! the returned JSON reports with [`crate::merge`].
@@ -215,10 +215,10 @@ fn normalize_scan_args(args: &[String]) -> Result<Vec<String>, AppError> {
 
 pub fn resolve_token(token: Option<String>) -> Result<String, AppError> {
     let token = token
-        .or_else(|| std::env::var("RAYSCAN_DISTRIBUTED_TOKEN").ok())
+        .or_else(|| std::env::var("PORTENSOR_DISTRIBUTED_TOKEN").ok())
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| {
-            AppError::usage("a bearer token is required (--token or RAYSCAN_DISTRIBUTED_TOKEN)")
+            AppError::usage("a bearer token is required (--token or PORTENSOR_DISTRIBUTED_TOKEN)")
         })?;
     if token.len() < MIN_TOKEN_LEN {
         return Err(AppError::usage(format!(
@@ -456,7 +456,7 @@ fn plan_script(jobs: &[PlannedJob], shell: DistributedShell) -> String {
                 );
                 script.push('\n');
             }
-            script.push_str("rayscan merge shards/shard-*.json --output merged.json\n");
+            script.push_str("portensor merge shards/shard-*.json --output merged.json\n");
         }
         DistributedShell::Powershell => {
             script.push_str("$ErrorActionPreference = 'Stop'\nNew-Item -ItemType Directory -Force -Path shards | Out-Null\n");
@@ -464,7 +464,7 @@ fn plan_script(jobs: &[PlannedJob], shell: DistributedShell) -> String {
                 let mut args = job.args.clone();
                 args.push("--output".to_string());
                 args.push(format!("shards/shard-{}.json", job.shard_index));
-                script.push_str("& rayscan ");
+                script.push_str("& portensor ");
                 script.push_str(
                     &args
                         .iter()
@@ -474,7 +474,7 @@ fn plan_script(jobs: &[PlannedJob], shell: DistributedShell) -> String {
                 );
                 script.push('\n');
             }
-            script.push_str("& rayscan merge (Get-ChildItem shards/*.json | ForEach-Object FullName) --output merged.json\n");
+            script.push_str("& portensor merge (Get-ChildItem shards/*.json | ForEach-Object FullName) --output merged.json\n");
         }
     }
     script
@@ -509,7 +509,7 @@ pub fn execute_job(job: &JobAssignment) -> JobOutcome {
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
     let workspace = std::env::temp_dir().join(format!(
-        "rayscan-distributed-{}-{stamp}",
+        "portensor-distributed-{}-{stamp}",
         std::process::id()
     ));
     if let Err(error) = std::fs::create_dir_all(&workspace) {
@@ -545,7 +545,7 @@ pub fn execute_job(job: &JobAssignment) -> JobOutcome {
     let executable = match std::env::current_exe() {
         Ok(path) => path,
         Err(error) => {
-            outcome.error = Some(format!("cannot locate the rayscan binary: {error}"));
+            outcome.error = Some(format!("cannot locate the portensor binary: {error}"));
             let _ = std::fs::remove_dir_all(&workspace);
             outcome.elapsed_ms = started.elapsed().as_millis() as u64;
             return outcome;
@@ -794,9 +794,9 @@ mod tests {
         assert!(script.contains("--shard-index 0"));
         assert!(script.contains("--shard-index 1"));
         assert!(script.contains("shards/shard-0.json"));
-        assert!(script.contains("rayscan merge shards/shard-*.json"));
+        assert!(script.contains("portensor merge shards/shard-*.json"));
         let script = plan_script(&jobs, DistributedShell::Powershell);
-        assert!(script.contains("& rayscan 'scan'"));
+        assert!(script.contains("& portensor 'scan'"));
         assert!(script.contains("'--shard-index' '1'"));
         assert!(script.contains("Get-ChildItem shards/*.json"));
     }

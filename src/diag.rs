@@ -2,7 +2,7 @@
 //!
 //! Diagnostics are JSON lines on stderr so machine-readable reports on stdout
 //! stay untouched. Structured logging is opt-in: set `--log-level` or
-//! `RAYSCAN_LOG=error|warn|info|debug|trace` for one process.
+//! `PORTENSOR_LOG=error|warn|info|debug|trace` for one process.
 //!
 //! Records contain only operational metadata (counts, target addresses, ports,
 //! retry decisions, and error classes). Banners, payloads, tokens, and report
@@ -64,11 +64,11 @@ impl Level {
 
 static LEVEL: AtomicU8 = AtomicU8::new(Level::Off.rank());
 
-/// Apply the CLI override, then `RAYSCAN_LOG`, then stay off.
+/// Apply the CLI override, then `PORTENSOR_LOG`, then stay off.
 pub fn init(explicit: Option<Level>) {
     let level = explicit
         .or_else(|| {
-            std::env::var("RAYSCAN_LOG")
+            std::env::var("PORTENSOR_LOG")
                 .ok()
                 .and_then(|value| Level::parse(&value))
         })

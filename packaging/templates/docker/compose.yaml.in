@@ -1,0 +1,19 @@
+name: portensor
+services:
+  portensor:
+    image: ghcr.io/@@REPO@@:@@VERSION@@
+    pull_policy: always
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    network_mode: host
+    command:
+      - scan
+      - --target
+      - 127.0.0.1
+      - --ports
+      - "1-1024"
+      - --json
+      - --quiet

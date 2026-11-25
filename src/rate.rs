@@ -68,6 +68,26 @@ impl RateLimiter {
             tokio::time::sleep(wait).await;
         }
     }
+
+    /// Synchronous counterpart used by the blocking connect-only worker pool.
+    pub fn acquire_blocking(&self) {
+        let Some(bucket) = &self.bucket else {
+            return;
+        };
+
+        loop {
+            let wait = {
+                let mut bucket = bucket.lock().expect("rate limiter lock poisoned");
+                bucket.refill();
+                if bucket.tokens >= 1.0 {
+                    bucket.tokens -= 1.0;
+                    return;
+                }
+                Duration::from_secs_f64((1.0 - bucket.tokens) / bucket.rate)
+            };
+            std::thread::sleep(wait);
+        }
+    }
 }
 
 impl Bucket {

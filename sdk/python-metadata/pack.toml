@@ -1,0 +1,12 @@
+name = "sdk-python"
+description = "Python metadata-only script template"
+
+[[script]]
+name = "metadata"
+description = "Demonstrates the Python sidecar contract"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "check.py"]
+services = ["http"]
+timeout_ms = 3000

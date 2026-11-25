@@ -1,6 +1,6 @@
 # Probe Engine
 
-rayscan identifies services with a declarative probe engine. Packs are TOML
+portensor identifies services with a declarative probe engine. Packs are TOML
 files; probes are data, not code. This keeps probe execution deterministic,
 auditable, and safe to embed in the binary, unlike service-detection systems
 that execute embedded scripts.
@@ -176,7 +176,7 @@ refines an existing identification.
 
 ### Merge behavior
 
-On a match, rayscan replaces the service name with the probe's `service`,
+On a match, portensor replaces the service name with the probe's `service`,
 keeps any product/version/CPE from an earlier assessment of the same service
 when the probe does not provide one, merges `info` maps (probe keys win), and
 keeps the higher confidence. A `plugin:<pack>/<name>` tag is appended to the
@@ -224,9 +224,9 @@ TLS-aware probes are named after their transport (for example `-tls` or
 List the current set with:
 
 ```bash
-rayscan probes list
-rayscan probes list --json
-rayscan probes list --plugins ./my-probes/
+portensor probes list
+portensor probes list --json
+portensor probes list --plugins ./my-probes/
 ```
 
 ## Writing a pack
@@ -244,13 +244,13 @@ rayscan probes list --plugins ./my-probes/
 6. Test without scanning the world:
 
 ```bash
-rayscan scan -t 10.0.0.5 -p 9000 --plugins probes.toml --explain 9000
+portensor scan -t 10.0.0.5 -p 9000 --plugins probes.toml --explain 9000
 ```
 
 7. Validate a whole directory listing first:
 
 ```bash
-rayscan probes list --plugins probes.toml --json
+portensor probes list --plugins probes.toml --json
 ```
 
 Because user packs load before built-ins, a custom probe for a built-in port

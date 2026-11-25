@@ -1,0 +1,29 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-distributed 1  "distributed "
+.SH NAME
+portensor\-distributed \- Plan, coordinate, or execute distributed scans across multiple hosts
+.SH SYNOPSIS
+\fBdistributed\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Plan, coordinate, or execute distributed scans across multiple hosts
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH SUBCOMMANDS
+.TP
+portensor\-distributed\-plan(1)
+Print a shell script that runs every shard locally and merges the reports
+.TP
+portensor\-distributed\-serve(1)
+Serve a coordinator that assigns shard jobs to polling workers or push agents
+.TP
+portensor\-distributed\-worker(1)
+Poll a coordinator, execute assigned shard scans, and submit the reports
+.TP
+portensor\-distributed\-agent(1)
+Listen for jobs pushed by a coordinator (inbound mode)
+.TP
+portensor\-distributed\-help(1)
+Print this message or the help of the given subcommand(s)

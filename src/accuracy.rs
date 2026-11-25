@@ -217,7 +217,13 @@ pub const fn is_known_binary_port(port: u16) -> bool {
 /// Apply accuracy scores to all results in a scan report.
 pub fn score_report(report: &mut ScanReport) {
     for result in &mut report.results {
-        let guess = report.os_fingerprints.get(&result.host);
+        let endpoint_guess = report
+            .os_fingerprints
+            .get(&result.host)
+            .and_then(|guess| guess.for_port(result.port));
+        let guess = endpoint_guess
+            .as_ref()
+            .or_else(|| report.os_fingerprints.get(&result.host));
         let score = AccuracyScore::calculate(result, guess);
         let previous = result.evidence.take().filter(|value| !value.is_empty());
         result.confidence = Some(score.total);
@@ -257,6 +263,7 @@ mod tests {
             agreement: None,
             ports: Vec::new(),
             evidence: None,
+            endpoints: Vec::new(),
         };
 
         let score = AccuracyScore::calculate(&result, Some(&guess));
@@ -310,6 +317,7 @@ mod tests {
             agreement: None,
             ports: Vec::new(),
             evidence: None,
+            endpoints: Vec::new(),
         };
         let score = AccuracyScore::calculate(&result, Some(&guess));
         assert_eq!(score.handshake, 0.20);

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.80 scan initiated Sun Nov 22 21:04:15 2026 as: nmap -Pn -p- -&#45;max-rate 250 -&#45;max-retries 1 -&#45;max-rtt-timeout 1s -&#45;initial-rtt-timeout 200ms -&#45;host-timeout 600s -oN bench/htb/results-scaffold/nmap-alltcp-slow.txt -oX bench/htb/results-scaffold/nmap-alltcp-slow.xml 10.129.215.153 -->
+<nmaprun scanner="nmap" args="nmap -Pn -p- -&#45;max-rate 250 -&#45;max-retries 1 -&#45;max-rtt-timeout 1s -&#45;initial-rtt-timeout 200ms -&#45;host-timeout 600s -oN bench/htb/results-scaffold/nmap-alltcp-slow.txt -oX bench/htb/results-scaffold/nmap-alltcp-slow.xml 10.129.215.153" start="1795377855" startstr="Sun Nov 22 21:04:15 2026" version="7.80" xmloutputversion="1.04">
+<scaninfo type="connect" protocol="tcp" numservices="65535" services="1-65535"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1795377855" endtime="1795378455"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="10.129.215.153" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</host>
+<runstats><finished time="1795378455" timestr="Sun Nov 22 21:14:15 2026" elapsed="600.37" summary="Nmap done at Sun Nov 22 21:14:15 2026; 1 IP address (1 host up) scanned in 600.37 seconds" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

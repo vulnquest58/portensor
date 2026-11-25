@@ -1,7 +1,7 @@
 //! Live CISA KEV and FIRST.org EPSS threat-intelligence ingestion.
 //!
 //! The scanner ships with a compact curated set of heavily exploited CVEs so
-//! filtering works out of the box.  `rayscan db intel` refreshes the full CISA
+//! filtering works out of the box.  `portensor db intel` refreshes the full CISA
 //! Known Exploited Vulnerabilities catalog and the current EPSS score feed into
 //! the local data directory, and every scan overlays that cache on top of the
 //! bundled indicators.
@@ -49,7 +49,7 @@ pub struct IntelSummary {
     pub refreshed: bool,
 }
 
-/// Options for `rayscan db intel`.
+/// Options for `portensor db intel`.
 #[derive(Clone, Copy, Debug)]
 pub struct IntelUpdateOptions {
     pub force: bool,
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn intel_file_roundtrips_through_gzip() {
         let root = std::env::temp_dir().join(format!(
-            "rayscan-intel-{}-{}",
+            "portensor-intel-{}-{}",
             std::process::id(),
             now_unix()
         ));

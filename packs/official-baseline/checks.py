@@ -302,13 +302,275 @@ def docker_findings(context):
     return findings
 
 
+def service_of(context):
+    service = context.get("service")
+    if not isinstance(service, dict):
+        return {}
+    return service
+
+
+def service_name(context):
+    return as_text(service_of(context).get("name")).lower()
+
+
+def tls_weak_protocol_findings(context):
+    tls = context.get("tls")
+    if not isinstance(tls, dict):
+        return []
+    version = as_text(tls.get("version"))
+    lowered = version.lower()
+    weak = (
+        lowered in ("sslv2", "sslv3", "tlsv1", "tlsv1.0", "tlsv1.1")
+        or lowered.startswith("tlsv1.0")
+        or lowered.startswith("tlsv1.1")
+        or lowered.startswith("sslv3")
+    )
+    if not weak:
+        return []
+    return [
+        {
+            "id": "tls-weak-protocol",
+            "title": "TLS endpoint negotiates a deprecated protocol",
+            "severity": "medium",
+            "confidence": 0.99,
+            "description": "The endpoint negotiated SSLv3, TLS 1.0, or TLS 1.1. These protocol versions are deprecated and do not provide modern security properties.",
+            "evidence": "tls_version=" + (short(version, 40) or "unknown"),
+        }
+    ]
+
+
+def tls_weak_cipher_findings(context):
+    tls = context.get("tls")
+    if not isinstance(tls, dict):
+        return []
+    cipher = as_text(tls.get("cipher"))
+    lowered = cipher.lower()
+    weak_tokens = ("rc4", "3des", "des_", "_des", "export", "null", "md5", "anon")
+    if not cipher or not any(token in lowered for token in weak_tokens):
+        return []
+    return [
+        {
+            "id": "tls-weak-cipher",
+            "title": "TLS endpoint negotiated a weak cipher suite",
+            "severity": "medium",
+            "confidence": 0.97,
+            "description": "The negotiated cipher suite uses RC4, 3DES, DES, NULL encryption, EXPORT-grade cryptography, or anonymous key exchange.",
+            "evidence": "tls_cipher=" + short(cipher, 80),
+        }
+    ]
+
+
+def tls_hostname_mismatch_findings(context):
+    tls = context.get("tls")
+    if not isinstance(tls, dict) or tls.get("hostname_matches") is not False:
+        return []
+    parts = []
+    subject = short(tls.get("subject"))
+    if subject:
+        parts.append("subject=" + subject)
+    parts.append("hostname_matches=false")
+    return [
+        {
+            "id": "tls-hostname-mismatch",
+            "title": "TLS certificate does not match the requested hostname",
+            "severity": "medium",
+            "confidence": 0.98,
+            "description": "The certificate presented by the endpoint does not match the requested hostname. Strict clients will reject the connection or the endpoint may be served by the wrong virtual host.",
+            "evidence": " ".join(parts),
+        }
+    ]
+
+
+def cleartext_findings(context, names, identifier, title, protocol):
+    if service_name(context) not in names:
+        return []
+    if isinstance(context.get("tls"), dict):
+        return []
+    port = as_int(context.get("port")) or 0
+    return [
+        {
+            "id": identifier,
+            "title": title,
+            "severity": "medium",
+            "confidence": 0.95,
+            "description": protocol
+            + " traffic is transmitted without TLS. Credentials, session data, and application content can be observed or modified by an on-path attacker.",
+            "evidence": "service=" + service_name(context) + " port=" + str(port),
+        }
+    ]
+
+
+def version_disclosure_findings(context, names, identifier, title, product=None):
+    service = service_of(context)
+    if as_text(service.get("name")).lower() not in names:
+        return []
+    if product is not None and product.lower() not in as_text(service.get("product")).lower():
+        return []
+    version = short(service.get("version"), 80)
+    detected_product = short(service.get("product"), 80)
+    if not version and service_name(context) == "ssh":
+        banner = as_text(context.get("banner"))
+        if banner.startswith("SSH-"):
+            parts = banner.split("-", 2)
+            if len(parts) == 3:
+                version = short(parts[2], 80)
+    if not version:
+        return []
+    parts = ["version=" + version]
+    if detected_product:
+        parts.insert(0, "product=" + detected_product)
+    port = as_int(context.get("port")) or 0
+    parts.append("port=" + str(port))
+    return [
+        {
+            "id": identifier,
+            "title": title,
+            "severity": "low",
+            "confidence": 0.94,
+            "description": "The service disclosed its product or version in a passive response. This information helps attackers select matching exploits and should be minimized where practical.",
+            "evidence": " ".join(parts),
+        }
+    ]
+
+
+def exposed_service_findings(context, names, identifier, title, severity="medium", product=None):
+    service = service_of(context)
+    if as_text(service.get("name")).lower() not in names:
+        return []
+    if product is not None and product.lower() not in as_text(service.get("product")).lower():
+        return []
+    port = as_int(context.get("port")) or 0
+    return [
+        {
+            "id": identifier,
+            "title": title,
+            "severity": severity,
+            "confidence": 0.90,
+            "description": "The service is reachable from the scanned network. Exposed management or data services should be restricted to trusted networks and protected by authentication.",
+            "evidence": "service=" + service_name(context) + " port=" + str(port),
+        }
+    ]
+
+
 def main():
-    check = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("RAYSCAN_SCRIPT_NAME", "")
+    check = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("PORTENSOR_SCRIPT_NAME", "")
     handlers = {
         "tls-certificate": tls_findings,
+        "tls-weak-protocol": tls_weak_protocol_findings,
+        "tls-weak-cipher": tls_weak_cipher_findings,
+        "tls-hostname-mismatch": tls_hostname_mismatch_findings,
         "smb-hardening": smb_findings,
         "redis-unauthenticated": redis_findings,
         "docker-unauthenticated": docker_findings,
+        "cleartext-ftp": lambda context: cleartext_findings(
+            context,
+            ("ftp",),
+            "cleartext-ftp",
+            "FTP service transmits data in cleartext",
+            "FTP",
+        ),
+        "cleartext-telnet": lambda context: cleartext_findings(
+            context,
+            ("telnet",),
+            "cleartext-telnet",
+            "Telnet service transmits data in cleartext",
+            "Telnet",
+        ),
+        "cleartext-http": lambda context: cleartext_findings(
+            context,
+            ("http",),
+            "cleartext-http",
+            "HTTP service transmits data in cleartext",
+            "HTTP",
+        ),
+        "cleartext-smtp": lambda context: cleartext_findings(
+            context,
+            ("smtp",),
+            "cleartext-smtp",
+            "SMTP service transmits data in cleartext",
+            "SMTP",
+        ),
+        "cleartext-pop3": lambda context: cleartext_findings(
+            context,
+            ("pop3",),
+            "cleartext-pop3",
+            "POP3 service transmits data in cleartext",
+            "POP3",
+        ),
+        "cleartext-imap": lambda context: cleartext_findings(
+            context,
+            ("imap",),
+            "cleartext-imap",
+            "IMAP service transmits data in cleartext",
+            "IMAP",
+        ),
+        "ssh-version-disclosure": lambda context: version_disclosure_findings(
+            context,
+            ("ssh",),
+            "ssh-version-disclosure",
+            "SSH service discloses its version",
+        ),
+        "http-version-disclosure": lambda context: version_disclosure_findings(
+            context,
+            ("http",),
+            "http-version-disclosure",
+            "HTTP service discloses its product or version",
+        ),
+        "mysql-version-disclosure": lambda context: version_disclosure_findings(
+            context,
+            ("mysql",),
+            "mysql-version-disclosure",
+            "MySQL service discloses its version",
+        ),
+        "postgresql-version-disclosure": lambda context: version_disclosure_findings(
+            context,
+            ("postgresql",),
+            "postgresql-version-disclosure",
+            "PostgreSQL service discloses its version",
+        ),
+        "redis-version-disclosure": lambda context: version_disclosure_findings(
+            context,
+            ("redis",),
+            "redis-version-disclosure",
+            "Redis service discloses its version",
+        ),
+        "mongodb-version-disclosure": lambda context: version_disclosure_findings(
+            context,
+            ("mongodb",),
+            "mongodb-version-disclosure",
+            "MongoDB service discloses its version",
+        ),
+        "memcached-version-disclosure": lambda context: version_disclosure_findings(
+            context,
+            ("memcached",),
+            "memcached-version-disclosure",
+            "Memcached service discloses its version",
+        ),
+        "vnc-exposed": lambda context: exposed_service_findings(
+            context,
+            ("vnc",),
+            "vnc-exposed",
+            "VNC service is reachable from the scanned network",
+        ),
+        "rdp-exposed": lambda context: exposed_service_findings(
+            context,
+            ("rdp",),
+            "rdp-exposed",
+            "RDP service is reachable from the scanned network",
+        ),
+        "mongodb-exposed": lambda context: exposed_service_findings(
+            context,
+            ("mongodb",),
+            "mongodb-exposed",
+            "MongoDB service is reachable from the scanned network",
+        ),
+        "elasticsearch-exposed": lambda context: exposed_service_findings(
+            context,
+            ("http",),
+            "elasticsearch-exposed",
+            "Elasticsearch service is reachable from the scanned network",
+            product="Elasticsearch",
+        ),
     }
     handler = handlers.get(check)
     if handler is None:

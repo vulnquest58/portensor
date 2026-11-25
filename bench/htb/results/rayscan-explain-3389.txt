@@ -1,0 +1,27 @@
+[scope] validated 1 target(s) against scope policy 'Hack The Box - authorized lab session (user-provided target)'
+[rdp] negotiating NLA against 1 endpoint(s) …
+[rdp] identified 1 endpoint(s)
+┌────────────────┬──────┬──────────┬────────────┬────────────────────────────────┬────────────┐
+│ HOST           ┆ PORT ┆ STATE    ┆ CONFIDENCE ┆ SERVICE                        ┆ LATENCY_MS │
+╞════════════════╪══════╪══════════╪════════════╪════════════════════════════════╪════════════╡
+│ 10.129.244.207 ┆ 445  ┆ open     ┆ 95%        ┆ smb SMB 3.0.2                  ┆ 232.32     │
+├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌┤
+│ 10.129.244.207 ┆ 3389 ┆ open     ┆ 95%        ┆ rdp Windows 10 / Server 2019/1 ┆ 232.24     │
+└────────────────┴──────┴──────────┴────────────┴────────────────────────────────┴────────────┘
+
+Accuracy & Evidence Explanations:
+──────────────────────────────────────────────────────────────────────
+Port 3389/tcp on 10.129.244.207:
+  State:               open
+  Accuracy Score:      94% (High Confidence - Genuine Service)
+  Criteria Breakdown:
+    [+] TCP Handshake:   20.0% / 20%  (3-way handshake established)
+    [+] Application:     40.0% / 40%  (rdp Windows 10 / Server 2019/1)
+    [+] Stack / OS:      15.0% / 20%  (TCP options and TTL characteristics)
+    [+] Stability:       19.0% / 20%  (Handshake latency and RTT consistency)
+  Evidence String:     handshake:ok(20%) banner:rdp/Windows 10 / Server 2019(40%) stack:standard(15%) latency:232.2ms(19%)
+  Advisory Matches:    none
+  Identification:      rdp:hybrid_ex
+
+open 2  closed 0  filtered 0  unfiltered 0  silent 0  unreachable 0  error 0  elapsed 0.66s
+  targets 1  ports 2  probes 2  workers 2

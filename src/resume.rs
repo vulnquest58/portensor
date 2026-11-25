@@ -202,7 +202,7 @@ pub fn load_state(path: &Path) -> Result<ScanState, AppError> {
     })?;
     let state: ScanState = serde_json::from_str(&data).map_err(|e| {
         AppError::runtime(format!(
-            "state file {} is not valid rayscan state ({})",
+            "state file {} is not valid portensor state ({})",
             path.display(),
             e
         ))
@@ -565,7 +565,7 @@ mod tests {
         assert!(state.partial);
 
         let dir = std::env::temp_dir();
-        let path = dir.join("rayscan-test-state.json");
+        let path = dir.join("portensor-test-state.json");
         save_state(&path, &state).unwrap();
         let loaded = load_state(&path).unwrap();
         assert_eq!(loaded.ports_scanned, vec![22, 23]);

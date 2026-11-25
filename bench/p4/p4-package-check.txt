@@ -1,0 +1,35 @@
+python3 scripts/generate_package_metadata.py --version "0.7.0" --dist-dir dist --output-dir dist/packages --syntax-check
+package-metadata: version=0.7.0
+package-metadata: repository=vulnquest58/rayscan
+package-metadata: release_base_url=https://github.com/vulnquest58/rayscan/releases/download/v0.7.0
+package-metadata: linux_sha256=6b67894dbfa9d3dbba6ae69a2ba077ff8e925dd123abcec2932020c3ffb8e981
+package-metadata: windows_sha256=033f3792ce23845bd07f0473ef716c46b8dfcc262ee6d9f3f5c1231c6cbfba74
+package-metadata: output=dist/packages
+package-metadata: generated=aur/PKGBUILD
+package-metadata: generated=chocolatey/rayscan.nuspec
+package-metadata: generated=chocolatey/tools/chocolateyinstall.ps1
+package-metadata: generated=docker/compose.yaml
+package-metadata: generated=homebrew/rayscan.rb
+package-metadata: generated=scoop/rayscan.json
+package-metadata: PKGBUILD bash -n: pass
+package-metadata: Homebrew ruby -c: skipped (ruby unavailable)
+package-metadata: Chocolatey PowerShell parse: skipped (pwsh unavailable)
+package-metadata: Compose YAML parse: pass
+package-metadata: registry_ownership=not verified
+package-metadata: clean_install_tests=not executed
+python3 -m unittest discover -s bench/tests -p 'test_p4_packaging.py' -v
+test_checksum_mismatch_is_an_error (test_p4_packaging.PackageMetadataTests) ... ok
+test_incomplete_archive_layout_is_an_error (test_p4_packaging.PackageMetadataTests) ... ok
+test_legacy_linux_layout_is_supported (test_p4_packaging.PackageMetadataTests) ... ok
+test_malformed_checksum_line_is_rejected (test_p4_packaging.PackageMetadataTests) ... ok
+test_missing_archive_is_an_error (test_p4_packaging.PackageMetadataTests) ... ok
+test_missing_checksum_entry_is_an_error (test_p4_packaging.PackageMetadataTests) ... ok
+test_rendering_is_deterministic (test_p4_packaging.PackageMetadataTests) ... ok
+test_unresolved_placeholder_is_rejected (test_p4_packaging.PackageMetadataTests) ... ok
+test_unstable_version_is_rejected (test_p4_packaging.PackageMetadataTests) ... ok
+test_valid_archives_render_all_package_files (test_p4_packaging.PackageMetadataTests) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.556s
+
+OK

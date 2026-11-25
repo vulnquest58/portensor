@@ -1,0 +1,19 @@
+# Nmap 7.80 scan initiated Sun Nov 22 08:20:02 2026 as: nmap -Pn -p80 --script http-headers,http-title,http-methods --script-args http.useragent=Mozilla/5.0 -oN bench/htb/results-unclaimed/nmap-http.txt 10.129.215.81
+Nmap scan report for 10.129.215.81
+Host is up (0.22s latency).
+
+PORT   STATE SERVICE
+80/tcp open  http
+| http-headers: 
+|   Content-Length: 0
+|   Location: http://unclaimed.htb/
+|   Server: Microsoft-HTTPAPI/2.0
+|   Date: Sun, 22 Nov 2026 07:20:04 GMT
+|   Connection: close
+|   
+|_  (Request type: GET)
+| http-methods: 
+|_  Supported Methods: GET HEAD POST OPTIONS
+|_http-title: Did not follow redirect to http://unclaimed.htb/
+
+# Nmap done at Sun Nov 22 08:20:07 2026 -- 1 IP address (1 host up) scanned in 4.62 seconds

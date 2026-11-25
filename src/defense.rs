@@ -212,7 +212,7 @@ fn assess_host(
             DefenseType::SynProxy,
             0.92,
             "Target is shielded by a SYN Proxy middlebox (e.g. iptables SYNPROXY, F5 BIG-IP, or DDoS protection).".to_string(),
-            Some("Raw SYN discovery produces phantom candidates; verified scan mode (`rayscan scan`) confirms true backend listeners.".to_string()),
+            Some("Raw SYN discovery produces phantom candidates; verified scan mode (`portensor scan`) confirms true backend listeners.".to_string()),
         )
     } else if is_tarpit {
         (

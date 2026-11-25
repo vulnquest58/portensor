@@ -1,0 +1,367 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-smart 1  "smart "
+.SH NAME
+portensor\-smart \- Build an explainable scan plan, then execute it unless \-\-dry\-run is set
+.SH SYNOPSIS
+\fBsmart\fR [\fB\-t\fR|\fB\-\-target\fR] [\fB\-\-target\-file\fR] [\fB\-\-exclude\fR] [\fB\-p\fR|\fB\-\-ports\fR] [\fB\-\-top\-ports\fR] [\fB\-\-preset\fR] [\fB\-\-exclude\-ports\fR] [\fB\-\-json\fR] [\fB\-\-format\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-\-profile\fR] [\fB\-\-stealth\fR] [\fB\-\-config\fR] [\fB\-\-timeout\fR] [\fB\-\-probe\-timeout\-ms\fR] [\fB\-\-connect\-timeout\-ms\fR] [\fB\-\-rate\fR] [\fB\-\-workers\fR] [\fB\-\-retries\fR] [\fB\-\-randomize\fR] [\fB\-\-sequential\fR] [\fB\-\-jitter\-ms\fR] [\fB\-\-decoys\fR] [\fB\-\-fragment\-size\fR] [\fB\-\-ttl\fR] [\fB\-\-source\-port\-range\fR] [\fB\-\-top\-ports\-first\fR] [\fB\-\-no\-top\-ports\-first\fR] [\fB\-\-discover\-only\fR] [\fB\-\-no\-live\fR] [\fB\-\-connect\-only\fR] [\fB\-\-verify\fR] [\fB\-\-no\-service\-detection\fR] [\fB\-\-udp\fR] [\fB\-\-no\-udp\-probe\fR] [\fB\-\-tls\fR] [\fB\-\-no\-tls\fR] [\fB\-\-sni\fR] [\fB\-\-os\fR] [\fB\-\-os\-probes\fR] [\fB\-\-all\-states\fR] [\fB\-\-show\fR] [\fB\-4\fR|\fB\-\-ipv4\fR] [\fB\-6\fR|\fB\-\-ipv6\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-\-syn\fR] [\fB\-\-ack\fR] [\fB\-\-no\-aimd\fR] [\fB\-\-rate\-auto\fR] [\fB\-\-host\-concurrency\fR] [\fB\-\-aimd\-min\-rate\fR] [\fB\-\-retry\-rate\fR] [\fB\-\-anomaly\-threshold\fR] [\fB\-\-resume\fR] [\fB\-\-save\-state\fR] [\fB\-\-min\-confidence\fR] [\fB\-\-explain\fR] [\fB\-\-defense\fR] [\fB\-\-advisories\fR] [\fB\-\-no\-db\-update\fR] [\fB\-\-diff\fR] [\fB\-\-save\-baseline\fR] [\fB\-\-alert\-file\fR] [\fB\-\-fail\-on\-change\fR] [\fB\-\-ping\-sweep\fR] [\fB\-\-ping\-count\fR] [\fB\-\-ping\-timeout\-ms\fR] [\fB\-\-ndp\fR] [\fB\-\-ndp\-timeout\-ms\fR] [\fB\-\-plugins\fR] [\fB\-\-scripts\fR] [\fB\-\-scripts\-library\fR] [\fB\-\-allow\-intrusive\fR] [\fB\-\-min\-severity\fR] [\fB\-\-scope\fR] [\fB\-\-force\-out\-of\-scope\fR] [\fB\-\-kev\-only\fR] [\fB\-\-min\-epss\fR] [\fB\-\-stream\fR] [\fB\-\-shard\-index\fR] [\fB\-\-shard\-count\fR] [\fB\-\-dry\-run\fR] [\fB\-\-plan\-json\fR] [\fB\-\-plan\-output\fR] [\fB\-h\fR|\fB\-\-help\fR]
+.SH DESCRIPTION
+Build an explainable scan plan, then execute it unless \-\-dry\-run is set
+.SH OPTIONS
+.TP
+\fB\-t\fR, \fB\-\-target\fR \fI<TARGET>\fR
+Target host, IP, CIDR, range, or file path. Repeatable
+.TP
+\fB\-\-target\-file\fR \fI<FILE>\fR
+Read targets from a file, one target or CIDR per line. Repeatable
+.TP
+\fB\-\-exclude\fR \fI<TARGET>\fR
+Exclude a target, CIDR, range, or @file. Repeatable
+.TP
+\fB\-p\fR, \fB\-\-ports\fR \fI<PORTS>\fR
+Ports to scan, for example 80,443,8000\-8100. Defaults to 1\-1024 if omitted
+.TP
+\fB\-\-top\-ports\fR \fI<N>\fR
+Scan the top N most common ports (e.g. 10, 100, 1000)
+.TP
+\fB\-\-preset\fR \fI<PRESET>\fR
+Port preset bundle (e.g. dc, win, web, linux, ot, full, q)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+dc: Active Directory / Domain Controller core services
+.IP \(bu 2
+win: Windows workstation/server typical services
+.IP \(bu 2
+web: HTTP(S) admin and alternate web ports
+.IP \(bu 2
+linux: Common Linux daemons (SSH, SMTP, DNS, NFS, DBs, etc.)
+.IP \(bu 2
+ot: Industrial control and SCADA control\-plane services
+.IP \(bu 2
+full: Full TCP range 1\-65535
+.IP \(bu 2
+q: nmap top\-1000 most frequent TCP ports
+.RE
+.TP
+\fB\-\-exclude\-ports\fR \fI<PORTS>\fR
+Exclude ports from the scan, for example 22,135,445 or 8000\-8100
+.TP
+\fB\-\-json\fR
+Emit the benchmark\-compatible JSON report
+.TP
+\fB\-\-format\fR \fI<FORMAT>\fR
+Output format
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+table
+.IP \(bu 2
+json
+.IP \(bu 2
+jsonl
+.IP \(bu 2
+csv
+.IP \(bu 2
+nmap\-xml: Nmap\-compatible XML output (compatible with nmap parsers / Metasploit)
+.IP \(bu 2
+greppable: Greppable output — one line per host, Nmap \-oG style
+.IP \(bu 2
+sarif: SARIF 2.1.0 report for code\-scanning and vulnerability dashboards
+.IP \(bu 2
+markdown: Human\-readable Markdown report for tickets and pull requests
+.IP \(bu 2
+html: Self\-contained HTML report with no remote assets
+.IP \(bu 2
+host\-port: Plain `host:port` list — one open port per line for pipeline chaining
+.IP \(bu 2
+port\-list: Comma\-separated port numbers only — ready to paste into \-p of any tool. Without \-\-ports/\-\-top\-ports this discovery format scans the full TCP range (1\-65535). Example: 53,88,139,445,3389,5985
+.RE
+.TP
+\fB\-o\fR, \fB\-\-output\fR \fI<FILE>\fR
+Write results to a file instead of stdout
+.TP
+\fB\-\-profile\fR \fI<PROFILE>\fR
+Configuration profile
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+fast
+.IP \(bu 2
+balanced
+.IP \(bu 2
+careful
+.IP \(bu 2
+stealth
+.RE
+.TP
+\fB\-\-stealth\fR
+Enable stealth mode (slow rate 20 pps, randomized order, high retries)
+.TP
+\fB\-\-config\fR \fI<FILE>\fR
+Read settings from a TOML file. Defaults to portensor.toml if present
+.TP
+\fB\-\-timeout\fR \fI<SECONDS>\fR
+Per\-connect timeout ceiling in seconds
+.TP
+\fB\-\-probe\-timeout\-ms\fR \fI<MS>\fR
+How long to wait for a banner before calling a handshake silent, in ms
+.TP
+\fB\-\-connect\-timeout\-ms\fR \fI<MS>\fR
+Per\-connect timeout ceiling in milliseconds. Overrides \-\-timeout
+.TP
+\fB\-\-rate\fR \fI<N>\fR
+Global probes per second. 0 means unlimited
+.TP
+\fB\-\-workers\fR \fI<N>\fR
+Worker count. 0 means automatic: cores × 32 capped at 512, bounded by RLIMIT_NOFILE
+.TP
+\fB\-\-retries\fR \fI<N>\fR
+Retries for lost probes and local resource failures such as EMFILE.
+
+Connect scans retry timeouts while the host is responding, plus one retry for an isolated first timeout; retries are capped at three per port.
+.TP
+\fB\-\-randomize\fR
+Shuffle target and port order
+.TP
+\fB\-\-sequential\fR
+Keep target and port order. Overrides config randomize
+.TP
+\fB\-\-jitter\-ms\fR \fI<MS>\fR
+Maximum random delay before each probe, in milliseconds (0\-5000)
+.TP
+\fB\-\-decoys\fR \fI<IP,IP>\fR
+Spoofed source addresses for decoy probes, comma\-separated (max 8). Requires \-\-syn
+.TP
+\fB\-\-fragment\-size\fR \fI<BYTES>\fR
+Fragment raw SYN probes into IP fragments of this payload size (multiple of 8, 8\-1480). Requires \-\-syn
+.TP
+\fB\-\-ttl\fR \fI<N>\fR
+IP TTL / IPv6 hop limit for raw SYN, ACK, and OS fingerprint probes (1\-255). Requires \-\-syn, \-\-ack, or \-\-os
+.TP
+\fB\-\-source\-port\-range\fR \fI<MIN\-MAX>\fR
+Source port range for raw SYN/ACK probes, as MIN\-MAX (1\-65535). Requires \-\-syn or \-\-ack
+.TP
+\fB\-\-top\-ports\-first\fR
+Scan most common ports first to minimize time\-to\-first\-result
+.TP
+\fB\-\-no\-top\-ports\-first\fR
+Disable top ports prioritization (keep sequential or natural order)
+.TP
+\fB\-\-discover\-only\fR
+Fast discovery mode: report open ports immediately without service/banner inspection
+.TP
+\fB\-\-no\-live\fR
+Disable real\-time live results table streaming during scan
+.TP
+\fB\-\-connect\-only\fR
+Report handshake success as open without banner or connect verification
+.TP
+\fB\-\-verify\fR
+Verify that a handshake yields a banner or immediate close
+.TP
+\fB\-\-no\-service\-detection\fR
+Disable banner\-based service and version detection
+.TP
+\fB\-\-udp\fR
+Enable UDP service detection (passive banner read + optional active probe)
+.TP
+\fB\-\-no\-udp\-probe\fR
+Disable UDP active probe; only perform the initial passive banner read
+.TP
+\fB\-\-tls\fR
+Inspect TLS on every open TCP port (certificate, version, cipher)
+.TP
+\fB\-\-no\-tls\fR
+Disable automatic TLS inspection of known TLS/STARTTLS ports
+.TP
+\fB\-\-sni\fR \fI<HOST>\fR
+Explicit DNS hostname for TLS SNI and certificate name validation. Independent of the target IP; useful for virtual hosts sharing an IP
+.TP
+\fB\-\-os\fR
+Enable OS fingerprinting via TCP/IP stack analysis (Linux raw sockets; root/CAP_NET_RAW). Probes up to \-\-os\-probes open ports per host and classifies the SYN\-ACK replies
+.TP
+\fB\-\-os\-probes\fR \fI<N>\fR
+Open\-port samples per host for the OS fingerprint consensus (1\-8, default: 3)
+.TP
+\fB\-\-all\-states\fR
+Show every port state
+.TP
+\fB\-\-show\fR \fI<STATE>\fR
+States to display. Repeat or comma\-separate
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+open
+.IP \(bu 2
+closed
+.IP \(bu 2
+filtered
+.IP \(bu 2
+unfiltered
+.IP \(bu 2
+silent
+.IP \(bu 2
+unreachable
+.IP \(bu 2
+error
+.IP \(bu 2
+all
+.RE
+.TP
+\fB\-4\fR, \fB\-\-ipv4\fR
+Resolve and scan only IPv4 targets
+.TP
+\fB\-6\fR, \fB\-\-ipv6\fR
+Resolve and scan only IPv6 targets
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+Suppress progress and status messages
+.TP
+\fB\-\-syn\fR
+Use raw SYN discovery, then verify responsive ports (Linux root/CAP_NET_RAW; Windows Npcap + admin)
+.TP
+\fB\-\-ack\fR
+TCP ACK scan to map firewall filtering (Linux root/CAP_NET_RAW; Windows Npcap + admin). Unfiltered ports answer with RST; filtered ports stay silent
+.TP
+\fB\-\-no\-aimd\fR
+Disable AIMD adaptive rate control during raw SYN scanning
+.TP
+\fB\-\-rate\-auto\fR
+Enable adaptive target\-politeness for connect scans: back off on timeout, ICMP\-unreachable, and tarpit/handshake\-silent bursts
+.TP
+\fB\-\-host\-concurrency\fR \fI<N>\fR
+Maximum concurrent connect attempts per target host (0 = unlimited)
+.TP
+\fB\-\-aimd\-min\-rate\fR \fI<N>\fR
+AIMD minimum rate floor in packets per second (default: 100)
+.TP
+\fB\-\-retry\-rate\fR \fI<N>\fR
+Rate used for SYN retransmission passes in packets per second. 0 means auto (rate / 4, minimum 100). Default: 0
+.TP
+\fB\-\-anomaly\-threshold\fR \fI<N>\fR
+Per\-host SYN\-open count above which the host is treated as anomalous (tarpit/SYN\-proxy farm), verification is sampled, and raw pacing backs off.  0 disables.  Default: 1000
+.TP
+\fB\-\-resume\fR \fI<FILE>\fR
+Resume a previous interrupted scan from a saved state file. Ports already probed in the state file are skipped; results are merged
+.TP
+\fB\-\-save\-state\fR \fI<FILE>\fR
+Save scan state to a file on completion or interruption (Ctrl\-C). Use with \-\-resume to continue an interrupted scan
+.TP
+\fB\-\-min\-confidence\fR \fI<PERCENT>\fR
+Filter results to only show ports with confidence score >= N percent (0\-100)
+.TP
+\fB\-\-explain\fR [\fI<PORT>\fR]
+Print comprehensive evidence and accuracy breakdown for all ports or a specific port
+.TP
+\fB\-\-defense\fR
+Always display detailed defense and middlebox intelligence assessment
+.TP
+\fB\-\-advisories\fR
+Correlate detected service versions against the local and bundled CVE advisory databases
+.TP
+\fB\-\-no\-db\-update\fR
+Skip the automatic NVD advisory database refresh check before scanning
+.TP
+\fB\-\-diff\fR \fI<FILE>\fR
+Compare scan results against a previous JSON, state, or Nmap XML report
+.TP
+\fB\-\-save\-baseline\fR \fI<FILE>\fR
+Save the final report as a JSON baseline for future \-\-diff comparisons
+.TP
+\fB\-\-alert\-file\fR \fI<FILE>\fR
+Write a concise change alert to FILE (requires \-\-diff; written on every run)
+.TP
+\fB\-\-fail\-on\-change\fR
+Exit with status 1 when \-\-diff detects any new, gone, or modified port
+.TP
+\fB\-\-ping\-sweep\fR
+Discover responsive hosts with ICMP echo/TCP ping before scanning
+.TP
+\fB\-\-ping\-count\fR \fI<N>\fR
+Ping probes per host (1\-10). Requires \-\-ping\-sweep
+.TP
+\fB\-\-ping\-timeout\-ms\fR \fI<MS>\fR
+Per\-ping timeout in milliseconds (50\-10000). Requires \-\-ping\-sweep
+.TP
+\fB\-\-ndp\fR
+Discover local IPv6 neighbors with an NDP all\-nodes multicast probe. Expands broad IPv6 CIDRs such as /64 instead of enumerating every address
+.TP
+\fB\-\-ndp\-timeout\-ms\fR \fI<MS>\fR
+NDP discovery timeout in milliseconds (50\-5000). Requires \-\-ndp
+.TP
+\fB\-\-plugins\fR \fI<PATH>\fR
+Directory or TOML file with declarative probe packs
+.TP
+\fB\-\-scripts\fR \fI<PATH>\fR
+TOML manifest or directory of script plugin manifests (sidecar or WASM). Repeatable; every path contributes packs to the same registry
+.TP
+\fB\-\-scripts\-library\fR
+Load script packs installed in the local library (see `portensor scripts`)
+.TP
+\fB\-\-allow\-intrusive\fR
+Allow script plugins whose manifest sets danger = "intrusive"
+.TP
+\fB\-\-min\-severity\fR \fI<SEVERITY>\fR
+Drop script findings below this severity (info < low < medium < high < critical)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+info
+.IP \(bu 2
+low
+.IP \(bu 2
+medium
+.IP \(bu 2
+high
+.IP \(bu 2
+critical
+.RE
+.TP
+\fB\-\-scope\fR \fI<FILE>\fR
+Scope definition file (TOML or plaintext) specifying authorized target boundaries
+.TP
+\fB\-\-force\-out\-of\-scope\fR
+Force scan execution even if targets violate the Scope Guard definition
+.TP
+\fB\-\-kev\-only\fR
+Filter advisory findings to only display services with CISA Known Exploited Vulnerabilities
+.TP
+\fB\-\-min\-epss\fR \fI<SCORE>\fR
+Filter advisory findings to those with EPSS exploitation probability >= SCORE (0.0\-1.0)
+.TP
+\fB\-\-stream\fR
+Stream JSONL port findings immediately to stdout as each candidate is verified
+.TP
+\fB\-\-shard\-index\fR \fI<N>\fR
+Scan only this shard of the target list (0\-based). Requires \-\-shard\-count
+.TP
+\fB\-\-shard\-count\fR \fI<N>\fR
+Split targets into N deterministic shards for distributed scans. Requires \-\-shard\-index
+.TP
+\fB\-\-dry\-run\fR
+Emit the plan without performing any network probes
+.TP
+\fB\-\-plan\-json\fR
+Emit the plan as JSON. Requires \-\-dry\-run so stdout stays parseable
+.TP
+\fB\-\-plan\-output\fR \fI<FILE>\fR
+Save the plan model as JSON at this path
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

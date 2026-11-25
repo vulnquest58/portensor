@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-db-update 1  "update "
+.SH NAME
+portensor\-db\-update \- Download, verify, and index the latest NVD CVE feeds
+.SH SYNOPSIS
+\fBupdate\fR [\fB\-\-force\fR] [\fB\-\-years\fR] [\fB\-\-quiet\fR] [\fB\-h\fR|\fB\-\-help\fR]
+.SH DESCRIPTION
+Download, verify, and index the latest NVD CVE feeds
+.SH OPTIONS
+.TP
+\fB\-\-force\fR
+Re\-download feeds even when their published digest matches
+.TP
+\fB\-\-years\fR \fI<SPEC>\fR
+Year selection: all (default), 2002\-2026, or 2024,2025,2026
+.TP
+\fB\-\-quiet\fR
+Suppress progress output
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help

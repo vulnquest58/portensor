@@ -1,0 +1,14 @@
+{
+  "version": "@@VERSION@@",
+  "description": "Accuracy-first TCP/UDP port scanner with OS fingerprinting",
+  "homepage": "https://github.com/@@REPO@@",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "@@RELEASE_BASE_URL@@/@@WINDOWS_ARCHIVE@@",
+      "hash": "@@WINDOWS_SHA256@@"
+    }
+  },
+  "bin": "bin\\portensor.exe",
+  "checkver": "github"
+}

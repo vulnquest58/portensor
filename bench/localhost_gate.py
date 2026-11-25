@@ -17,7 +17,7 @@ import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BINARY = ROOT / "target" / "release" / "rayscan"
+DEFAULT_BINARY = ROOT / "target" / "release" / "portensor"
 
 
 def full_scan(binary: Path, timeout: float) -> tuple[set[int], dict[str, object]]:
@@ -74,7 +74,7 @@ class BannerListener:
             except OSError:
                 return
             try:
-                connection.sendall(b"rayscan localhost gate\n")
+                connection.sendall(b"portensor localhost gate\n")
             except OSError:
                 pass
             finally:

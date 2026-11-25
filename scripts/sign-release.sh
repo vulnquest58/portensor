@@ -5,8 +5,8 @@
 #   scripts/sign-release.sh [--gpg KEY_ID] [--cosign KEY_PATH]
 #
 # Environment fallbacks:
-#   RAYSCAN_GPG_KEY     GPG key ID or fingerprint
-#   RAYSCAN_COSIGN_KEY  cosign private key path
+#   PORTENSOR_GPG_KEY     GPG key ID or fingerprint
+#   PORTENSOR_COSIGN_KEY  cosign private key path
 #
 # Produces dist/SHA256SUMS.asc (GPG) and/or
 # dist/SHA256SUMS.cosign.bundle (cosign).  Verification commands are printed.
@@ -14,8 +14,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SUMS="$ROOT/dist/SHA256SUMS"
-GPG_KEY="${RAYSCAN_GPG_KEY:-}"
-COSIGN_KEY="${RAYSCAN_COSIGN_KEY:-}"
+GPG_KEY="${PORTENSOR_GPG_KEY:-}"
+COSIGN_KEY="${PORTENSOR_COSIGN_KEY:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -71,6 +71,6 @@ if [[ -n "$COSIGN_KEY" ]]; then
 fi
 
 if [[ "$signed" -eq 0 ]]; then
-  echo "no signing key configured; set RAYSCAN_GPG_KEY or RAYSCAN_COSIGN_KEY" >&2
+  echo "no signing key configured; set PORTENSOR_GPG_KEY or PORTENSOR_COSIGN_KEY" >&2
   exit 1
 fi

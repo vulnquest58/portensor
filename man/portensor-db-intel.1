@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-db-intel 1  "intel "
+.SH NAME
+portensor\-db\-intel \- Download and index the full CISA KEV catalog and current EPSS scores
+.SH SYNOPSIS
+\fBintel\fR [\fB\-\-force\fR] [\fB\-\-json\fR] [\fB\-\-quiet\fR] [\fB\-h\fR|\fB\-\-help\fR]
+.SH DESCRIPTION
+Download and index the full CISA KEV catalog and current EPSS scores
+.SH OPTIONS
+.TP
+\fB\-\-force\fR
+Re\-download feeds even when the cached copy is fresh
+.TP
+\fB\-\-json\fR
+Emit the refresh summary as JSON
+.TP
+\fB\-\-quiet\fR
+Suppress progress output
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help

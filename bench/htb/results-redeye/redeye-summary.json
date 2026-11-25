@@ -1,0 +1,218 @@
+{
+  "schema": 2,
+  "target": "10.129.214.126",
+  "machine": "RedEye",
+  "authorization": "user-provided Hack The Box lab session; scope file allows this host only",
+  "nmap_open_ports": [
+    22,
+    80,
+    443,
+    3000
+  ],
+  "rayscan_v1_open_ports": [
+    22,
+    80,
+    443,
+    3000
+  ],
+  "rayscan_v2_open_ports": [
+    22,
+    80,
+    443,
+    3000
+  ],
+  "rayscan_verified_ports": [
+    22,
+    80,
+    443,
+    3000
+  ],
+  "port_sets_match": true,
+  "nmap_full_elapsed_s": 131.54,
+  "nmap_service_elapsed_s": 111.79,
+  "rayscan_v1_full_elapsed_s": 141.066,
+  "rayscan_v2_full_elapsed_s": 141.022,
+  "rayscan_scan_wall_s": {
+    "full_connect_v2": 141.71,
+    "os_mixed_v2": 3.2,
+    "sni_chat_v2": 1.65
+  },
+  "nmap_services": {
+    "22": {
+      "name": "ssh",
+      "product": "OpenSSH",
+      "version": "10.0p2 Debian 7+deb13u4",
+      "extrainfo": "protocol 2.0",
+      "ostype": "Linux",
+      "method": "probed",
+      "conf": "10"
+    },
+    "80": {
+      "name": "http",
+      "product": "nginx",
+      "method": "probed",
+      "conf": "10"
+    },
+    "443": {
+      "name": "https",
+      "method": "table",
+      "conf": "3"
+    },
+    "3000": {
+      "name": "http",
+      "product": "nginx",
+      "method": "probed",
+      "conf": "10"
+    }
+  },
+  "rayscan_services": {
+    "os_mixed_v2": [
+      {
+        "port": 22,
+        "banner": "SSH-2.0-OpenSSH_10.0p2 Debian-7+deb13u4",
+        "service": "ssh",
+        "product": "OpenSSH",
+        "service_confidence": 0.98,
+        "detail": null,
+        "tls_version": null,
+        "tls_sni": null,
+        "tls_hostname_matches": null
+      },
+      {
+        "port": 80,
+        "banner": "HTTP/1.1 302 Moved Temporarily",
+        "service": "http",
+        "product": "nginx",
+        "service_confidence": 0.85,
+        "detail": null,
+        "tls_version": null,
+        "tls_sni": null,
+        "tls_hostname_matches": null
+      },
+      {
+        "port": 443,
+        "banner": "TLS TLSv1.3 / TLS13_AES_256_GCM_SHA384",
+        "service": "https",
+        "product": "Microsoft-HTTPAPI",
+        "service_confidence": 0.98,
+        "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104)),tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+        "tls_version": "TLSv1.3",
+        "tls_sni": "sts.airways.htb",
+        "tls_hostname_matches": true
+      }
+    ],
+    "sni_chat_v2": [
+      {
+        "port": 3000,
+        "banner": "HTTP/1.1 301 Moved Permanently",
+        "service": "https",
+        "product": "nginx",
+        "service_confidence": 0.85,
+        "detail": "tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+        "tls_version": "TLSv1.3",
+        "tls_sni": "chat.airways.htb",
+        "tls_hostname_matches": true
+      }
+    ]
+  },
+  "os_summary": {
+    "family": "mixed",
+    "detail": "mixed OS: linux (22, 80), windows (443)",
+    "confidence": 0.96000004,
+    "samples": 3,
+    "endpoints": [
+      {
+        "port": 22,
+        "family": "linux",
+        "stack_family": "windows",
+        "stack_confidence": 0.9148936,
+        "detail": "Linux (debian service evidence)",
+        "confidence": 0.95,
+        "initial_ttl": 128,
+        "hops": 2,
+        "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains debian",
+        "service": "ssh"
+      },
+      {
+        "port": 80,
+        "family": "linux",
+        "stack_family": "windows",
+        "stack_confidence": 0.9148936,
+        "detail": "Linux (nginx edge service evidence)",
+        "confidence": 0.72,
+        "initial_ttl": 128,
+        "hops": 2,
+        "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains nginx",
+        "service": "http"
+      },
+      {
+        "port": 443,
+        "family": "windows",
+        "stack_family": "windows",
+        "stack_confidence": 0.9148936,
+        "detail": "Windows (microsoft-httpapi service evidence)",
+        "confidence": 0.97,
+        "initial_ttl": 128,
+        "hops": 2,
+        "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains microsoft-httpapi",
+        "service": "https"
+      }
+    ]
+  },
+  "chat_os_summary": {
+    "family": "linux",
+    "detail": "Linux (nginx edge service evidence)",
+    "confidence": 0.72,
+    "samples": 1,
+    "endpoints": [
+      {
+        "port": 3000,
+        "family": "linux",
+        "stack_family": "windows",
+        "stack_confidence": 0.9148936,
+        "detail": "Linux (nginx edge service evidence)",
+        "confidence": 0.72,
+        "initial_ttl": 128,
+        "hops": 2,
+        "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains nginx",
+        "service": "https"
+      }
+    ]
+  },
+  "tls": {
+    "443": {
+      "port": 443,
+      "version": "TLSv1.3",
+      "cipher": "TLS13_AES_256_GCM_SHA384",
+      "sni": "sts.airways.htb",
+      "hostname_matches": true,
+      "subject": "CN=sts.airways.htb",
+      "issuer": "CN=sts.airways.htb",
+      "san": [
+        "sts.airways.htb",
+        "airways.htb"
+      ],
+      "self_signed": true
+    },
+    "3000": {
+      "port": 3000,
+      "version": "TLSv1.3",
+      "cipher": "TLS13_AES_256_GCM_SHA384",
+      "sni": "chat.airways.htb",
+      "hostname_matches": true,
+      "subject": "CN=chat.airways.htb",
+      "issuer": "DC=htb, DC=airways, CN=AIRWAYS-DC01-CA",
+      "san": [
+        "chat.airways.htb"
+      ],
+      "self_signed": false
+    }
+  },
+  "limitations": [
+    "Raw SYN-ACK stack evidence was Windows-like on every probed endpoint; endpoint labels use service-derived corrections.",
+    "443/tcp requires SNI sts.airways.htb; without SNI the TLS endpoint can reset and may be omitted from a retained TLS scan.",
+    "3000/tcp uses SNI chat.airways.htb and identifies an nginx front; the Rocket.Chat/Express application is not fingerprinted by the built-in service matcher.",
+    "Full discovery is connect-only; no raw-SYN or UDP claim is made.",
+    "Only four open TCP ports were exposed."
+  ]
+}

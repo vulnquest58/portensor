@@ -3,7 +3,7 @@
 //! Matches detected service identity (product name, version, and optional
 //! banner context) against two sources:
 //!
-//! 1. the local NVD database maintained by `rayscan db update` (see
+//! 1. the local NVD database maintained by `portensor db update` (see
 //!    [`crate::db`]), which covers all CVE years through the current year; and
 //! 2. a small bundled curated database in `data/advisories.json` that adds
 //!    context-sensitive mappings (for example Debian/Ubuntu SSH banners).
@@ -594,7 +594,7 @@ mod tests {
     impl TempDb {
         fn new(name: &str) -> Self {
             let root = std::env::temp_dir().join(format!(
-                "rayscan-advisory-{name}-{}-{}",
+                "portensor-advisory-{name}-{}-{}",
                 std::process::id(),
                 crate::db::now_unix()
             ));

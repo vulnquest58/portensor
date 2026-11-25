@@ -2,7 +2,7 @@
 """Standardized localhost benchmark validation.
 
 The suite creates a deterministic loopback scenario with banner services,
-silent tarpits, and closed ports, then runs rayscan and optional peer scanners
+silent tarpits, and closed ports, then runs portensor and optional peer scanners
 in interleaved rounds. It validates exactness and records wall time, CPU time,
 and peak RSS for every run. The output is a machine-readable JSON report plus a
 Markdown summary suitable for release notes.
@@ -39,7 +39,7 @@ if str(ROOT) not in sys.path:
 
 from bench import bench  # noqa: E402
 
-DEFAULT_BINARY = ROOT / "target" / "release" / "rayscan"
+DEFAULT_BINARY = ROOT / "target" / "release" / "portensor"
 DEFAULT_OUTPUT = ROOT / "bench" / "results" / "validation.json"
 DEFAULT_MARKDOWN = ROOT / "bench" / "results" / "validation.md"
 HOST = "127.0.0.1"
@@ -208,7 +208,7 @@ def build_scenario(
             port, listener = reserve_port(rng, used)
             scenario.banner_ports.append(port)
             scenario.servers.append(
-                BannerServer(listener, b"rayscan-bench/1.0\r\n")
+                BannerServer(listener, b"portensor-bench/1.0\r\n")
             )
         for _ in range(tarpits):
             port, listener = reserve_port(rng, used)
@@ -225,7 +225,7 @@ def build_scenario(
 
 
 def tool_available(name: str, binary: Path) -> tuple[bool, str | None]:
-    if name in {"rayscan", "rayscan-connect"}:
+    if name in {"portensor", "portensor-connect"}:
         if not binary.is_file():
             return False, f"binary not found: {binary}"
         return True, None
@@ -259,7 +259,7 @@ def build_tools(
     speed_text = ",".join(str(port) for port in speed_ports)
     specs: list[ToolSpec] = []
     for name in names:
-        if name == "rayscan":
+        if name == "portensor":
             specs.append(
                 ToolSpec(
                     name=name,
@@ -275,13 +275,13 @@ def build_tools(
                         "--rate",
                         "0",
                     ],
-                    parser=bench.parse_rayscan,
+                    parser=bench.parse_portensor,
                     mode="verified",
                     ports=ports,
                     truth=truth,
                 )
             )
-        elif name == "rayscan-connect":
+        elif name == "portensor-connect":
             specs.append(
                 ToolSpec(
                     name=name,
@@ -298,7 +298,7 @@ def build_tools(
                         "0",
                         "--discover-only",
                     ],
-                    parser=bench.parse_rayscan,
+                    parser=bench.parse_portensor,
                     mode="handshake",
                     ports=speed_ports,
                     truth=speed_truth,
@@ -520,7 +520,7 @@ def environment(binary: Path, specs: list[ToolSpec]) -> dict[str, object]:
         load = None
     versions: dict[str, str | None] = {}
     for spec in specs:
-        if spec.name.startswith("rayscan"):
+        if spec.name.startswith("portensor"):
             versions[spec.name] = tool_version([str(binary)])
         else:
             versions[spec.name] = tool_version([spec.command[0]])
@@ -677,7 +677,7 @@ def format_markdown(report: dict[str, object]) -> str:
     scenario = report["scenario"]
     summaries = report["tools"]
     lines = [
-        "# rayscan benchmark validation",
+        "# portensor benchmark validation",
         "",
         f"Generated: {report['generated_at']}",
         "",
@@ -759,8 +759,8 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--binary", type=Path, default=DEFAULT_BINARY)
-    parser.add_argument("--tools", default="rayscan,nmap,rayscan-connect,nmap-speed")
-    parser.add_argument("--require-tools", default="rayscan")
+    parser.add_argument("--tools", default="portensor,nmap,portensor-connect,nmap-speed")
+    parser.add_argument("--require-tools", default="portensor")
     parser.add_argument("--repeat", type=int, default=5)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=120.0)
@@ -843,15 +843,15 @@ def main(argv: list[str] | None = None) -> int:
         for spec in specs
     ]
     by_name = {summary["tool"]: summary for summary in summaries}
-    rayscan_summary = by_name.get("rayscan")
+    portensor_summary = by_name.get("portensor")
     reasons: list[str] = []
     verdict = True
-    if rayscan_summary is None:
+    if portensor_summary is None:
         verdict = False
-        reasons.append("rayscan was not selected")
+        reasons.append("portensor was not selected")
     else:
         verdict, reasons = verdict_for(
-            rayscan_summary,
+            portensor_summary,
             args.max_seconds,
             args.max_cpu_seconds,
             args.max_rss_mb,
@@ -868,7 +868,7 @@ def main(argv: list[str] | None = None) -> int:
             verdict = False
             reasons.append(f"required tool failed one or more runs: {name}")
 
-    connect_summary = by_name.get("rayscan-connect")
+    connect_summary = by_name.get("portensor-connect")
     if connect_summary is not None and not connect_summary["skipped"]:
         if not connect_summary["exact"]:
             verdict = False
@@ -885,18 +885,18 @@ def main(argv: list[str] | None = None) -> int:
             "nmap_false_positives": nmap_summary["false_positives"],
             "nmap_exact": nmap_summary["exact"],
         }
-        if rayscan_summary is not None:
-            comparison["rayscan_false_positives"] = rayscan_summary[
+        if portensor_summary is not None:
+            comparison["portensor_false_positives"] = portensor_summary[
                 "false_positives"
             ]
-            comparison["rayscan_exact"] = rayscan_summary["exact"]
+            comparison["portensor_exact"] = portensor_summary["exact"]
         if (
             connect_summary is not None
             and nmap_speed_summary is not None
             and connect_summary["wall_seconds"]["median"] is not None
             and nmap_speed_summary["wall_seconds"]["median"] not in (None, 0)
         ):
-            comparison["handshake_mode"] = "rayscan-connect"
+            comparison["handshake_mode"] = "portensor-connect"
             comparison["handshake_to_nmap_wall_ratio"] = (
                 connect_summary["wall_seconds"]["median"]
                 / nmap_speed_summary["wall_seconds"]["median"]
@@ -954,12 +954,12 @@ def main(argv: list[str] | None = None) -> int:
     if comparison is not None:
         if "handshake_to_nmap_wall_ratio" in comparison:
             print(
-                "rayscan-connect/nmap median wall ratio: "
+                "portensor-connect/nmap median wall ratio: "
                 f"{comparison['handshake_to_nmap_wall_ratio']:.2f}x"
             )
-        if "rayscan_false_positives" in comparison:
+        if "portensor_false_positives" in comparison:
             print(
-                f"FP rayscan={comparison['rayscan_false_positives']} "
+                f"FP portensor={comparison['portensor_false_positives']} "
                 f"nmap={comparison['nmap_false_positives']}"
             )
     print(f"{report['verdict']}: {'; '.join(reasons) if reasons else 'all checks passed'}")

@@ -617,7 +617,7 @@ mod tests {
     #[tokio::test]
     async fn reads_explicit_files_and_at_files() {
         let path = std::env::temp_dir().join(format!(
-            "rayscan-targets-{}-{}.txt",
+            "portensor-targets-{}-{}.txt",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

@@ -1,0 +1,153 @@
+{
+  "target": "10.129.215.81",
+  "machine": "Unclaimed",
+  "scope": "bench/htb/lab-scope-unclaimed.toml",
+  "authorization": "user-provided authorized HTB lab session; network discovery and fingerprinting only",
+  "tools": {
+    "rayscan": "0.7.0",
+    "nmap": "7.80"
+  },
+  "confirmed_open_tcp": [
+    80,
+    135,
+    139,
+    445,
+    5040,
+    5985,
+    47001,
+    49664,
+    49665,
+    49666,
+    49667,
+    49669,
+    49670
+  ],
+  "filtered_not_claimed": [
+    2824,
+    7090,
+    9452,
+    15162,
+    15269,
+    25963,
+    29852,
+    31099,
+    35255,
+    35843,
+    38416,
+    40281,
+    44348,
+    44667,
+    47776,
+    49980,
+    51291,
+    53375,
+    54175,
+    61705,
+    62743,
+    63616
+  ],
+  "scans": {
+    "rayscan_full_connect": {
+      "open": 11,
+      "closed": 53539,
+      "filtered": 11985,
+      "recall": 0.846,
+      "precision": 1.0,
+      "missed": [80, 5040],
+      "elapsed_ms": 39027.129,
+      "wall_seconds": 40.74,
+      "peak_rss_kib": 20172,
+      "defense": "rate_limiting"
+    },
+    "rayscan_focus": {
+      "open": 2,
+      "closed": 1,
+      "elapsed_ms": 281.036,
+      "recovered": [80, 5040]
+    },
+    "rayscan_two_pass": {
+      "open": 13,
+      "recall": 1.0,
+      "precision": 1.0
+    },
+    "nmap_all_tcp": {
+      "open": 13,
+      "filtered": 22,
+      "closed": 65500,
+      "elapsed_seconds": 97.08,
+      "recall": 1.0,
+      "precision": 1.0,
+      "warning": "giving up on port because retransmission cap hit"
+    }
+  },
+  "services": {
+    "80": {
+      "service": "http",
+      "product": "Microsoft-HTTPAPI/2.0",
+      "ip_request": "302 Found to http://unclaimed.htb/",
+      "host_request": "200 OK",
+      "title": "HTB Airlines - Baggage Services",
+      "content_length": 1314823,
+      "methods": ["GET", "HEAD", "POST", "OPTIONS"]
+    },
+    "135": "Microsoft Windows RPC",
+    "139": "Microsoft Windows netbios-ssn",
+    "445": {
+      "service": "microsoft-ds",
+      "smb_security_mode": "2.02",
+      "signing": "enabled and required"
+    },
+    "5040": {
+      "state": "open",
+      "nmap_service": "tcpwrapped",
+      "tls": "reset",
+      "http": "no response",
+      "identity": "not determined"
+    },
+    "5985": {
+      "service": "winrm",
+      "banner": "HTTP/1.1 401",
+      "product": "Microsoft WinRM"
+    },
+    "47001": "Microsoft-HTTPAPI/2.0; 404 Not Found",
+    "49664-49670": "Microsoft Windows RPC; 49668 closed on recheck"
+  },
+  "http_application": {
+    "endpoint": "/ask",
+    "method": "POST",
+    "content_type": "application/json",
+    "query": "scan history for tag HTB0067890",
+    "normal_query_succeeded": true,
+    "returned_sql": "SELECT * FROM dbo.BagEvents WHERE tag_number = 'HTB0067890'",
+    "returned_rows": 4,
+    "other_query": "status for tag HTB0012345",
+    "other_query_succeeded": false,
+    "other_query_error": "None of the provided tools can be used to answer the question.",
+    "authentication_observed": false,
+    "exploitation_attempted": false
+  },
+  "os_fingerprint": {
+    "family": "windows",
+    "role": "memberserver",
+    "confidence": 0.9332624,
+    "initial_ttl": 128,
+    "hops": 2,
+    "samples": 3,
+    "agreement": 1.0,
+    "ports": [80, 139, 5985],
+    "exact_edition": "not established",
+    "silent_ports": [135, 445]
+  },
+  "scope_guard": {
+    "denied_target": "10.129.215.82",
+    "exit_code": 2,
+    "probed": false
+  },
+  "limitations": [
+    "The target rate-limited high-concurrency scans; two-pass discovery was required.",
+    "UDP was not tested.",
+    "Port 5040 remains unidentified.",
+    "No exploitation, credential access, SQL injection, or prompt injection was attempted.",
+    "Local DNS did not resolve unclaimed.htb; HTTP requests used --resolve."
+  ]
+}

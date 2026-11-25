@@ -1,6 +1,6 @@
-# Why Accuracy-First Matters: How High-Speed Port Scanners Lie and How rayscan Solved It
+# Why Accuracy-First Matters: How High-Speed Port Scanners Lie and How portensor Solved It
 
-*By the rayscan engineering team*
+*By the portensor engineering team*
 
 ---
 
@@ -37,7 +37,7 @@ If a middlebox, firewall SYN-proxy, or tarpit responds with `SYN-ACK`, the scann
 
 In our controlled benchmark lab simulating an enterprise perimeter with tarpits and SYN-proxies across 1,000 ports:
 
-| Metric | masscan | rustscan | nmap (`-sS -T4`) | rayscan (v0.1.0) |
+| Metric | masscan | rustscan | nmap (`-sS -T4`) | portensor (v0.1.0) |
 |---|---|---|---|---|
 | **Scan Time** | 0.42s | 3.12s | 48.6s | **0.86s** |
 | **Real Open Ports Discovered** | 16 / 16 | 16 / 16 | 16 / 16 | **16 / 16** |
@@ -48,13 +48,13 @@ In our controlled benchmark lab simulating an enterprise perimeter with tarpits 
 
 - **Masscan** reported 984 closed/tarpitted ports as open. An automated vulnerability scanner consuming this output would waste hours attacking non-existent services.
 - **Nmap** avoided false positives when service detection was enabled (`-sV`), but took nearly a minute because tarpits stalled its probe threads.
-- **rayscan** discovered all 16 true open services with **0 false positives** in **0.86 seconds**.
+- **portensor** discovered all 16 true open services with **0 false positives** in **0.86 seconds**.
 
 ---
 
-## 3. How rayscan Solves This: The Two-Phase Verification Engine
+## 3. How portensor Solves This: The Two-Phase Verification Engine
 
-`rayscan` is architected from the ground up on the principle of **evidence-based verification**.
+`portensor` is architected from the ground up on the principle of **evidence-based verification**.
 
 ```text
                   +-----------------------------------+
@@ -91,10 +91,10 @@ In our controlled benchmark lab simulating an enterprise perimeter with tarpits 
 ```
 
 ### 1. AIMD Dynamic Rate Control
-Instead of flooding the network with static packet bursts, `rayscan` monitors response rates and drops. When packet loss or middlebox throttling is detected, it multiplicatively decreases transmission rate. When stability returns, it additively increases speed.
+Instead of flooding the network with static packet bursts, `portensor` monitors response rates and drops. When packet loss or middlebox throttling is detected, it multiplicatively decreases transmission rate. When stability returns, it additively increases speed.
 
 ### 2. Anomaly Thresholding (Anti-Tarpit Shield)
-When a target host responds with `SYN-ACK` to more than `anomaly_threshold` ports (default: 1,000), `rayscan` flags the host as anomalous. Instead of getting stuck in a tarpit with 65,000 dead sockets, it enters a sampled verification mode that isolates the deceptive defense without blocking the scan.
+When a target host responds with `SYN-ACK` to more than `anomaly_threshold` ports (default: 1,000), `portensor` flags the host as anomalous. Instead of getting stuck in a tarpit with 65,000 dead sockets, it enters a sampled verification mode that isolates the deceptive defense without blocking the scan.
 
 ### 3. Verification Protocol Handshake
 A port is only confirmed `OPEN` if:
@@ -110,7 +110,7 @@ Silent handshakes that never yield data or close upon receipt of application byt
 
 Traditional OS fingerprinting tools send dozens of malformed packets (FIN, NULL, Xmas, invalid flags) that trigger IDS alerts.
 
-`rayscan` employs **passive TCP/IP stack classification** on the very SYN-ACK packet received during discovery:
+`portensor` employs **passive TCP/IP stack classification** on the very SYN-ACK packet received during discovery:
 - **IP TTL Snap Inference:** Corrects for transit hop count and snaps to original boundaries (64 for Linux/macOS/BSD, 128 for Windows, 255 for Cisco/OpenBSD).
 - **TCP Window Size & MSS:** Compares advertised window sizes and Maximum Segment Sizes against empirical operating system distributions.
 - **TCP Options Geometry:** Analyzes option order, Window Scaling factors (`wscale`), SACK support, and TCP timestamps.
@@ -123,7 +123,7 @@ This yields high-confidence operating system identification (e.g., distinguishin
 
 Speed without accuracy is noise. In professional offensive security operations, bug bounty reconnaissance, and defensive network auditing, false positives waste analyst time and alert defensive blue teams.
 
-`rayscan` combines the speed of modern async Rust systems programming with the rigorous verification standards required by security professionals.
+`portensor` combines the speed of modern async Rust systems programming with the rigorous verification standards required by security professionals.
 
 **Scan with confidence. Trust only verified evidence.**
 

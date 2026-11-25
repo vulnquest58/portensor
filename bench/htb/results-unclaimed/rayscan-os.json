@@ -1,0 +1,124 @@
+{
+  "target": "10.129.215.81",
+  "targets": 1,
+  "ports": 5,
+  "jobs": 5,
+  "workers": 5,
+  "open": [
+    {
+      "host": "10.129.215.81",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 238.117,
+      "banner": "HTTP/1.1 302 Found",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-HTTPAPI",
+        "version": "2.0",
+        "confidence": 0.98
+      },
+      "confidence": 1.0,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-HTTPAPI(40%) stack:windows(20%) latency:238.1ms(20%)"
+    },
+    {
+      "host": "10.129.215.81",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 85.706,
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:windows(20%) latency:85.7ms(20%)"
+    },
+    {
+      "host": "10.129.215.81",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 237.832,
+      "banner": "HTTP/1.1 401",
+      "service": {
+        "name": "winrm",
+        "product": "Microsoft WinRM",
+        "confidence": 0.9,
+        "cpe": "cpe:2.3:a:microsoft:windows_remote_management"
+      },
+      "detail": "plugin:remote/winrm-wsman",
+      "confidence": 1.0,
+      "evidence": "handshake:ok(20%) banner:winrm/Microsoft WinRM(40%) stack:windows(20%) latency:237.8ms(20%) | probe match plugin:remote/winrm-wsman (1 step(s): wsman-probe)"
+    }
+  ],
+  "os_fingerprints": {
+    "10.129.215.81": {
+      "family": "windows",
+      "role": "memberserver",
+      "detail": "Windows (microsoft-httpapi service evidence)",
+      "confidence": 0.9332624,
+      "initial_ttl": 128,
+      "hops": 2,
+      "samples": 3,
+      "agreement": 1.0,
+      "ports": [
+        80,
+        139,
+        5985
+      ],
+      "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains microsoft-httpapi",
+      "endpoints": [
+        {
+          "port": 80,
+          "family": "windows",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Windows (microsoft-httpapi service evidence)",
+          "confidence": 0.97,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains microsoft-httpapi",
+          "service": "http"
+        },
+        {
+          "port": 139,
+          "family": "windows",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Windows 10/11",
+          "confidence": 0.9148936,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=8192, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack"
+        },
+        {
+          "port": 5985,
+          "family": "windows",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Windows 10/11",
+          "confidence": 0.9148936,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack",
+          "service": "winrm"
+        }
+      ]
+    }
+  },
+  "defense": {
+    "10.129.215.81": {
+      "host": "10.129.215.81",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 3 open port(s) (with 2 identified services) responded with standard TCP semantics (conforming to Windows (microsoft-httpapi service evidence) stack)"
+      ]
+    }
+  },
+  "summary": {
+    "open": 3,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 2,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 2170.567
+}

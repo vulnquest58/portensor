@@ -43,6 +43,8 @@ pub enum OsFamily {
     MacOS,
     Bsd,
     Cisco,
+    /// Multiple endpoint stacks with strong, conflicting evidence.
+    Mixed,
     Unknown,
 }
 
@@ -54,6 +56,7 @@ impl OsFamily {
             Self::MacOS => "macos",
             Self::Bsd => "bsd",
             Self::Cisco => "cisco",
+            Self::Mixed => "mixed",
             Self::Unknown => "unknown",
         }
     }
@@ -155,6 +158,35 @@ impl OsRole {
     }
 }
 
+/// An independent OS guess for one probed endpoint (host:port).
+#[derive(Clone, Debug, Serialize)]
+pub struct OsEndpointGuess {
+    /// Open port whose SYN-ACK produced this guess.
+    pub port: u16,
+    /// Best family after TCP/IP and service evidence are combined.
+    pub family: OsFamily,
+    /// Family inferred only from the raw TCP/IP stack.
+    pub stack_family: OsFamily,
+    /// Confidence in the raw TCP/IP stack family.
+    pub stack_confidence: f32,
+    /// Human-readable endpoint detail.
+    pub detail: String,
+    /// Confidence in this endpoint's family.
+    pub confidence: f32,
+    /// Inferred initial TTL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_ttl: Option<u8>,
+    /// Estimated network hops.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hops: Option<u8>,
+    /// Observed TCP/IP stack evidence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    /// Service detected on this endpoint, when already known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+}
+
 /// An OS guess produced by `classify()`.
 #[derive(Clone, Debug, Serialize)]
 pub struct OsGuess {
@@ -186,9 +218,33 @@ pub struct OsGuess {
     /// Evidence string extracted from observed TCP/IP stack options.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
+    /// Independent per-port results. Host fields above summarize these.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub endpoints: Vec<OsEndpointGuess>,
 }
 
 impl OsGuess {
+    /// Return a host-style guess for one endpoint, preserving its family,
+    /// confidence, and stack evidence.
+    pub fn for_port(&self, port: u16) -> Option<OsGuess> {
+        self.endpoints
+            .iter()
+            .find(|endpoint| endpoint.port == port)
+            .map(|endpoint| OsGuess {
+                family: endpoint.family.clone(),
+                role: None,
+                detail: endpoint.detail.clone(),
+                confidence: endpoint.confidence,
+                initial_ttl: endpoint.initial_ttl,
+                hops: endpoint.hops,
+                samples: None,
+                agreement: None,
+                ports: vec![endpoint.port],
+                evidence: endpoint.evidence.clone(),
+                endpoints: Vec::new(),
+            })
+    }
+
     /// Compact sample/consensus detail for human-readable output.
     pub fn probe_summary(&self) -> Option<String> {
         if self.samples.is_none() && self.hops.is_none() {
@@ -644,7 +700,7 @@ pub fn infer_initial_ttl(observed: u8, hops: u8) -> u8 {
 /// Returns the best-matching `OsGuess`.  When no signature exceeds a minimum
 /// confidence threshold (0.20) the returned family is `OsFamily::Unknown`.
 pub fn classify(fp: &TcpFingerprint) -> OsGuess {
-    if std::env::var_os("RAYSCAN_OS_DEBUG").is_some() {
+    if std::env::var_os("PORTENSOR_OS_DEBUG").is_some() {
         eprintln!(
             "[os-debug] ttl={} hops={} window={} mss={:?} wscale={:?} sack={} timestamps={} df={} options={:?}",
             fp.ttl,
@@ -704,6 +760,7 @@ pub fn classify(fp: &TcpFingerprint) -> OsGuess {
             agreement: None,
             ports: Vec::new(),
             evidence,
+            endpoints: Vec::new(),
         },
         _ => OsGuess {
             family: OsFamily::Unknown,
@@ -719,6 +776,7 @@ pub fn classify(fp: &TcpFingerprint) -> OsGuess {
             agreement: None,
             ports: Vec::new(),
             evidence,
+            endpoints: Vec::new(),
         },
     }
 }
@@ -1359,11 +1417,40 @@ struct OsSample {
     guess: OsGuess,
 }
 
-/// Combine per-port guesses into a consensus result.
+/// Minimum endpoint confidence for a family to count as a strong mixed-stack
+/// signal. Weak one-off guesses should not turn a single-OS host into Mixed.
+const MIXED_OS_FAMILY_CONFIDENCE: f32 = 0.35;
+
+struct FamilyVote {
+    family: OsFamily,
+    votes: usize,
+    confidence_sum: f32,
+    best_confidence: f32,
+    ports: Vec<u16>,
+}
+
+fn endpoint_guess(sample: &OsSample) -> OsEndpointGuess {
+    OsEndpointGuess {
+        port: sample.port,
+        family: sample.guess.family.clone(),
+        stack_family: sample.guess.family.clone(),
+        stack_confidence: sample.guess.confidence,
+        detail: sample.guess.detail.clone(),
+        confidence: sample.guess.confidence,
+        initial_ttl: sample.guess.initial_ttl,
+        hops: sample.guess.hops,
+        evidence: sample.guess.evidence.clone(),
+        service: None,
+    }
+}
+
+/// Combine per-port guesses into a host summary while preserving every
+/// endpoint as an independent result.
 ///
-/// Named families vote; the best-confidence sample in the winning family is
-/// used as the representative fingerprint. Diluted agreement and averaging
-/// across winning samples reduce confidence when ports disagree.
+/// A single strong family is summarized with majority agreement as before.
+/// When at least two named families each have an endpoint confidence of at
+/// least `MIXED_OS_FAMILY_CONFIDENCE`, the host is reported as `Mixed` and the
+/// per-endpoint rows carry the actual stack assignments.
 fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
     if samples.is_empty() {
         return None;
@@ -1373,6 +1460,7 @@ fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
     let mut ports: Vec<u16> = samples.iter().map(|sample| sample.port).collect();
     ports.sort_unstable();
     ports.dedup();
+    let endpoints: Vec<OsEndpointGuess> = samples.iter().map(endpoint_guess).collect();
 
     let named: Vec<&OsSample> = samples
         .iter()
@@ -1384,29 +1472,96 @@ fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
             .iter()
             .max_by(|a, b| a.guess.confidence.total_cmp(&b.guess.confidence))?;
         let mut guess = best.guess.clone();
+        guess.family = OsFamily::Unknown;
         guess.hops = best.guess.hops;
         guess.samples = Some(total);
         guess.agreement = Some(0.0);
         guess.ports = ports;
+        guess.endpoints = endpoints;
         return Some(guess);
     }
 
-    let mut families: Vec<(OsFamily, usize, f32)> = Vec::new();
+    let mut families: Vec<FamilyVote> = Vec::new();
     for sample in &named {
         if let Some(entry) = families
             .iter_mut()
-            .find(|(family, _, _)| *family == sample.guess.family)
+            .find(|entry| entry.family == sample.guess.family)
         {
-            entry.1 += 1;
-            entry.2 += sample.guess.confidence;
+            entry.votes += 1;
+            entry.confidence_sum += sample.guess.confidence;
+            entry.best_confidence = entry.best_confidence.max(sample.guess.confidence);
+            entry.ports.push(sample.port);
         } else {
-            families.push((sample.guess.family.clone(), 1, sample.guess.confidence));
+            families.push(FamilyVote {
+                family: sample.guess.family.clone(),
+                votes: 1,
+                confidence_sum: sample.guess.confidence,
+                best_confidence: sample.guess.confidence,
+                ports: vec![sample.port],
+            });
         }
     }
+    for family in &mut families {
+        family.ports.sort_unstable();
+        family.ports.dedup();
+    }
 
-    let (family, votes, _) = families
-        .into_iter()
-        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| a.2.total_cmp(&b.2)))?;
+    let strong: Vec<&FamilyVote> = families
+        .iter()
+        .filter(|family| family.best_confidence >= MIXED_OS_FAMILY_CONFIDENCE)
+        .collect();
+
+    if strong.len() >= 2 {
+        let confidence = strong
+            .iter()
+            .map(|family| family.best_confidence)
+            .sum::<f32>()
+            / strong.len() as f32;
+        let detail = format!(
+            "mixed OS: {}",
+            strong
+                .iter()
+                .map(|family| format!(
+                    "{} ({})",
+                    family.family,
+                    family
+                        .ports
+                        .iter()
+                        .map(u16::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let base = samples
+            .iter()
+            .max_by(|a, b| a.guess.confidence.total_cmp(&b.guess.confidence))?;
+        let mut guess = base.guess.clone();
+        guess.family = OsFamily::Mixed;
+        guess.role = None;
+        guess.detail = detail;
+        guess.confidence = confidence.clamp(0.0, 1.0);
+        guess.initial_ttl = None;
+        guess.hops = None;
+        guess.samples = Some(total);
+        guess.agreement = None;
+        guess.ports = ports;
+        guess.evidence = None;
+        guess.endpoints = endpoints;
+        return Some(guess);
+    }
+
+    let wins_by_family = |family: &FamilyVote, other: &FamilyVote| -> std::cmp::Ordering {
+        family
+            .votes
+            .cmp(&other.votes)
+            .then_with(|| family.confidence_sum.total_cmp(&other.confidence_sum))
+    };
+    let family = families
+        .iter()
+        .max_by(|a, b| wins_by_family(a, b))
+        .map(|family| family.family.clone())?;
     let winners: Vec<&OsSample> = named
         .iter()
         .copied()
@@ -1421,6 +1576,7 @@ fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
         .map(|sample| sample.guess.confidence)
         .sum::<f32>()
         / winners.len() as f32;
+    let votes = winners.len();
     let agreement = votes as f32 / named.len() as f32;
     let confidence = (average_confidence * agreement).clamp(0.0, 1.0);
 
@@ -1430,6 +1586,7 @@ fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
     guess.samples = Some(total);
     guess.agreement = Some(agreement);
     guess.ports = ports;
+    guess.endpoints = endpoints;
 
     if confidence >= 0.20 {
         guess.family = family;
@@ -1441,6 +1598,117 @@ fn aggregate_os_samples(samples: Vec<OsSample>) -> Option<OsGuess> {
     }
 
     Some(guess)
+}
+
+/// Service-derived OS evidence for one endpoint.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ServiceOsHint {
+    pub family: OsFamily,
+    pub confidence: f32,
+    pub detail: String,
+    pub evidence: String,
+}
+
+/// Infer an OS family from service identity only when the banner, product, or
+/// detail contains a strong platform marker. Generic protocol names and
+/// generic OpenSSH/HTTP implementations do not produce a hint.
+pub fn classify_service_hint(
+    service_name: &str,
+    product: Option<&str>,
+    banner: Option<&str>,
+    detail: Option<&str>,
+) -> Option<ServiceOsHint> {
+    let mut text = String::new();
+    for part in [Some(service_name), product, banner, detail]
+        .into_iter()
+        .flatten()
+    {
+        text.push(' ');
+        text.push_str(part);
+    }
+    let text = text.to_ascii_lowercase();
+
+    let windows = [
+        "microsoft-httpapi",
+        "microsoft-iis",
+        "win32-openssh",
+        "for_windows",
+        "windows",
+        "adfs",
+    ];
+    if let Some(marker) = windows.iter().find(|marker| text.contains(**marker)) {
+        return Some(ServiceOsHint {
+            family: OsFamily::Windows,
+            confidence: 0.97,
+            detail: format!("Windows ({marker} service evidence)"),
+            evidence: format!("service fingerprint contains {marker}"),
+        });
+    }
+
+    let bsd = ["freebsd", "openbsd", "netbsd", "pfsense"];
+    if let Some(marker) = bsd.iter().find(|marker| text.contains(**marker)) {
+        return Some(ServiceOsHint {
+            family: OsFamily::Bsd,
+            confidence: 0.95,
+            detail: format!("BSD ({marker} service evidence)"),
+            evidence: format!("service fingerprint contains {marker}"),
+        });
+    }
+
+    let linux = [
+        "debian", "ubuntu", "centos", "red hat", "rhel", "alpine", "linux",
+    ];
+    if let Some(marker) = linux.iter().find(|marker| text.contains(**marker)) {
+        return Some(ServiceOsHint {
+            family: OsFamily::Linux,
+            confidence: 0.95,
+            detail: format!("Linux ({marker} service evidence)"),
+            evidence: format!("service fingerprint contains {marker}"),
+        });
+    }
+
+    if text.contains("nginx") {
+        return Some(ServiceOsHint {
+            family: OsFamily::Linux,
+            confidence: 0.72,
+            detail: "Linux (nginx edge service evidence)".to_string(),
+            evidence: "service fingerprint contains nginx".to_string(),
+        });
+    }
+
+    None
+}
+
+/// Recompute the host summary after service-derived endpoint hints are applied.
+/// Endpoint rows are preserved, including their stack and service fields.
+pub fn refresh_os_summary(guess: &mut OsGuess) {
+    if guess.endpoints.is_empty() {
+        return;
+    }
+    let endpoints = std::mem::take(&mut guess.endpoints);
+    let samples: Vec<OsSample> = endpoints
+        .iter()
+        .map(|endpoint| OsSample {
+            port: endpoint.port,
+            guess: OsGuess {
+                family: endpoint.family.clone(),
+                role: None,
+                detail: endpoint.detail.clone(),
+                confidence: endpoint.confidence,
+                initial_ttl: endpoint.initial_ttl,
+                hops: endpoint.hops,
+                samples: None,
+                agreement: None,
+                ports: vec![endpoint.port],
+                evidence: endpoint.evidence.clone(),
+                endpoints: Vec::new(),
+            },
+        })
+        .collect();
+    if let Some(mut summary) = aggregate_os_samples(samples) {
+        summary.endpoints = endpoints;
+        *guess = summary;
+    }
 }
 
 /// Probe several open ports on one host and return a consensus OS guess.
@@ -1805,12 +2073,13 @@ mod tests {
                 agreement: None,
                 ports: vec![port],
                 evidence: None,
+                endpoints: Vec::new(),
             },
         }
     }
 
     #[test]
-    fn aggregate_prefers_majority_family() {
+    fn aggregate_reports_mixed_when_strong_families_conflict() {
         let guess = aggregate_os_samples(vec![
             sample(80, OsFamily::Linux, 0.80, 3),
             sample(443, OsFamily::Linux, 0.60, 4),
@@ -1818,12 +2087,98 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(guess.family, OsFamily::Linux);
+        assert_eq!(guess.family, OsFamily::Mixed);
         assert_eq!(guess.samples, Some(3));
         assert_eq!(guess.ports, vec![22, 80, 443]);
-        assert_eq!(guess.agreement, Some(2.0 / 3.0));
-        assert!((guess.confidence - 0.70 * (2.0 / 3.0)).abs() < 0.001);
-        assert_eq!(guess.detail, "sample-80");
+        assert_eq!(guess.agreement, None);
+        assert_eq!(guess.role, None);
+        assert_eq!(guess.initial_ttl, None);
+        assert_eq!(guess.hops, None);
+        assert_eq!(guess.detail, "mixed OS: linux (80, 443), windows (22)");
+        assert!((guess.confidence - (0.80 + 0.95) / 2.0).abs() < 0.001);
+        assert_eq!(guess.endpoints.len(), 3);
+        let windows = guess
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.port == 22)
+            .unwrap();
+        assert_eq!(windows.family, OsFamily::Windows);
+        assert_eq!(windows.hops, Some(2));
+        let linux = guess
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.port == 443)
+            .unwrap();
+        assert_eq!(linux.family, OsFamily::Linux);
+        assert_eq!(linux.detail, "sample-443");
+    }
+
+    #[test]
+    fn service_hints_distinguish_linux_and_windows_services() {
+        let ssh = classify_service_hint(
+            "ssh",
+            Some("OpenSSH"),
+            Some("SSH-2.0-OpenSSH_10.0p2 Debian-7+deb13u4"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(ssh.family, OsFamily::Linux);
+        assert!(ssh.confidence >= 0.95);
+
+        let nginx = classify_service_hint("http", Some("nginx"), None, None).unwrap();
+        assert_eq!(nginx.family, OsFamily::Linux);
+        assert!(nginx.confidence >= 0.35);
+
+        let adfs = classify_service_hint(
+            "https",
+            Some("Microsoft-HTTPAPI/2.0"),
+            Some("HTTP/1.1 404 Not Found"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(adfs.family, OsFamily::Windows);
+        assert!(adfs.confidence >= 0.95);
+
+        assert!(
+            classify_service_hint("ssh", Some("OpenSSH"), Some("SSH-2.0-OpenSSH_9.6"), None)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn refresh_os_summary_recomputes_mixed_from_endpoint_hints() {
+        let mut guess = aggregate_os_samples(vec![
+            sample(22, OsFamily::Windows, 0.91, 2),
+            sample(80, OsFamily::Windows, 0.91, 2),
+            sample(443, OsFamily::Windows, 0.91, 2),
+        ])
+        .unwrap();
+        assert_eq!(guess.family, OsFamily::Windows);
+
+        for endpoint in &mut guess.endpoints {
+            endpoint.service = Some(format!("svc-{}", endpoint.port));
+            if endpoint.port != 443 {
+                endpoint.stack_family = endpoint.family.clone();
+                endpoint.stack_confidence = endpoint.confidence;
+                endpoint.family = OsFamily::Linux;
+                endpoint.detail = "Linux (Debian service evidence)".to_string();
+                endpoint.confidence = 0.95;
+            }
+        }
+        refresh_os_summary(&mut guess);
+
+        assert_eq!(guess.family, OsFamily::Mixed);
+        assert_eq!(guess.detail, "mixed OS: linux (22, 80), windows (443)");
+        assert!((guess.confidence - (0.95 + 0.91) / 2.0).abs() < 0.001);
+        assert_eq!(guess.endpoints.len(), 3);
+        assert_eq!(
+            guess
+                .endpoints
+                .iter()
+                .find(|endpoint| endpoint.port == 22)
+                .and_then(|endpoint| endpoint.service.as_deref()),
+            Some("svc-22")
+        );
     }
 
     #[test]
@@ -1860,8 +2215,8 @@ mod tests {
         let guess = aggregate_os_samples(vec![
             sample(80, OsFamily::Linux, 0.90, 1),
             sample(443, OsFamily::Linux, 0.80, 1),
-            sample(22, OsFamily::Windows, 0.85, 1),
-            sample(3389, OsFamily::Bsd, 0.70, 1),
+            sample(22, OsFamily::Windows, 0.25, 1),
+            sample(3389, OsFamily::Bsd, 0.30, 1),
         ])
         .unwrap();
 
@@ -1869,6 +2224,7 @@ mod tests {
         assert_eq!(guess.agreement, Some(0.5));
         assert!((guess.confidence - 0.85 * 0.5).abs() < 0.001);
         assert!(guess.confidence < 0.5);
+        assert_eq!(guess.endpoints.len(), 4);
     }
 
     #[test]

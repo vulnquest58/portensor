@@ -1,6 +1,176 @@
 # Changelog
 
-All notable changes to rayscan are documented here.
+All notable changes to portensor are documented here.
+
+## [Unreleased]
+
+## [0.7.1] - 2026-11-25
+
+### Portensor rebrand
+
+- Renamed the project, crate, CLI binary, configuration, data paths, Docker
+  image, release assets, package metadata, documentation, tests, and scripts
+  from `rayscan` to `portensor`.
+- Renamed the GitHub repository to `vulnquest58/portensor` and updated the
+  repository, homepage, badges, and release links.
+- Regenerated the man pages under the `portensor` name and removed the old
+  `rayscan` binaries and man pages from the working tree.
+- Added the `portensor` Linux and Windows release asset names while leaving
+  historical v0.7.0 release artifacts and P4 evidence unchanged.
+
+### Release readiness and authorized live validation
+
+- Added P4 local evidence tooling: `make p4-local-check` exercises ephemeral GPG
+  and cosign signing/verification, regenerates a CycloneDX SBOM, covers both
+  archives and the SBOM in `dist/SHA256SUMS`, and checks the release workflow
+  controls. Production key custody, registry ownership, and OT approval remain
+  external blockers.
+- Added the P4 closure checklist, machine-readable evidence manifest, ADR 0005
+  for release signing/provenance, and the v1.0 compatibility and release policy.
+  The checklist keeps all six requirements open until external evidence and
+  reviewer sign-off exist.
+- Added `make p4-evidence-check` and the P4 evidence audit. The audit validates
+  paths, statuses, links, local artifacts, SBOM checksum coverage, action pins,
+  runner documentation, and CI controls; it passes with zero errors and zero
+  warnings and does not close any requirement.
+- Pinned every workflow action to a full commit SHA, replaced floating runner
+  labels with `ubuntu-24.04`/`windows-2022`, added runner-image logging, and
+  documented reproducibility limits in `docs/release-runners.md`.
+- Added P4 external evidence ownership, blocker, and sign-off readiness reports,
+  plus the P4-1 production signing policy, key custody procedure, independent
+  signature verification procedure, and evidence register. They record required
+  external evidence only; no status was promoted, no approval was recorded, and
+  P4 remains not closed.
+- Added the secure P4-1 evidence submission procedure, clean-host verification
+  procedure, and blocked acceptance report. They define the exact owner inputs
+  and verification transcript required; no production identity or approval was
+  created and P4-1 remains `external-pending`.
+- Added local P4-2 package metadata generation for Homebrew, Scoop, Chocolatey,
+  AUR, and Docker Compose, plus archive-layout, checksum, JSON/XML/YAML, shell
+  syntax, PowerShell parse, and Chocolatey pack checks. Added registry
+  ownership, maintenance, and clean-install procedures. No registry was
+  contacted, no package was published, no clean install was claimed, and P4-2
+  remains `blocked`.
+- Added a blank P4-2 external evidence intake and approval packet for channel
+  ownership, 2FA/recovery, token decisions, clean installs, and container
+  digest records. It records no external evidence and does not change any
+  status.
+- Added a machine-readable P4-2 evidence template, `make
+  p4-external-evidence-status`, `make p4-external-evidence-check`, and a
+  validator with regression tests. The validator rejects incomplete channel
+  records, invalid container digests, version mismatches, and embedded secrets.
+  The template is intentionally incomplete and records no evidence.
+- Hardened the release workflow: unsigned releases now fail, missing, invalid,
+  or unchecksummed SBOMs fail, signatures and checksums are verified before
+  publication, public keys and the SBOM are published with the archives, and
+  GitHub OIDC build-provenance and SBOM attestations are enabled. SBOM usage is
+  documented in `docs/sbom.md`.
+- Recorded an authorized, scope-guarded HTB Garfield validation: 22/22 confirmed
+  TCP ports via two-pass connect-only discovery, 100% precision, SMB/RDP/WinRM
+  fingerprints, Windows OS family classification, and documented limitations for
+  no-banner verification, UDP, and raw SYN through WSL NAT. See
+  `bench/htb/README.md`.
+- Added explicit TLS SNI override support (`--sni` / config `sni`), including
+  FQDN normalization and validation, SNI-aware certificate matching, and HTTP
+  `Host` propagation. SNI conflicts with `--no-tls` and `--ack`.
+- Added endpoint-aware OS fingerprinting: `mixed` family summaries, per-port
+  `OsEndpointGuess` records with raw stack evidence plus service-derived hints,
+  and terminal, JSON, Markdown, HTML, Nmap XML, and accuracy integration.
+- Reran the authorized RedEye validation in v2 mode: nmap and portensor both
+  found the same four TCP ports (22, 80, 443, 3000); explicit SNI identified
+  ADFS on 443 and nginx on 3000; endpoint OS reported Linux on 22/80/3000 and
+  Windows on 443 while retaining the Windows-like raw stack evidence. See
+  `bench/htb/redeye.md`.
+- Recorded an authorized Unclaimed validation: 13/13 confirmed TCP ports via
+  two-pass connect-only discovery, a Windows member-server OS fingerprint,
+  Microsoft HTTPAPI/WinRM/SMB services, a host-header-dependent baggage chatbot
+  page, and a rate-limiting limitation. No exploitation was performed. See
+  `bench/htb/unclaimed.md`.
+- Recorded an authorized Scaffold validation: 30/30 confirmed TCP ports on a
+  Windows domain controller, domain/LDAP rootDSE evidence, SMB signing, IIS and
+  LDAPS certificates, plus high-rate nmap all-filtered and slow-scan timeout
+  failures from target rate limiting. No authentication or exploitation was
+  attempted. See `bench/htb/scaffold.md`.
+- Fixed a coordinator merge-workspace race: concurrent merges in one process
+  could derive the same timestamp-based temporary directory and mix shard
+  reports. Workspaces are now created atomically with a random nonce and retry
+  on collision.
+
+### Accuracy, scale, and durable coordinator
+
+- Replaced the v0.7.0 in-memory distributed state with a versioned, durable
+  coordinator store: atomic state snapshots, per-shard result objects,
+  deterministic merge recovery, restart counters, run/completion identity,
+  state ownership locks, output/state mismatch rejection, and private file
+  permissions on Unix. A restarted coordinator requeues expired leases,
+  reattaches orphan results, repairs interrupted merges, and keeps a completed
+  report fetchable without re-running shards.
+- Added coordinator observability and scheduling controls: `/readyz` and
+  `/metrics` behind the control-plane token, queue/in-flight/completion/failure
+  and lease gauges, correlated `run=<id>` logs, duplicate/conflicting result
+  rejection, and one-level straggler splitting. A parent running longer than
+  2 seconds with no pending work is superseded; children inherit the job
+  arguments with hidden work-part flags, and the split is deterministic.
+- Reworked loss recovery. A silent handshake now fans out up to eight
+  concurrent verification reconnects (two per retry, capped at eight) instead
+  of paying one full probe window per retry, so a tarpit costs one window and a
+  real service answers on any fresh connection. `--retries 0` still disables
+  post-handshake recovery. Rechecks use safe local source ports, run
+  concurrently, and no longer inflate the cached connect ceiling.
+- Optimized connect-only discovery with a blocking OS-thread worker pool,
+  cached RTT timeouts, and a 512 KiB worker stack; rechecking open candidates
+  is parallel, and the minimum connect timeout is 1.1 seconds. The balanced
+  profile now defaults to four retries.
+- Added final v0.10 evidence: 20% loss passed 5/5 exact at 5.289 s median and
+  6.573 s p95 (median <=7.5 s, p95 <=9.5 s); 30% loss passed 3/3 exact at
+  9.108 s median; 5% loss and the no-loss baseline stayed exact. Full-range
+  (65,535 ports x 16 hosts) passed at 8.511 s median wall, 43.820 s median CPU,
+  and 102.1 MiB median peak RSS (limits 12.321 s, 75.375 s, 128 MiB). All seven
+  coordinator crash, restart, observability, and uneven-load lab scenarios
+  pass.
+- Added verification, recheck, split-partition, coordinator recovery, and lab
+  regression tests. The full suite passes: 440 library tests, 43 CLI tests, and
+  3 official-script tests, with `cargo fmt` and clippy `-D warnings` clean.
+
+### Explainable workflows
+
+- Added `portensor smart`, a deterministic scan-plan model covering profile,
+  mode, targets, ports, estimated probes, required privileges, scope,
+  explicit defaults, automatic fallbacks, and risk notes. `--dry-run` sends no
+  probes, `--plan-json` emits a machine-readable plan, and
+  `--plan-output FILE` saves the model. The interactive wizard now prints and
+  can save the same model.
+- Added a self-contained HTML report format with inline CSS only, escaped
+  scan-controlled fields, no remote assets, and coverage for services,
+  evidence, advisories, script findings, TLS, OS fingerprints, and diffs.
+- Added tested pipeline presets and documentation for `host-port` to
+  httpx-style URLs, JSONL to nuclei-style targets, and `port-list` to a
+  second-stage scan.
+
+### Scripting platform
+
+- Added explicit script capabilities (`metadata` or WASM-only `target-tcp`),
+  a versioned active TCP host ABI with scope/target/port enforcement, rate,
+  attempt, byte, and timeout limits, structured audit events, and a Linux
+  seccomp network-deny sandbox for sidecars. Sidecars fail closed on platforms
+  without verified isolation.
+- Added digest-pinned `packs.lock` tracking, atomic staged installs with
+  crash recovery, and `portensor scripts update` for registry-installed packs.
+- Expanded `packs/official-baseline` to 24 passive checks with positive and
+  negative fixtures, plus executable Python and WASM SDK templates and the
+  script authoring/ABI/signing guide in `docs/script-sdk.md`.
+
+### Tooling
+
+- Added workflow linting for every GitHub Actions file in CI and release
+  preflight, with a permanent release process and cross-phase development
+  roadmap. Added `make release-check` for version consistency, clean-tree, and
+  checksum gates. The published `v0.7.0` tag remains immutable; its workflow
+  parse failure is documented and guarded against going forward.
+- Added the scripting capability ADR and threat model, the durable coordinator
+  design, plus full-range and coordinator fault-lab baselines for the v0.10
+  accuracy and scale gates. Added `make scale-baseline` and
+  `make distributed-lab`.
 
 ## [0.7.0] - 2026-11-19
 
@@ -19,7 +189,7 @@ All notable changes to rayscan are documented here.
   open set, and report wall/CPU/peak RSS over time. It supports a fixed round
   count or a long `--duration` soak and JSON output for trend analysis.
 - **Structured diagnostics**: opt-in JSON-lines stderr logging via global
-  `--log-level` or `RAYSCAN_LOG` (`error`, `warn`, `info`, `debug`, `trace`;
+  `--log-level` or `PORTENSOR_LOG` (`error`, `warn`, `info`, `debug`, `trace`;
   default off). Events cover scan start/finish, timeout and verification retries,
   distributed claims, heartbeat/result failures, and coordinator completion.
   Tokens, banners, payloads, and report contents are never logged.
@@ -34,7 +204,7 @@ All notable changes to rayscan are documented here.
   `make bench-validate`) creates a reproducible loopback scenario with banner
   services, silent tarpits, and closed ports, then runs interleaved warmup and
   measured rounds. It validates verified-mode exactness against nmap on all
-  ports and compares handshake-only rayscan with nmap on the same non-tarpit
+  ports and compares handshake-only portensor with nmap on the same non-tarpit
   ports for matched speed, CPU, and peak-RSS measurements. It writes
   `bench/results/validation.json` plus a Markdown summary, enforces accuracy
   and resource ceilings, and exits non-zero on regression. The shared harness
@@ -56,7 +226,7 @@ All notable changes to rayscan are documented here.
   explicit bounds. Advisory matches now expose `confidence` and `evidence`
   fields; low-confidence all-version matches are suppressed (`confidence <
   0.55`) while exact-version, range, and curated evidence remain ranked.
-  Existing databases must be rebuilt with `rayscan db update`.
+  Existing databases must be rebuilt with `portensor db update`.
 - **Adaptive target politeness**: `--rate-auto` now distinguishes timeout,
   ICMP-unreachable, and tarpit/handshake-silent feedback in 500-probe windows;
   it halves on adverse bursts and recovers by 25% when responses are healthy,
@@ -74,7 +244,7 @@ All notable changes to rayscan are documented here.
   shared pacing, AIMD, jitter, decoy, fragmentation, and retry logic. It
   reports multiple adapters independently, requires an elevated terminal, and
   fails with an install hint when Npcap is absent. Windows active OS
-  fingerprinting and raw IPv6 remain unsupported. `rayscan doctor` now checks
+  fingerprinting and raw IPv6 remain unsupported. `portensor doctor` now checks
   Npcap readiness and the selected route; CI compiles every Windows target and
   runs the shared raw-networking unit tests.
 - **Official baseline script pack**: release archives now include
@@ -85,14 +255,14 @@ All notable changes to rayscan are documented here.
   negotiation; Redis `INFO` without authentication; and Docker Engine API
   version/ping responses without authentication. The checks consume only
   metadata already gathered by the scan and open no additional connections.
-  Install with `rayscan scripts install ./packs/official-baseline` and run with
+  Install with `portensor scripts install ./packs/official-baseline` and run with
   `--scripts-library`.
 - **Nmap XML baselines**: `--diff`, `--compare-to`/`--compare`, and
-  `rayscan diff` now accept Nmap XML reports (`nmap -oX`) as either the
+  `portensor diff` now accept Nmap XML reports (`nmap -oX`) as either the
   baseline or current snapshot. TCP port state and service name/product/version
   are imported for IPv4 and IPv6 hosts, including XML entities; UDP ports and
   aggregate `<extraports>` counts are ignored because the differential model is
-  TCP-only. `--save-baseline` continues to write rayscan JSON.
+  TCP-only. `--save-baseline` continues to write portensor JSON.
 - **Broker, database, and infrastructure probes**: the built-in library now
   includes RabbitMQ AMQP Connection.Start (5672 and AMQPS 5671), NATS INFO
   (4222), ZooKeeper `srvr` (2181), rsync daemon greeting (873), ClickHouse
@@ -175,7 +345,7 @@ All notable changes to rayscan are documented here.
   `host_concurrency`, default `0` = unlimited) bounds simultaneous connect
   attempts per target host. The cap applies to the connect scanner and to
   SYN-open verification, without changing global worker or rate limits.
-- **Distributed orchestration**: `rayscan distributed plan` emits a Bash or
+- **Distributed orchestration**: `portensor distributed plan` emits a Bash or
   PowerShell script that runs every deterministic shard and merges the reports;
   `distributed serve` runs a token-authenticated HTTP/JSON coordinator in pull
   mode for polling `distributed worker` clients or in push mode for
@@ -184,7 +354,7 @@ All notable changes to rayscan are documented here.
   requeueing, and bounded attempts. The coordinator merges finished shards with
   the normal open-wins/advisory-union rules, writes `--out`, and exits nonzero
   on failed shards. Shared bearer tokens come from `--token` or
-  `RAYSCAN_DISTRIBUTED_TOKEN` (minimum 16 characters); plaintext binds outside
+  `PORTENSOR_DISTRIBUTED_TOKEN` (minimum 16 characters); plaintext binds outside
   loopback warn and optional HTTPS is supported. Raw jobs are reserved for
   workers with raw-scan capability.
 - **Empty shard reports**: sharded scans whose target hash selects no targets
@@ -227,28 +397,28 @@ All notable changes to rayscan are documented here.
 
 ### Added
 
-- **Remote script marketplace**: `rayscan scripts search [QUERY] --registry
-  URL` lists packs from a JSON registry index, and `rayscan scripts install
+- **Remote script marketplace**: `portensor scripts search [QUERY] --registry
+  URL` lists packs from a JSON registry index, and `portensor scripts install
   NAME --registry URL` resolves the highest version, verifies the entry's
   mandatory SHA-256 digest, and safely extracts the gzip tarball (single
   top-level directory; absolute paths, `..` traversal, links, and device
   nodes rejected; 64 MiB archive / 512 MiB expanded / 4096-entry caps) before
   the normal manifest validation and library install (`--force` to replace).
   Direct archive URLs install with `install URL --sha256 HEX`.
-  `RAYSCAN_SCRIPT_REGISTRY` supplies the registry URL, relative archive URLs
+  `PORTENSOR_SCRIPT_REGISTRY` supplies the registry URL, relative archive URLs
   resolve against the index location, versions sort with numeric-aware
   ordering (`1.10` > `1.9`), and index entries are validated up front
   (schema 1, identifier/version/tag/description/digest/URL shape, 256-pack
   cap). Plain HTTP registries print a warning; the digest still pins
   integrity.
 - **Script pack library**: install packs once and reuse them across scans.
-  `rayscan scripts install DIR` validates (compiles) every manifest before
-  copying a pack directory into the library, `rayscan scripts uninstall NAME`
-  removes it, `rayscan scripts library [--json]` prints the location, and
-  `rayscan scripts list` defaults to the installed packs when no PATH is
+  `portensor scripts install DIR` validates (compiles) every manifest before
+  copying a pack directory into the library, `portensor scripts uninstall NAME`
+  removes it, `portensor scripts library [--json]` prints the location, and
+  `portensor scripts list` defaults to the installed packs when no PATH is
   given. Scans load stowed packs with `--scripts-library`. The library lives
-  at `<data>/rayscan/scripts` (sibling of the NVD database) and honors the new
-  global `--scripts-dir DIR` plus `RAYSCAN_SCRIPTS_DIR`. Script directories
+  at `<data>/portensor/scripts` (sibling of the NVD database) and honors the new
+  global `--scripts-dir DIR` plus `PORTENSOR_SCRIPTS_DIR`. Script directories
   now also load manifests from one level of pack subdirectories, and `--scripts`
   is repeatable — all paths feed one registry with duplicate plugin detection.
   Installs are capped at 4096 entries / 512 MiB per pack and refuse
@@ -261,11 +431,11 @@ All notable changes to rayscan are documented here.
   `run(i32, i32) -> i64` (packed `(ptr << 32) | len`). Execution is bounded by
   a fuel budget, a 16 MiB memory/10k table-element limiter, and the manifest
   timeout; source is capped at 4 MiB and compiled at manifest load, so invalid
-  modules fail fast in `rayscan scripts list` (which now reports `kind` and
+  modules fail fast in `portensor scripts list` (which now reports `kind` and
   `wasm_path` in JSON and a `wasm:` line in table output). Sidecar `command`
   manifests are unchanged.
 - **Sidecar script plugin engine (Q2 start)**: cross-language script plugins
-  described by TOML manifests (`--scripts FILE_OR_DIR`). Rayscan sends one
+  described by TOML manifests (`--scripts FILE_OR_DIR`). Portensor sends one
   JSON context document on stdin (target, port, state, confidence, banner,
   detail, evidence, full `service` object, TLS metadata) and reads one JSON
   result from stdout; the script runs with the manifest directory as its
@@ -289,7 +459,7 @@ All notable changes to rayscan are documented here.
 - **`--min-severity`**: drops script findings below a threshold
   (`info|low|medium|high|critical`) before rendering, across every output
   format.
-- **`rayscan scripts list [PATH]`** validates script manifests and prints
+- **`portensor scripts list [PATH]`** validates script manifests and prints
   pack, name, category, danger, command, filters, and timeout; `--json` emits
   machine-readable output.
 - **Multi-step service/version probe engine (v2)**: the embedded probe library
@@ -315,7 +485,7 @@ All notable changes to rayscan are documented here.
   Vault, WinRM, and Portainer endpoints. Active plaintext probes are skipped on
   ports where TLS inspection succeeded, so HTTPS endpoints never receive
   plaintext payloads.
-- **`rayscan probes list`**: prints every compiled probe with pack, service,
+- **`portensor probes list`**: prints every compiled probe with pack, service,
   ports, and step count; `--json` emits machine-readable output and
   `--plugins PATH` includes custom packs.
 - **Deep SMB negotiation** (`src/smb.rs`): SMB2 NEGOTIATE now records dialect
@@ -350,10 +520,10 @@ All notable changes to rayscan are documented here.
 - Probe assessments that refine an existing service preserve its
   product/version/CPE when the probe does not supply them, merge `info` maps,
   and never lower the previously reported confidence.
-- `gen_man` now emits one man page per subcommand (`rayscan-scan(1)`,
-  `rayscan-db-update(1)`, `rayscan-scripts-list(1)`, ...) with full option
+- `gen_man` now emits one man page per subcommand (`portensor-scan(1)`,
+  `portensor-db-update(1)`, `portensor-scripts-list(1)`, ...) with full option
   documentation, resolving the previously dangling cross-references in
-  `rayscan(1)`. `make install` installs every generated page and release
+  `portensor(1)`. `make install` installs every generated page and release
   archives bundle them.
 
 ### Fixed
@@ -525,13 +695,13 @@ All notable changes to rayscan are documented here.
   validation, domain allow rules authorize the addresses they resolve to, and
   explicit IP/CIDR targets are checked against IP allowlists independently.
 - **CISA KEV & EPSS Threat Prioritization** (`--kev-only`, `--min-epss SCORE`,
-  `rayscan db intel`, `src/advisory.rs`, `src/intel.rs`, `data/cisa_kev.json`):
+  `portensor db intel`, `src/advisory.rs`, `src/intel.rs`, `data/cisa_kev.json`):
   Correlates open services against the CISA Known Exploited Vulnerabilities
   catalog and FIRST.org Exploit Prediction Scoring System (EPSS). Services with
   active weaponized exploitation in the wild are highlighted with bold `[KEV]`
   badges and probability metrics in table, markdown, JSON, and SARIF outputs.
   Hunters can filter directly for exploitable targets via `--kev-only` and `--min-epss`.
-  `rayscan db intel [--force] [--json]` downloads the complete CISA KEV catalog
+  `portensor db intel [--force] [--json]` downloads the complete CISA KEV catalog
   and current EPSS CSV, merges them with the bundled fallback set, and atomically
   caches a gzip index under `<db>/intel/threat_intel.json.gz` with a 24-hour
   freshness window. Cached indicators are overlaid automatically for advisory
@@ -612,7 +782,7 @@ All notable changes to rayscan are documented here.
 ### Fixed
 
 - An empty JSON baseline (target with no open ports) is now accepted by
-  `--diff`/`rayscan diff` instead of being rejected as an invalid file.
+  `--diff`/`portensor diff` instead of being rejected as an invalid file.
 
 ## [0.3.0] - 2026-11-08
 
@@ -644,7 +814,7 @@ All notable changes to rayscan are documented here.
 - **Distributed target sharding** (`--shard-index`, `--shard-count`,
   `src/shard.rs`): Stable FNV-1a placement with family-aware hashing and
   validation up to 1,024 shards.
-- **Report merge command** (`rayscan merge`, `src/merge.rs`): Merge JSON or JSONL
+- **Report merge command** (`portensor merge`, `src/merge.rs`): Merge JSON or JSONL
   reports, deduplicate host:port results with open-wins precedence, union
   advisories, merge OS/defense maps, and adjust summaries.
 - **Stealth traffic shaping** (`--jitter-ms`, `--decoys`, `--fragment-size`):
@@ -671,7 +841,7 @@ All notable changes to rayscan are documented here.
 
 ### Fixed
 
-- `rayscan merge` no longer duplicates open-only JSON entries into a redundant
+- `portensor merge` no longer duplicates open-only JSON entries into a redundant
   `results` array; `results` is emitted only when an input supplied one or the
   inputs are JSONL.
 - UDP service probing against IPv6 targets no longer fails on an IPv4-only bind.
@@ -698,7 +868,7 @@ All notable changes to rayscan are documented here.
 - **Defense Observations Tracking** (`src/model.rs`, `src/verify.rs`): `ScanReport` retains reclassified verification drops so middlebox discrepancies are detected even when `--show closed` is omitted.
 - **Network State Change Detection & Differential Auditing** (`src/diff.rs`):
   - Live scan comparison via `--diff <FILE>` / `--compare-to <FILE>`.
-  - Standalone offline CLI subcommand `rayscan diff <BASELINE> <CURRENT> [--json]`.
+  - Standalone offline CLI subcommand `portensor diff <BASELINE> <CURRENT> [--json]`.
   - Colorful visual indicators: `[+] NEW`, `[-] GONE`, `[*] CHANGED`, `[~] POSTURE`.
 - **Smart Resume with Pre-Scan Gap Analysis Audit** (`src/resume.rs`): Visual audit table displaying completed vs remaining ports, completion percentage, prior findings, and host anomaly flags before resumed probing begins.
 - **Speed & Discovery Optimizations** (`--discover-only`, `--top-ports-first`):
@@ -706,9 +876,9 @@ All notable changes to rayscan are documented here.
   - `--top-ports-first` prioritized ordering enabled by default in `fast` and `balanced` profiles (first results < 50 ms).
 - **Live Results Table & In-Memory Deduplication** (`src/lib.rs`): Streams responsive ports cleanly above the progress bar with `HashSet<(IpAddr, u16)>` deduplication during retries.
 - **Cyber High-Contrast Theme** (`--theme cyber`): Enhanced terminal visibility palette for modern terminals.
-- **Standalone Native Windows Subcommand Execution**: `rayscan.exe diff` supported natively alongside connect scanning.
+- **Standalone Native Windows Subcommand Execution**: `portensor.exe diff` supported natively alongside connect scanning.
 - **Offline CVE Advisory Correlation** (`--advisories`, `src/advisory.rs`, `data/advisories.json`): Detected service product/version/banner tuples are matched against a bundled curated CVE database (vsftpd 2.3.4 backdoor, Samba 3.0.x, UnrealIRCd 3.2.8.1, Debian OpenSSH PRNG, Apache 2.2.x DoS and 2.4.49/2.4.50 path traversal, Exim 4.87-4.91, distccd). Findings attach to port results and render as an `ADVISORIES` table column, a severity-sorted correlation section, `--explain` breakdowns, and `advisories` arrays in JSON/JSONL output. Correlation is fully offline and advisory only; no additional target traffic is generated.
-- **Local NVD CVE Advisory Database** (`rayscan db update`, `rayscan db status`, `src/db/`): A user-maintained mirror built from the official NVD CVE 2.0 feeds covering 1999 through 2026 (over 400k CVEs and 325k product mappings at release). Feed processing is streamed and digest-verified, and the mirror is stored as compact yearly records plus 256-way product shards with atomic manifest updates and a concurrency lock. Manual refreshes support `--years SPEC` subsets and `--force`; `db status [--json]` reports coverage, age, and staleness. Every scan checks the rolling `recent` feed and applies changes automatically unless `--no-db-update` is passed, and update failures never fail a scan. NVD matches merge with curated findings and are tagged with `source: "nvd"`; curated findings rank first and each source is severity-sorted, while human-readable advisory sections cap at 10 rows per service and JSON keeps the full list. Database location follows `--db-dir`, `RAYSCAN_DB_DIR`, or the platform data directory.
+- **Local NVD CVE Advisory Database** (`portensor db update`, `portensor db status`, `src/db/`): A user-maintained mirror built from the official NVD CVE 2.0 feeds covering 1999 through 2026 (over 400k CVEs and 325k product mappings at release). Feed processing is streamed and digest-verified, and the mirror is stored as compact yearly records plus 256-way product shards with atomic manifest updates and a concurrency lock. Manual refreshes support `--years SPEC` subsets and `--force`; `db status [--json]` reports coverage, age, and staleness. Every scan checks the rolling `recent` feed and applies changes automatically unless `--no-db-update` is passed, and update failures never fail a scan. NVD matches merge with curated findings and are tagged with `source: "nvd"`; curated findings rank first and each source is severity-sorted, while human-readable advisory sections cap at 10 rows per service and JSON keeps the full list. Database location follows `--db-dir`, `PORTENSOR_DB_DIR`, or the platform data directory.
 
 ### Changed
 
@@ -736,7 +906,7 @@ All notable changes to rayscan are documented here.
   pfSense / OPNsense firewalls (FreeBSD kernel), MikroTik RouterOS (Linux router kernel
   with timestamps disabled), and Windows Server 2019/2022.
 - **Technical whitepaper** (`docs/why-accuracy-first-matters.md`): deep-dive analysis on
-  why high-speed scanners fail against TCP tarpits and SYN proxies, and how rayscan't two-phase
+  why high-speed scanners fail against TCP tarpits and SYN proxies, and how portensor't two-phase
   verification solves it with 100% precision.
 - **Public release README overhaul** (`README.md`): added status badges (CI, Version, Rust, Platforms, License),
   tarpit comparison benchmark matrix, and profile selection guide.
@@ -752,10 +922,10 @@ All notable changes to rayscan are documented here.
   time, and list of probed ports to a versioned JSON file.  `--resume` loads the
   saved state, computes remaining ports, runs only those ports, and merges results.
 - **Optional ports specification & `--top-ports` flag** (`src/cli.rs`, `src/ports.rs`):
-  `--ports` is now optional; when omitted, `rayscan` automatically defaults to the
+  `--ports` is now optional; when omitted, `portensor` automatically defaults to the
   standard well-known ports `1-1024`. Added `--top-ports N` to probe the top N most
   frequently used services (e.g. `--top-ports 100`).
-- **Native Windows release binary** (`rayscan.exe`): cross-compiled for
+- **Native Windows release binary** (`portensor.exe`): cross-compiled for
   `x86_64-pc-windows-gnu` via MinGW toolchain; runs natively on Windows CMD and PowerShell.
 - **Nmap-compatible XML output** (`src/output.rs`, `--format nmap-xml`): full
   `<nmaprun>` / `<host>` / `<ports>` / `<runstats>` tree compatible with
@@ -763,18 +933,18 @@ All notable changes to rayscan are documented here.
   appear as `<os><osmatch>` elements.
 - **Greppable output** (`src/output.rs`, `--format greppable`): Nmap `-oG`-style
   one-line-per-host format: `Host: <ip>  Ports: <port>/<state>/<proto>//<svc>/…`
-- **Static musl binary** (`make musl`): cross-compiles rayscan for
+- **Static musl binary** (`make musl`): cross-compiles portensor for
   `x86_64-unknown-linux-musl` producing a fully-static binary with no libc
   dependency; install `musl-tools` and run `make musl` once.
-- **Man page** (`man/rayscan.1`, `make man`): full `roff` manual page generated
+- **Man page** (`man/portensor.1`, `make man`): full `roff` manual page generated
   from the clap command definition via `clap_mangen`; covers all flags, formats,
   output modes, and exit codes.
-- **`src/bin/gen_man.rs`**: build-time helper binary that regenerates `man/rayscan.1`.
+- **`src/bin/gen_man.rs`**: build-time helper binary that regenerates `man/portensor.1`.
 - **Dockerfile** (multi-stage): `rust:1.99.1-alpine` builder compiles the musl
   binary; `scratch` final layer holds only the binary.  Build with `make docker`.
 - **Makefile targets**: `make musl`, `make install`, `make docker`, `make man`.
-  `make install` copies the release binary to `$(PREFIX)/bin/rayscan` and the man
-  page to `$(PREFIX)/share/man/man1/rayscan.1`.
+  `make install` copies the release binary to `$(PREFIX)/bin/portensor` and the man
+  page to `$(PREFIX)/share/man/man1/portensor.1`.
 - **`shutdown: Arc<AtomicBool>`** field on `ScanOptions`: workers consult the flag
   at the top of each job loop iteration.
 - **6 unit tests** in `src/resume.rs`: port subtraction, empty / full / partial
@@ -979,7 +1149,7 @@ All notable changes to rayscan are documented here.
   and IPv4/IPv6 family selection, with a 65,536-address cap.
 - Port list/range parsing and validation.
 - Built-in `fast`, `balanced`, and `careful` profiles plus optional
-  `rayscan.toml` configuration.
+  `portensor.toml` configuration.
 - Table, JSON, JSONL, and CSV output; `--json` benchmark alias; file output.
 - Banner verification so tarpits and SYN proxies are not reported as open;
   `--connect-only` restores handshake-only behavior.
@@ -992,7 +1162,7 @@ All notable changes to rayscan are documented here.
 
 ### Changed
 
-- The CLI now exposes `rayscan scan`; the Phase 0 shell is gone.
+- The CLI now exposes `portensor scan`; the Phase 0 shell is gone.
 - Default scans verify a service after the handshake instead of treating every
   successful handshake as open.
 - `make ci` now includes the release build.
@@ -1007,7 +1177,7 @@ All notable changes to rayscan are documented here.
   tests, and `cargo audit`.
 - WSL2/Linux network-namespace lab with open, closed, DROP-filtered, tarpit,
   rate-limited, and SYN-proxy targets, plus `netem` delay/jitter/loss profiles.
-- Ground-truth checker and benchmark harness for rayscan, nmap, masscan, and
+- Ground-truth checker and benchmark harness for portensor, nmap, masscan, and
   rustscan.
 - Offline parser and metric tests for the benchmark harness.
 

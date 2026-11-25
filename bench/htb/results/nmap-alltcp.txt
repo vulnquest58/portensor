@@ -1,0 +1,29 @@
+# Nmap 7.80 scan initiated Sat Nov 21 10:06:25 2026 as: nmap -Pn -sT -p- --reason --min-rate 10000 --max-retries 2 --host-timeout 300s -oN /mnt/e/VulnQuest_Pro/rayscan/bench/htb/results/nmap-alltcp.txt -oX /mnt/e/VulnQuest_Pro/rayscan/bench/htb/results/nmap-alltcp.xml 10.129.244.207
+Warning: 10.129.244.207 giving up on port because retransmission cap hit (2).
+Nmap scan report for 10.129.244.207
+Host is up, received user-set (0.092s latency).
+Not shown: 65515 filtered ports
+Reason: 65515 no-responses
+PORT      STATE SERVICE          REASON
+53/tcp    open  domain           syn-ack
+88/tcp    open  kerberos-sec     syn-ack
+135/tcp   open  msrpc            syn-ack
+139/tcp   open  netbios-ssn      syn-ack
+389/tcp   open  ldap             syn-ack
+445/tcp   open  microsoft-ds     syn-ack
+464/tcp   open  kpasswd5         syn-ack
+593/tcp   open  http-rpc-epmap   syn-ack
+636/tcp   open  ldapssl          syn-ack
+2179/tcp  open  vmrdp            syn-ack
+3268/tcp  open  globalcatLDAP    syn-ack
+3269/tcp  open  globalcatLDAPssl syn-ack
+3389/tcp  open  ms-wbt-server    syn-ack
+5985/tcp  open  wsman            syn-ack
+9389/tcp  open  adws             syn-ack
+49676/tcp open  unknown          syn-ack
+49677/tcp open  unknown          syn-ack
+49679/tcp open  unknown          syn-ack
+49680/tcp open  unknown          syn-ack
+49906/tcp open  unknown          syn-ack
+
+# Nmap done at Sat Nov 21 10:06:58 2026 -- 1 IP address (1 host up) scanned in 33.23 seconds

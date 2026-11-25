@@ -133,7 +133,7 @@ above the configured rate on healthy paths.
 
 Timeouts do not provide RTT samples (Karn's rule); they increase a bounded
 per-host backoff. Successful connects and RTT-bearing refusals update SRTT and
-RTTVAR. The minimum connect timeout is 1.5 seconds so a dropped SYN has room for
+RTTVAR. The minimum connect timeout is 1.1 seconds so a dropped SYN has room for
 the kernel's normal retransmission even under lab loss. A timed-out connect is
 retried only while per-target healthy responses show the host is reachable
 (one retry is allowed for an isolated first timeout), with the timeout budget
@@ -141,8 +141,11 @@ capped by `min(--retries, 3)`; a host whose timeouts dominate is treated as
 filtering. Local resource failures (`EMFILE`, `ENFILE`,
 `ENOBUFS`, `ENOMEM`) are retried separately and never reported as a port state.
 When banner verification is ambiguous (`closed`, `silent`, or open with no
-service identity), verified scans reconnect and retry up to
-`min(--retries, 2)` times, retaining the strongest evidence seen.
+banner data), verified scans fan out up to eight concurrent reconnects (two per
+retry, capped at eight) after the initial attempt, retaining the strongest
+evidence seen. A tarpit therefore costs one extra probe window rather than one
+window per retry, while independent banner losses are recovered in parallel.
+`--retries 0` disables this post-handshake recovery.
 
 ## SYN engine (`--syn`, Linux + CAP_NET_RAW)
 
@@ -222,6 +225,34 @@ service question: it cannot distinguish open from closed ports.
 - IPv4 uses the same `AF_PACKET` frame builder; IPv6 uses the `AF_INET6` path
   with a full-address cookie.
 
+## TLS, SNI, and OS post-stages
+
+TLS inspection runs after discovery/verification and before plugin matching and
+accuracy scoring. It probes known direct-TLS and STARTTLS ports, TLS-looking
+banners, and unidentified services. The scanner intentionally accepts
+self-signed certificates and records identity/trust properties instead of
+failing the handshake.
+
+`--sni HOST` (or `sni` in TOML) overrides the TLS server name independently of
+the target IP. The same validated DNS name is used for the rustls handshake,
+certificate SAN/CN matching, and the HTTP `Host` header. This is required when
+one IP fronts multiple TLS virtual hosts, and prevents a target-IP `Host` header
+from selecting a default vhost. The resolved value is exported as `tls.sni`.
+
+OS fingerprinting samples up to `--os-probes` open ports per host and keeps
+every SYN-ACK as an `OsEndpointGuess` under `os_fingerprints[host].endpoints`.
+Each endpoint records port, family, detail, confidence, inferred TTL, hops,
+TCP/IP evidence, and the detected service. The host-level `OsGuess` remains a
+convenience summary: it reports the dominant family when evidence agrees, or
+`mixed` when two or more families have endpoint confidence of at least 35%.
+Per-port tables and accuracy scoring prefer the endpoint result; JSON,
+Markdown, HTML, and Nmap XML expose the endpoint rows. Raw OS samples are
+collected before the service post-stages; service-derived endpoint corrections
+are applied after TLS, plugins, and scripts and before scoring, so a service
+identified by SNI or a plugin can still refine its endpoint family. This avoids
+assigning one OS to a host whose TLS edge and backend services run on different
+stacks.
+
 ## Result semantics
 
 The JSON schema (`host`, `port`, `state`) is identical across engines.
@@ -243,7 +274,7 @@ The JSON schema (`host`, `port`, `state`) is identical across engines.
 
 ## Configuration
 
-TOML values are loaded from `--config FILE`, or from `rayscan.toml` in the
+TOML values are loaded from `--config FILE`, or from `portensor.toml` in the
 working directory when present. Precedence is:
 
 ```text
@@ -253,7 +284,10 @@ CLI argument > TOML value > selected profile default > built-in fallback
 The `fast`, `balanced`, and `careful` profiles adjust the timeout ceiling, banner
 wait, rate, worker count, and retry count. Input validation rejects
 non-positive timeouts, probe windows outside 10-60,000ms, rates above 1,000,000/s,
-and worker or per-host concurrency counts above 4,096.
+and worker or per-host concurrency counts above 4,096. `sni` must be a
+normalized DNS hostname: IP literals, wildcards, underscores, malformed labels,
+and non-FQDNs are rejected. CLI `--sni` overrides the TOML value and is
+incompatible with `--no-tls`/`--ack`.
 
 ## Lab and benchmark
 

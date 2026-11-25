@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SYN loss-resilience lab: measures how many open ports rayscan recovers when
+# SYN loss-resilience lab: measures how many open ports portensor recovers when
 # the network drops SYN and SYN-ACK packets.
 #
 # Topology:
@@ -25,7 +25,7 @@
 #   --retries N       scan retransmission passes (default 2)
 #   --ports RANGE     contiguous open-port range (default 9000-9019)
 #   --timeout-ms MS   per-connect timeout ceiling (default 500)
-#   --binary PATH     rayscan binary (default: newest of target/release, target/debug)
+#   --binary PATH     portensor binary (default: newest of target/release, target/debug)
 #   --matrix          losses 0/5/20 x retries 0/2, one line per run
 #   -h, --help        show this help
 set -euo pipefail
@@ -33,14 +33,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-BINARY="${RAYSCAN_BIN:-}"
+BINARY="${PORTENSOR_BIN:-}"
 LOSS=20
 RETRIES=2
 PORTS="9000-9019"
 TIMEOUT_MS=500
 MATRIX=0
 
-NETNS="rayscan-loss"
+NETNS="portensor-loss"
 HOST_IF="rsyn-h"
 PEER_IF="rsyn-n"
 HOST_IP="10.200.0.1"
@@ -99,7 +99,7 @@ if [ -z "$BINARY" ]; then
     # profile most recently finished linking instead of always preferring
     # release (a stale release binary silently hides new fixes).
     newest=0
-    for candidate in "$REPO_DIR/target/release/rayscan" "$REPO_DIR/target/debug/rayscan"; do
+    for candidate in "$REPO_DIR/target/release/portensor" "$REPO_DIR/target/debug/portensor"; do
         if [ -x "$candidate" ]; then
             modified=$(stat -c %Y "$candidate")
             if [ "$modified" -gt "$newest" ]; then
@@ -109,7 +109,7 @@ if [ -z "$BINARY" ]; then
         fi
     done
 fi
-[ -x "$BINARY" ] || die "rayscan binary not found; build it or pass --binary PATH"
+[ -x "$BINARY" ] || die "portensor binary not found; build it or pass --binary PATH"
 
 case "$PORTS" in
     *-*) ;;

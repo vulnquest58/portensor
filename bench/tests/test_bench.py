@@ -32,31 +32,31 @@ class ParserTests(unittest.TestCase):
         output = (FIXTURES / "rustscan.txt").read_text(encoding="utf-8")
         self.assertEqual(bench.parse_rustscan(output, TARGET), EXPECTED)
 
-    def test_rayscan(self) -> None:
-        output = (FIXTURES / "rayscan.json").read_text(encoding="utf-8")
-        self.assertEqual(bench.parse_rayscan(output, TARGET), EXPECTED)
+    def test_portensor(self) -> None:
+        output = (FIXTURES / "portensor.json").read_text(encoding="utf-8")
+        self.assertEqual(bench.parse_portensor(output, TARGET), EXPECTED)
 
-    def test_rayscan_accepts_plain_port_list(self) -> None:
+    def test_portensor_accepts_plain_port_list(self) -> None:
         output = json.dumps({"open": [80, 443]})
         self.assertEqual(
-            bench.parse_rayscan(output, TARGET),
+            bench.parse_portensor(output, TARGET),
             {bench.Target(TARGET, 80), bench.Target(TARGET, 443)},
         )
 
-    def test_rayscan_accepts_json_lines(self) -> None:
+    def test_portensor_accepts_json_lines(self) -> None:
         output = "\n".join(
             [
                 json.dumps({"host": TARGET, "port": 80, "state": "open"}),
                 json.dumps({"host": TARGET, "port": 81, "state": "closed"}),
             ]
         )
-        self.assertEqual(bench.parse_rayscan(output, TARGET), {bench.Target(TARGET, 80)})
+        self.assertEqual(bench.parse_portensor(output, TARGET), {bench.Target(TARGET, 80)})
 
     def test_empty_output_is_empty(self) -> None:
         self.assertEqual(bench.parse_nmap("<nmaprun/>", TARGET), set())
         self.assertEqual(bench.parse_masscan("", TARGET), set())
         self.assertEqual(bench.parse_rustscan("", TARGET), set())
-        self.assertEqual(bench.parse_rayscan("", TARGET), set())
+        self.assertEqual(bench.parse_portensor("", TARGET), set())
 
 
 class MetricTests(unittest.TestCase):
@@ -94,11 +94,11 @@ class ResourceTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def test_rayscan_command_matches_contract(self) -> None:
+    def test_portensor_command_matches_contract(self) -> None:
         command = bench.build_command(
-            "rayscan", TARGET, "80,443", 1000, 30, Path("/tmp/rayscan")
+            "portensor", TARGET, "80,443", 1000, 30, Path("/tmp/portensor")
         )
-        self.assertEqual(command[0], "/tmp/rayscan")
+        self.assertEqual(command[0], "/tmp/portensor")
         self.assertIn("scan", command)
         self.assertIn("--json", command)
 
@@ -119,7 +119,7 @@ class CommandTests(unittest.TestCase):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             code = bench.main(
-                ["--lab", "--dry-run", "--tools", "rayscan", "--no-save"]
+                ["--lab", "--dry-run", "--tools", "portensor", "--no-save"]
             )
         self.assertEqual(code, 0)
         self.assertIn("scan", output.getvalue())

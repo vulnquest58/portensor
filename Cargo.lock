@@ -1527,6 +1527,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
 
 [[package]]
+name = "portensor"
+version = "0.7.1"
+dependencies = [
+ "async-channel",
+ "axum",
+ "clap",
+ "clap_mangen",
+ "comfy-table",
+ "core_affinity",
+ "crossbeam-channel",
+ "flate2",
+ "indicatif",
+ "inquire",
+ "libc",
+ "rand",
+ "regex",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "siphasher",
+ "tar",
+ "tokio",
+ "tokio-rustls",
+ "toml",
+ "ureq",
+ "wasmtime",
+ "x509-parser",
+]
+
+[[package]]
 name = "postcard"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1631,38 +1663,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
-]
-
-[[package]]
-name = "rayscan"
-version = "0.7.0"
-dependencies = [
- "async-channel",
- "axum",
- "clap",
- "clap_mangen",
- "comfy-table",
- "core_affinity",
- "crossbeam-channel",
- "flate2",
- "indicatif",
- "inquire",
- "libc",
- "rand",
- "regex",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "siphasher",
- "tar",
- "tokio",
- "tokio-rustls",
- "toml",
- "ureq",
- "wasmtime",
- "x509-parser",
 ]
 
 [[package]]

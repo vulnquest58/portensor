@@ -1,0 +1,132 @@
+{
+  "target": "10.129.244.207",
+  "targets": 1,
+  "ports": 5,
+  "jobs": 5,
+  "workers": 5,
+  "open": [
+    {
+      "host": "10.129.244.207",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 312.141,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:312.1ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 636,
+      "state": "open",
+      "latency_ms": 143.478,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:143.5ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 3269,
+      "state": "open",
+      "latency_ms": 312.122,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:312.1ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 3389,
+      "state": "open",
+      "latency_ms": 227.48,
+      "banner": "RDP HYBRID_EX / DC01.garfield.htb / 10.0.17763",
+      "service": {
+        "name": "rdp",
+        "product": "Windows 10 / Server 2019",
+        "version": "10.0.17763",
+        "confidence": 0.98
+      },
+      "detail": "rdp:hybrid_ex",
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:rdp/Windows 10 / Server 2019(40%) stack:standard(15%) latency:227.5ms(20%)",
+      "findings": [
+        {
+          "id": "rdp-exposed",
+          "title": "RDP service is reachable from the scanned network",
+          "severity": "medium",
+          "confidence": 0.9,
+          "description": "The service is reachable from the scanned network. Exposed management or data services should be restricted to trusted networks and protected by authentication.",
+          "evidence": "service=rdp port=3389",
+          "plugin": "official-baseline/rdp-exposed"
+        }
+      ],
+      "rdp": {
+        "protocol": "HYBRID_EX",
+        "target": "GARFIELD",
+        "computer_name": "DC01.garfield.htb",
+        "domain": "garfield.htb",
+        "os_version": "10.0.17763",
+        "product": "Windows 10 / Server 2019"
+      }
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 312.118,
+      "banner": "HTTP/1.1 404 Not Found",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-HTTPAPI",
+        "version": "2.0",
+        "confidence": 0.98
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-HTTPAPI(40%) stack:standard(15%) latency:312.1ms(20%)",
+      "findings": [
+        {
+          "id": "cleartext-http",
+          "title": "HTTP service transmits data in cleartext",
+          "severity": "medium",
+          "confidence": 0.95,
+          "description": "HTTP traffic is transmitted without TLS. Credentials, session data, and application content can be observed or modified by an on-path attacker.",
+          "evidence": "service=http port=5985",
+          "plugin": "official-baseline/cleartext-http"
+        },
+        {
+          "id": "http-version-disclosure",
+          "title": "HTTP service discloses its product or version",
+          "severity": "low",
+          "confidence": 0.94,
+          "description": "The service disclosed its product or version in a passive response. This information helps attackers select matching exploits and should be minimized where practical.",
+          "evidence": "product=Microsoft-HTTPAPI version=2.0 port=5985",
+          "plugin": "official-baseline/http-version-disclosure"
+        }
+      ]
+    }
+  ],
+  "defense": {
+    "10.129.244.207": {
+      "host": "10.129.244.207",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 5 open port(s) (with 3 identified services) responded with standard TCP semantics"
+      ]
+    }
+  },
+  "summary": {
+    "open": 5,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 1076.018
+}

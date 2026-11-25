@@ -355,6 +355,26 @@ impl ScopeGuard {
         })
     }
 
+    /// Return whether an already-resolved address is authorized by this scope.
+    /// Deny rules take precedence; an empty allow list authorizes every
+    /// address that is not explicitly denied.
+    pub fn allows_ip(&self, ip: IpAddr) -> bool {
+        if self.deny_rules.iter().any(|rule| rule.matches_ip(ip)) {
+            return false;
+        }
+        if self.allow_rules.is_empty() || self.allow_rules.iter().any(|rule| rule.matches_ip(ip)) {
+            return true;
+        }
+        // Domain rules were already checked against the requested target
+        // spec; their resolved addresses cannot be reconstructed here.
+        self.allow_rules.iter().any(|rule| {
+            matches!(
+                rule,
+                ParsedRule::ExactDomain(_) | ParsedRule::WildcardDomain(_)
+            )
+        })
+    }
+
     /// Enforce scope boundaries against candidate target specifications and resolved IPs.
     ///
     /// Domain rules authorize domains and the addresses they resolve to. Explicit

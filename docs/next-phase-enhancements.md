@@ -7,17 +7,17 @@ This document details the architectural and feature enhancements implemented loc
 ## 1. Speed Improvements (تحسينات السرعة)
 
 ### 1.1 Port Prioritization (`--top-ports-first`)
-- **Location:** [`src/ports.rs`](file:///e:/VulnQuest_Pro/rayscan/src/ports.rs), [`src/cli.rs`](file:///e:/VulnQuest_Pro/rayscan/src/cli.rs)
+- **Location:** [`src/ports.rs`](file:///e:/VulnQuest_Pro/portensor/src/ports.rs), [`src/cli.rs`](file:///e:/VulnQuest_Pro/portensor/src/cli.rs)
 - **Mechanism:** Implemented `prioritize_ports(&mut [u16])` which stable-sorts any arbitrary port range such that ports matching `TOP_PORTS_100` are probed first in their order of prevalence (e.g. 80, 23, 443, 21, 22, 25...), followed by the remainder of the requested ports in numerical order.
 - **Impact:** Drastically reduces *time-to-first-result* on wide scans (e.g., ports 1-1024 or 1-65535). Common open services appear on screen within milliseconds rather than after traversing thousands of closed ports.
 
 ### 1.2 Separation of Discovery from Verification (`--discover-only`)
-- **Location:** [`src/cli.rs`](file:///e:/VulnQuest_Pro/rayscan/src/cli.rs), [`src/scanner.rs`](file:///e:/VulnQuest_Pro/rayscan/src/scanner.rs)
+- **Location:** [`src/cli.rs`](file:///e:/VulnQuest_Pro/portensor/src/cli.rs), [`src/scanner.rs`](file:///e:/VulnQuest_Pro/portensor/src/scanner.rs)
 - **Mechanism:** Adds `--discover-only` flag, which marks successful TCP connections immediately as open without waiting for probe read timeouts (0ms banner latency) or performing secondary application handshakes.
 - **Impact:** Extreme speed for mass sweeps across large subnets or full port ranges where the user only needs live port mapping. Full service detection can be run subsequently on discovered candidates.
 
 ### 1.3 High-Throughput Packet Batching
-- **Location:** [`src/syn/engine.rs`](file:///e:/VulnQuest_Pro/rayscan/src/syn/engine.rs)
+- **Location:** [`src/syn/engine.rs`](file:///e:/VulnQuest_Pro/portensor/src/syn/engine.rs)
 - **Mechanism:** Batch transmissions via Linux `libc::sendmmsg` (up to 64 frames per syscall) combined with atomic ring pacing, minimizing context switches and kernel syscall overhead.
 
 ---
@@ -25,7 +25,7 @@ This document details the architectural and feature enhancements implemented loc
 ## 2. Modern UI / UX Evolution (تطوير الواجهة وتجربة المستخدم)
 
 ### 2.1 Real-Time Streaming Results Table & Deduplication
-- **Location:** [`src/lib.rs`](file:///e:/VulnQuest_Pro/rayscan/src/lib.rs), [`src/output.rs`](file:///e:/VulnQuest_Pro/rayscan/src/output.rs)
+- **Location:** [`src/lib.rs`](file:///e:/VulnQuest_Pro/portensor/src/lib.rs), [`src/output.rs`](file:///e:/VulnQuest_Pro/portensor/src/output.rs)
 - **Mechanism:** Integrated `bar.println(...)` via `indicatif`. As soon as any worker verifies an open port matching the active filter, a formatted table row is immediately logged above the active progress bar without flickering or terminal tearing.
 - **Deduplication:** Uses an in-memory `HashSet<(IpAddr, u16)>` so retried ports or multi-stage probes never print duplicate rows.
 - **Controls:** Automatically enabled on interactive TTY terminals; disabled when output is redirected to files/pipes, when `--json`/`--csv`/`--nmap-xml` is selected, or when `--no-live` or `--quiet` is specified.
@@ -37,7 +37,7 @@ This document details the architectural and feature enhancements implemented loc
   - Live atomic counters: `Open: X  Closed: Y  Filtered: Z  Silent: W`.
 
 ### 2.3 New Cyber Theme (`--theme cyber`)
-- **Location:** [`src/theme.rs`](file:///e:/VulnQuest_Pro/rayscan/src/theme.rs)
+- **Location:** [`src/theme.rs`](file:///e:/VulnQuest_Pro/portensor/src/theme.rs)
 - **Palette:** Modern cyberpunk aesthetic with enhanced high-contrast visibility:
   - Header & Accent: Magenta (`\x1b[35m`)
   - Open Ports: Cyan (`\x1b[36m`)
@@ -53,7 +53,7 @@ This document details the architectural and feature enhancements implemented loc
 ## 3. Detection Engine Expansion (توسيع الخدمات والأنظمة)
 
 ### 3.1 Expanded Service Signatures
-- **Location:** [`src/service.rs`](file:///e:/VulnQuest_Pro/rayscan/src/service.rs)
+- **Location:** [`src/service.rs`](file:///e:/VulnQuest_Pro/portensor/src/service.rs)
 - **New & Enhanced Signatures:**
   - **Redis (`redis`):** RESP protocol inspection (`-ERR`, `-NOAUTH`, `+PONG`, `-DENIED`) and version parsing.
   - **PostgreSQL (`postgresql`):** Binary error responses (`b'E'` + `SFATAL`/`SERROR`) and text notices (`FATAL: no pg_hba.conf`).
@@ -65,13 +65,13 @@ This document details the architectural and feature enhancements implemented loc
   - **Expanded SMTP Products:** Postfix, Exim, Sendmail, Microsoft ESMTP, Haraka, Courier, OpenSMTPD.
 
 ### 3.2 OS Fingerprinting Evidence Reporting
-- **Location:** [`src/fingerprint.rs`](file:///e:/VulnQuest_Pro/rayscan/src/fingerprint.rs), [`src/output.rs`](file:///e:/VulnQuest_Pro/rayscan/src/output.rs)
+- **Location:** [`src/fingerprint.rs`](file:///e:/VulnQuest_Pro/portensor/src/fingerprint.rs), [`src/output.rs`](file:///e:/VulnQuest_Pro/portensor/src/output.rs)
 - **Mechanism:** `TcpFingerprint` now synthesizes an evidence summary capturing observed TCP/IP stack options:
   `Evidence: TTL=63, Window=5840, MSS=1460, WScale=5, SACK=yes, DF=yes, Options=mss,nop,nop,sack,nop,wscale`
 - **Output:** Surfaced in terminal diagnostic logs, the final table footer, and embedded inside machine-readable JSON reports.
 
 ### 3.3 Unified Accuracy Scoring Engine (Phase 7B)
-- **Location:** [`src/accuracy.rs`](file:///e:/VulnQuest_Pro/rayscan/src/accuracy.rs), [`src/output.rs`](file:///e:/VulnQuest_Pro/rayscan/src/output.rs), [`src/cli.rs`](file:///e:/VulnQuest_Pro/rayscan/src/cli.rs)
+- **Location:** [`src/accuracy.rs`](file:///e:/VulnQuest_Pro/portensor/src/accuracy.rs), [`src/output.rs`](file:///e:/VulnQuest_Pro/portensor/src/output.rs), [`src/cli.rs`](file:///e:/VulnQuest_Pro/portensor/src/cli.rs)
 - **4-Pillar Evaluation Model:**
   1. **TCP Handshake (20%):** 3-way handshake established without truncation.
   2. **Application Data / Banner (40%):** Protocol inspection and recognized signature matching (SSH, HTTP, MySQL, Redis, SMB, etc.) or raw application text.
@@ -171,7 +171,7 @@ open 4  closed 0  filtered 0  silent 0  unreachable 0  error 0  elapsed 0.69s
 ```
 
 ### 4.2 Defense Awareness & Middlebox Classifier (Phase 8)
-- **Engine:** [`src/defense.rs`](file:///e:/VulnQuest_Pro/rayscan/src/defense.rs)
+- **Engine:** [`src/defense.rs`](file:///e:/VulnQuest_Pro/portensor/src/defense.rs)
 - **Posture Hierarchy:**
   - `[CLEAN] Direct Host`
   - `[NOTICE] Rate-Limiting Active`
@@ -180,7 +180,7 @@ open 4  closed 0  filtered 0  silent 0  unreachable 0  error 0  elapsed 0.69s
 - **Output:** Surfaced in terminal summary, live table footer, and embedded inside machine-readable JSON under `"defense"`.
 
 ### 4.3 Change Detection & Differential Analysis (`--diff` / `--compare-to`) (Phase 9)
-- **Engine:** [`src/diff.rs`](file:///e:/VulnQuest_Pro/rayscan/src/diff.rs)
+- **Engine:** [`src/diff.rs`](file:///e:/VulnQuest_Pro/portensor/src/diff.rs)
 - **Capability:** Compares any current scan against a baseline JSON report or state file, reporting:
   - `[+] NEW`: Newly opened ports with confidence.
   - `[-] GONE`: Previously open ports now closed or filtered.
@@ -199,7 +199,7 @@ open 4  closed 0  filtered 0  silent 0  unreachable 0  error 0  elapsed 0.69s
 - **JSON View:** Embedded `"diff"` object inside `--json` reports.
 
 ### 4.4 Smart Resume with Gap Analysis Audit (Phase 9)
-- **Engine:** [`src/resume.rs`](file:///e:/VulnQuest_Pro/rayscan/src/resume.rs)
+- **Engine:** [`src/resume.rs`](file:///e:/VulnQuest_Pro/portensor/src/resume.rs)
 - **Capability:** When `--resume <FILE>` is invoked, performs an immediate diagnostic gap analysis before probing:
   ```text
   Resume Gap Analysis Audit:

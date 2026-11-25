@@ -1,0 +1,9 @@
+version=0.7.0
+linux_archive=rayscan-0.7.0-linux-x86_64.tar.gz
+linux_sha256=6b67894dbfa9d3dbba6ae69a2ba077ff8e925dd123abcec2932020c3ffb8e981
+linux_dynamic_binary=rayscan 0.7.0
+linux_static_binary=rayscan 0.7.0
+windows_archive=rayscan-0.7.0-windows-x86_64.zip
+windows_sha256=033f3792ce23845bd07f0473ef716c46b8dfcc262ee6d9f3f5c1231c6cbfba74
+windows_binary=rayscan 0.7.0
+scope=archive extraction and --version only; no package manager install

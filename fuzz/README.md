@@ -12,7 +12,7 @@ cargo +nightly fuzz run packet_parse -- -max_total_time=60
 
 Targets:
 
-- `service_inspect` – TCP banner/product detection (`rayscan::service::inspect`).
+- `service_inspect` – TCP banner/product detection (`portensor::service::inspect`).
 - `udp_inspect` – DNS/NTP/SNMP/SIP/NetBIOS response parsers.
 - `packet_parse` – Ethernet/IPv4/TCP frame parser and TCP option parser.
 

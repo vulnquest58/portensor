@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Write as FmtWrite;
 use std::io::{self, IsTerminal, Write};
 use std::net::IpAddr;
 use std::path::Path;
@@ -35,6 +36,8 @@ pub enum OutputFormat {
     Sarif,
     /// Human-readable Markdown report for tickets and pull requests.
     Markdown,
+    /// Self-contained HTML report with no remote assets.
+    Html,
     /// Plain `host:port` list — one open port per line for pipeline chaining.
     #[value(name = "host-port", alias = "hostport", alias = "plain")]
     HostPort,
@@ -56,6 +59,7 @@ impl OutputFormat {
             Self::Greppable => "greppable",
             Self::Sarif => "sarif",
             Self::Markdown => "markdown",
+            Self::Html => "html",
             Self::HostPort => "host-port",
             Self::PortList => "port-list",
         }
@@ -138,6 +142,7 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
         OutputFormat::Markdown => {
             render_markdown(report, target, &selected, options.show, options.diff)
         }
+        OutputFormat::Html => render_html(report, target, &selected, options.diff),
         OutputFormat::HostPort => render_host_port(&selected),
         OutputFormat::PortList => render_port_list(&selected),
     };
@@ -174,7 +179,7 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
                     .map(|summary| format!(" | {summary}"))
                     .unwrap_or_default();
                 println!(
-                    "  {} → {} ({}) confidence={:.0}%{}{}{}",
+                    "  {} �+' {} ({}) confidence={:.0}%{}{}{}",
                     host,
                     guess.detail,
                     guess.family,
@@ -183,6 +188,9 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
                     ev,
                     probes
                 );
+                for endpoint in &guess.endpoints {
+                    println!("{}", endpoint_os_line(*host, endpoint));
+                }
             }
             println!();
         }
@@ -239,7 +247,13 @@ pub fn emit(report: &ScanReport, target: &str, options: EmitOptions<'_>) -> Resu
                 );
             } else {
                 for res in to_explain {
-                    let guess = report.os_fingerprints.get(&res.host);
+                    let endpoint_guess = report
+                        .os_fingerprints
+                        .get(&res.host)
+                        .and_then(|guess| guess.for_port(res.port));
+                    let guess = endpoint_guess
+                        .as_ref()
+                        .or_else(|| report.os_fingerprints.get(&res.host));
                     let score = crate::accuracy::AccuracyScore::calculate(res, guess);
                     let svc_desc = service_label(res);
                     println!(
@@ -406,16 +420,19 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
             result.latency.as_secs_f64() * 1000.0
         )));
         if has_os {
-            let os_label = report
-                .os_fingerprints
-                .get(&result.host)
-                .map(|g| {
-                    let role = g
-                        .role
-                        .as_ref()
-                        .map(|r| format!(" [{}]", r.as_str()))
-                        .unwrap_or_default();
-                    format!("{} ({:.0}%){}", g.detail, g.confidence * 100.0, role)
+            let os_label = endpoint_os(report, result.host, result.port)
+                .map(|endpoint| {
+                    format!("{} ({:.0}%)", endpoint.detail, endpoint.confidence * 100.0)
+                })
+                .or_else(|| {
+                    report.os_fingerprints.get(&result.host).map(|g| {
+                        let role = g
+                            .role
+                            .as_ref()
+                            .map(|r| format!(" [{}]", r.as_str()))
+                            .unwrap_or_default();
+                        format!("{} ({:.0}%){}", g.detail, g.confidence * 100.0, role)
+                    })
                 })
                 .unwrap_or_default();
             row.push(Cell::new(os_label.chars().take(24).collect::<String>()));
@@ -446,7 +463,7 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
                 .map(|summary| format!(" | {summary}"))
                 .unwrap_or_default();
             output.push_str(&format!(
-                "  {} → {} ({}) confidence={:.0}%{}{}{}\n",
+                "  {} �+' {} ({}) confidence={:.0}%{}{}{}\n",
                 host,
                 guess.detail,
                 guess.family,
@@ -455,6 +472,10 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
                 ev,
                 probes
             ));
+            for endpoint in &guess.endpoints {
+                output.push_str(&endpoint_os_line(*host, endpoint));
+                output.push('\n');
+            }
         }
     }
 
@@ -509,7 +530,13 @@ fn render_table(report: &ScanReport, results: &[&PortResult], opts: TableOptions
             ));
         } else {
             for res in to_explain {
-                let guess = report.os_fingerprints.get(&res.host);
+                let endpoint_guess = report
+                    .os_fingerprints
+                    .get(&res.host)
+                    .and_then(|guess| guess.for_port(res.port));
+                let guess = endpoint_guess
+                    .as_ref()
+                    .or_else(|| report.os_fingerprints.get(&res.host));
                 let score = crate::accuracy::AccuracyScore::calculate(res, guess);
                 let svc_desc = service_label(res);
                 output.push_str(&score.explain(
@@ -849,6 +876,50 @@ fn render_advisory_section(results: &[&PortResult]) -> String {
     output
 }
 
+fn endpoint_os(
+    report: &crate::model::ScanReport,
+    host: std::net::IpAddr,
+    port: u16,
+) -> Option<&crate::fingerprint::OsEndpointGuess> {
+    report.os_fingerprints.get(&host).and_then(|guess| {
+        guess
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.port == port)
+    })
+}
+
+fn endpoint_os_line(
+    host: std::net::IpAddr,
+    endpoint: &crate::fingerprint::OsEndpointGuess,
+) -> String {
+    let service = endpoint
+        .service
+        .as_deref()
+        .map(|service| format!(" {service}"))
+        .unwrap_or_default();
+    let probes = endpoint
+        .hops
+        .map(|hops| format!(" hops={hops}"))
+        .unwrap_or_default();
+    let evidence = endpoint
+        .evidence
+        .as_deref()
+        .map(|evidence| format!(" | Evidence: {evidence}"))
+        .unwrap_or_default();
+    format!(
+        "    {}:{}{} -> {} ({}) confidence={:.0}%{}{}",
+        host,
+        endpoint.port,
+        service,
+        endpoint.detail,
+        endpoint.family,
+        endpoint.confidence * 100.0,
+        probes,
+        evidence
+    )
+}
+
 fn service_label(result: &PortResult) -> String {
     let Some(service) = &result.service else {
         return String::new();
@@ -1117,7 +1188,7 @@ fn render_nmap_xml(report: &ScanReport, target: &str, results: &[&PortResult]) -
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<!DOCTYPE nmaprun>\n");
     xml.push_str(&format!(
-        "<nmaprun scanner=\"rayscan\" args=\"rayscan scan --target {target}\" \
+        "<nmaprun scanner=\"portensor\" args=\"portensor scan --target {target}\" \
          start=\"{start_secs}\" version=\"{version}\" \
          xmloutputversion=\"1.04\">\n"
     ));
@@ -1152,12 +1223,23 @@ fn render_nmap_xml(report: &ScanReport, target: &str, results: &[&PortResult]) -
         if let Ok(ip) = host_str.parse::<std::net::IpAddr>()
             && let Some(os) = report.os_fingerprints.get(&ip)
         {
-            let name = xml_escape(&os.detail);
             xml.push_str("    <os>\n");
-            xml.push_str(&format!(
-                "      <osmatch name=\"{name}\" accuracy=\"{:.0}\"/>\n",
-                os.confidence * 100.0
-            ));
+            if os.endpoints.is_empty() {
+                xml.push_str(&format!(
+                    "      <osmatch name=\"{}\" accuracy=\"{:.0}\"/>\n",
+                    xml_escape(&os.detail),
+                    os.confidence * 100.0
+                ));
+            } else {
+                for endpoint in &os.endpoints {
+                    xml.push_str(&format!(
+                        "      <osmatch name=\"{}/tcp {}\" accuracy=\"{:.0}\"/>\n",
+                        endpoint.port,
+                        xml_escape(&endpoint.detail),
+                        endpoint.confidence * 100.0
+                    ));
+                }
+            }
             xml.push_str("    </os>\n");
         }
 
@@ -1203,7 +1285,7 @@ fn render_nmap_xml(report: &ScanReport, target: &str, results: &[&PortResult]) -
     xml.push_str("  <runstats>\n");
     xml.push_str(&format!(
         "    <finished time=\"{now_secs}\" elapsed=\"{elapsed:.2}\" \
-         summary=\"rayscan done at {now_secs}; {open_count} open port(s)\"/>\n"
+         summary=\"portensor done at {now_secs}; {open_count} open port(s)\"/>\n"
     ));
     xml.push_str(&format!(
         "    <hosts up=\"{hosts_up}\" down=\"0\" total=\"{hosts_up}\"/>\n"
@@ -1228,7 +1310,9 @@ fn xml_escape(s: &str) -> String {
 /// `Host: <ip> ()  Ports: <port>/<state>/<proto>//<service>/<product>/,…`
 fn render_greppable(target: &str, results: &[&PortResult]) -> String {
     let mut output = String::new();
-    output.push_str(&format!("# rayscan greppable output — target: {target}\n"));
+    output.push_str(&format!(
+        "# portensor greppable output — target: {target}\n"
+    ));
 
     // Group by host.
     let mut by_host: std::collections::BTreeMap<String, Vec<&PortResult>> =
@@ -1406,7 +1490,7 @@ fn render_sarif(results: &[&PortResult]) -> Result<String, AppError> {
         "runs": [{
             "tool": {
                 "driver": {
-                    "name": "rayscan",
+                    "name": "portensor",
                     "version": env!("CARGO_PKG_VERSION"),
                     "rules": rules.into_values().collect::<Vec<_>>()
                 }
@@ -1438,7 +1522,7 @@ fn render_markdown(
     diff: Option<&crate::diff::ScanDiff>,
 ) -> String {
     let mut out = String::new();
-    out.push_str("# rayscan scan report\n\n");
+    out.push_str("# portensor scan report\n\n");
     out.push_str(&format!("**Target:** `{}`  \n", md_cell(target)));
     out.push_str(&format!(
         "**Elapsed:** {:.2}s · **Workers:** {} · **Probes:** {}\n\n",
@@ -1494,6 +1578,39 @@ fn render_markdown(
             ));
         }
         out.push('\n');
+
+        if report
+            .os_fingerprints
+            .values()
+            .any(|guess| !guess.endpoints.is_empty())
+        {
+            out.push_str("### Endpoint OS assignments\n\n");
+            out.push_str(
+                "| Host | Port | Service | Family | Detail | Confidence | Hops | Evidence |\n",
+            );
+            out.push_str("|---|---:|---|---|---|---:|---:|---|\n");
+            let mut hosts: Vec<_> = report.os_fingerprints.iter().collect();
+            hosts.sort_by_key(|(host, _)| *host);
+            for (host, guess) in hosts {
+                for endpoint in &guess.endpoints {
+                    out.push_str(&format!(
+                        "| {} | {} | {} | {} | {} | {:.0}% | {} | {} |\n",
+                        host,
+                        endpoint.port,
+                        md_cell(endpoint.service.as_deref().unwrap_or("")),
+                        md_cell(&endpoint.family.to_string()),
+                        md_cell(&endpoint.detail),
+                        endpoint.confidence * 100.0,
+                        endpoint
+                            .hops
+                            .map(|hops| hops.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                        md_cell(endpoint.evidence.as_deref().unwrap_or(""))
+                    ));
+                }
+            }
+            out.push('\n');
+        }
     }
 
     out.push_str("## Services\n\n");
@@ -1706,6 +1823,388 @@ fn render_markdown(
     out
 }
 
+fn html_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
+}
+
+fn html_yes_no(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
+}
+
+fn render_html(
+    report: &ScanReport,
+    target: &str,
+    results: &[&PortResult],
+    diff: Option<&crate::diff::ScanDiff>,
+) -> String {
+    let mut out = String::new();
+    out.push_str("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
+    out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+    out.push_str("<title>portensor report</title>\n<style>");
+    out.push_str(
+        "body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:2rem;color:#17202a;background:#fbfcfd}\
+h1,h2{margin:1.4rem 0 .5rem}table{border-collapse:collapse;width:100%;margin:.6rem 0 1.4rem}\
+th,td{border:1px solid #ccd6e0;padding:.35rem .5rem;text-align:left;vertical-align:top}\
+th{background:#eef3f8}tr:nth-child(even){background:#f7f9fb}\
+code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}pre{white-space:pre-wrap;word-break:break-word}\
+.badge{display:inline-block;padding:.1rem .4rem;border-radius:.25rem;font-size:.8rem;font-weight:600}\
+.open{background:#d9f2e3;color:#14532d}.filtered{background:#fff1c2;color:#713f12}\
+.silent,.unreachable{background:#e5e7eb;color:#374151}.error{background:#fee2e2;color:#7f1d1d}\
+.muted{color:#52616f}.critical{color:#991b1b;font-weight:700}.high{color:#b45309;font-weight:700}\
+details{margin:.2rem 0}summary{cursor:pointer;color:#1d4ed8}\
+</style>\n</head>\n<body>\n",
+    );
+    let _ = writeln!(out, "<h1>portensor report</h1>");
+    let _ = writeln!(
+        out,
+        "<p><strong>Target:</strong> {}<br><strong>Targets:</strong> {} &middot; \
+         <strong>Ports:</strong> {} &middot; <strong>Jobs:</strong> {} &middot; \
+         <strong>Elapsed:</strong> {:.2}s{}</p>",
+        html_escape(target),
+        report.targets,
+        report.ports,
+        report.jobs,
+        report.elapsed.as_secs_f64(),
+        if report.partial {
+            " &middot; <strong>partial scan</strong>"
+        } else {
+            ""
+        }
+    );
+    let _ = writeln!(
+        out,
+        "<p class=\"muted\">Open {} &middot; Closed {} &middot; Filtered {} &middot; \
+         Unfiltered {} &middot; Silent {} &middot; Unreachable {} &middot; Error {}</p>",
+        report.counts.open,
+        report.counts.closed,
+        report.counts.filtered,
+        report.counts.unfiltered,
+        report.counts.silent,
+        report.counts.unreachable,
+        report.counts.error
+    );
+
+    out.push_str("<h2>Services and evidence</h2>\n<table>\n<thead><tr>");
+    out.push_str(
+        "<th>Host</th><th>Port</th><th>State</th><th>Latency</th><th>Service</th>\
+<th>Confidence</th><th>Evidence</th><th>TLS</th></tr></thead>\n<tbody>\n",
+    );
+    for result in results {
+        let state = result.state.as_str();
+        let service = result
+            .service
+            .as_ref()
+            .map(|service| {
+                let mut label = service.name.clone();
+                if let Some(product) = &service.product {
+                    label.push_str(" / ");
+                    label.push_str(product);
+                }
+                if let Some(version) = &service.version {
+                    label.push(' ');
+                    label.push_str(version);
+                }
+                label
+            })
+            .unwrap_or_default();
+        let confidence = result
+            .confidence
+            .map(|value| format!("{:.0}%", value * 100.0))
+            .unwrap_or_else(|| "-".to_string());
+        let mut evidence = String::new();
+        if let Some(detail) = &result.detail {
+            evidence.push_str(detail);
+            evidence.push('\n');
+        }
+        if let Some(banner) = &result.banner {
+            evidence.push_str("Banner: ");
+            evidence.push_str(banner);
+            evidence.push('\n');
+        }
+        if let Some(value) = &result.evidence {
+            evidence.push_str(value);
+        }
+        let evidence = if evidence.trim().is_empty() {
+            "<span class=\"muted\">-</span>".to_string()
+        } else {
+            format!(
+                "<details><summary>Show</summary><pre>{}</pre></details>",
+                html_escape(evidence.trim_end())
+            )
+        };
+        let tls = result
+            .tls
+            .as_ref()
+            .map(|tls| {
+                format!(
+                    "{} / {}",
+                    html_escape(&tls.version),
+                    html_escape(&tls.cipher)
+                )
+            })
+            .unwrap_or_else(|| "-".to_string());
+        let _ = writeln!(
+            out,
+            "<tr><td>{}</td><td>{}</td><td><span class=\"badge {}\">{}</span></td>\
+<td>{:.2} ms</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            html_escape(&result.host.to_string()),
+            result.port,
+            state,
+            html_escape(state),
+            result.latency.as_secs_f64() * 1000.0,
+            html_escape(&service),
+            confidence,
+            evidence,
+            tls
+        );
+    }
+    out.push_str("</tbody>\n</table>\n");
+
+    let advisory_rows: Vec<&PortResult> = results
+        .iter()
+        .copied()
+        .filter(|result| !result.advisories.is_empty())
+        .collect();
+    if !advisory_rows.is_empty() {
+        out.push_str(
+            "<h2>Advisories</h2>\n<table>\n<thead><tr><th>Host:port</th>\
+<th>ID</th><th>Severity</th><th>CVSS</th><th>KEV</th><th>Title</th><th>Source</th>\
+<th>Match evidence</th></tr></thead>\n<tbody>\n",
+        );
+        for result in advisory_rows {
+            for advisory in &result.advisories {
+                let severity = advisory.severity.label().to_ascii_lowercase();
+                let _ = writeln!(
+                    out,
+                    "<tr><td>{}:{}</td><td>{}</td><td class=\"{}\">{}</td><td>{:.1}</td>\
+<td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    html_escape(&result.host.to_string()),
+                    result.port,
+                    html_escape(&advisory.id),
+                    severity,
+                    html_escape(advisory.severity.label()),
+                    advisory.cvss,
+                    if advisory.cisa_kev { "yes" } else { "no" },
+                    html_escape(&advisory.title),
+                    html_escape(&advisory.source),
+                    html_escape(&advisory.evidence)
+                );
+            }
+        }
+        out.push_str("</tbody>\n</table>\n");
+    }
+
+    let script_rows: Vec<&PortResult> = results
+        .iter()
+        .copied()
+        .filter(|result| !result.script_findings.is_empty())
+        .collect();
+    if !script_rows.is_empty() {
+        out.push_str(
+            "<h2>Script findings</h2>\n<table>\n<thead><tr><th>Host:port</th>\
+<th>Severity</th><th>ID</th><th>Title</th><th>Plugin</th><th>Evidence</th></tr>\
+</thead>\n<tbody>\n",
+        );
+        for result in script_rows {
+            for finding in &result.script_findings {
+                let mut extra = Vec::new();
+                if let Some(description) = &finding.description {
+                    extra.push(description.clone());
+                }
+                if let Some(evidence) = &finding.evidence {
+                    extra.push(evidence.clone());
+                }
+                if !finding.cve.is_empty() {
+                    extra.push(format!("CVE: {}", finding.cve.join(", ")));
+                }
+                if !finding.references.is_empty() {
+                    extra.push(format!("References: {}", finding.references.join(", ")));
+                }
+                let _ = writeln!(
+                    out,
+                    "<tr><td>{}:{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>\
+<td>{}</td></tr>",
+                    html_escape(&result.host.to_string()),
+                    result.port,
+                    html_escape(finding.severity.label()),
+                    html_escape(&finding.id),
+                    html_escape(&finding.title),
+                    html_escape(&finding.plugin),
+                    html_escape(&extra.join("\n"))
+                );
+            }
+        }
+        out.push_str("</tbody>\n</table>\n");
+    }
+
+    let tls_rows: Vec<&PortResult> = results
+        .iter()
+        .copied()
+        .filter(|result| result.tls.is_some())
+        .collect();
+    if !tls_rows.is_empty() {
+        out.push_str(
+            "<h2>TLS details</h2>\n<table>\n<thead><tr><th>Host:port</th>\
+<th>Version / cipher</th><th>Subject</th><th>Issuer</th><th>SAN</th>\
+<th>Validity</th><th>Flags</th></tr></thead>\n<tbody>\n",
+        );
+        for result in tls_rows {
+            let tls = result.tls.as_ref().expect("filtered TLS result");
+            let flags = format!(
+                "expired={} not-yet-valid={} self-signed={} hostname-match={}",
+                html_yes_no(tls.expired),
+                html_yes_no(tls.not_yet_valid),
+                html_yes_no(tls.self_signed),
+                html_yes_no(tls.hostname_matches)
+            );
+            let validity = tls
+                .days_remaining
+                .map(|days| format!("{days} day(s) remaining"))
+                .unwrap_or_else(|| format!("items={}", tls.chain_len));
+            let _ = writeln!(
+                out,
+                "<tr><td>{}:{}</td><td>{} / {}</td><td>{}</td><td>{}</td>\
+<td>{}</td><td>{}</td><td>{}</td></tr>",
+                html_escape(&result.host.to_string()),
+                result.port,
+                html_escape(&tls.version),
+                html_escape(&tls.cipher),
+                html_escape(tls.subject.as_deref().unwrap_or("-")),
+                html_escape(tls.issuer.as_deref().unwrap_or("-")),
+                html_escape(&tls.san.join(", ")),
+                html_escape(&validity),
+                html_escape(&flags)
+            );
+        }
+        out.push_str("</tbody>\n</table>\n");
+    }
+
+    if !report.os_fingerprints.is_empty() {
+        out.push_str(
+            "<h2>OS fingerprints</h2>\n<table>\n<thead><tr><th>Host</th>\
+<th>Family</th><th>Detail</th><th>Confidence</th><th>Evidence</th></tr></thead>\
+\n<tbody>\n",
+        );
+        let mut hosts: Vec<_> = report.os_fingerprints.iter().collect();
+        hosts.sort_by_key(|(host, _)| **host);
+        for (host, guess) in hosts {
+            let _ = writeln!(
+                out,
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{:.0}%</td><td>{}</td></tr>",
+                html_escape(&host.to_string()),
+                html_escape(&guess.family.to_string()),
+                html_escape(&guess.detail),
+                guess.confidence * 100.0,
+                html_escape(guess.evidence.as_deref().unwrap_or("-"))
+            );
+        }
+        out.push_str("</tbody>\n</table>\n");
+
+        if report
+            .os_fingerprints
+            .values()
+            .any(|guess| !guess.endpoints.is_empty())
+        {
+            out.push_str(
+                "<h3>Endpoint OS assignments</h3>\n<table>\n<thead><tr><th>Host</th>\
+<th>Port</th><th>Service</th><th>Family</th><th>Detail</th><th>Confidence</th>\
+<th>Hops</th><th>Evidence</th></tr></thead>\n<tbody>\n",
+            );
+            let mut hosts: Vec<_> = report.os_fingerprints.iter().collect();
+            hosts.sort_by_key(|(host, _)| **host);
+            for (host, guess) in hosts {
+                for endpoint in &guess.endpoints {
+                    let _ = writeln!(
+                        out,
+                        "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>\
+<td>{:.0}%</td><td>{}</td><td>{}</td></tr>",
+                        html_escape(&host.to_string()),
+                        endpoint.port,
+                        html_escape(endpoint.service.as_deref().unwrap_or("-")),
+                        html_escape(&endpoint.family.to_string()),
+                        html_escape(&endpoint.detail),
+                        endpoint.confidence * 100.0,
+                        endpoint
+                            .hops
+                            .map(|hops| hops.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                        html_escape(endpoint.evidence.as_deref().unwrap_or("-"))
+                    );
+                }
+            }
+            out.push_str("</tbody>\n</table>\n");
+        }
+    }
+
+    if let Some(diff) = diff {
+        out.push_str("<h2>Changes from baseline</h2>\n");
+        let _ = writeln!(
+            out,
+            "<p><strong>Baseline:</strong> {} &middot; <strong>New:</strong> {} &middot; \
+             <strong>Gone:</strong> {} &middot; <strong>Modified:</strong> {} &middot; \
+             <strong>Posture:</strong> {} &middot; <strong>Critical advisories:</strong> {}</p>",
+            html_escape(&diff.baseline_source),
+            diff.summary.new_ports,
+            diff.summary.gone_ports,
+            diff.summary.modified_ports,
+            diff.summary.posture_changes,
+            diff.summary.critical_advisories
+        );
+        if !diff.port_changes.is_empty() {
+            out.push_str(
+                "<table>\n<thead><tr><th>Change</th><th>Host:port</th>\
+<th>Summary</th></tr></thead>\n<tbody>\n",
+            );
+            for change in &diff.port_changes {
+                let _ = writeln!(
+                    out,
+                    "<tr><td>{}</td><td>{}:{}</td><td>{}</td></tr>",
+                    html_escape(change.kind.tag()),
+                    html_escape(&change.host.to_string()),
+                    change.port,
+                    html_escape(&change.summary)
+                );
+            }
+            out.push_str("</tbody>\n</table>\n");
+        }
+        if !diff.posture_changes.is_empty() {
+            out.push_str(
+                "<table>\n<thead><tr><th>Host</th><th>Posture</th></tr>\
+</thead>\n<tbody>\n",
+            );
+            for change in &diff.posture_changes {
+                let _ = writeln!(
+                    out,
+                    "<tr><td>{}</td><td>{} -&gt; {}</td></tr>",
+                    html_escape(&change.host.to_string()),
+                    html_escape(&change.old_posture),
+                    html_escape(&change.new_posture)
+                );
+            }
+            out.push_str("</tbody>\n</table>\n");
+        }
+    }
+
+    let _ = writeln!(
+        out,
+        "<p class=\"muted\">Generated by portensor {}. This report is self-contained.</p>",
+        env!("CARGO_PKG_VERSION")
+    );
+    out.push_str("</body>\n</html>\n");
+    out
+}
+
 /// Render a plain `host:port` list of open results for pipeline chaining.
 fn render_host_port(results: &[&PortResult]) -> String {
     let mut output = String::new();
@@ -1729,7 +2228,7 @@ fn render_host_port(results: &[&PortResult]) -> String {
 ///
 /// Only ports whose state is `Open` or `Silent` are included (i.e., ports that
 /// accepted or at least acknowledged a connection). The result is ready to paste
-/// directly into the `-p` argument of nmap, rayscan, netexec, impacket, or any
+/// directly into the `-p` argument of nmap, portensor, netexec, impacket, or any
 /// other tool that accepts a comma-separated port list.
 ///
 /// Example output: `53,88,139,389,445,593,3268,3389,5985`
@@ -1819,7 +2318,7 @@ mod tests {
             .with_detection(Detection {
                 service: Some(ServiceInfo {
                     name: "http".to_string(),
-                    product: Some("rayscan-lab".to_string()),
+                    product: Some("portensor-lab".to_string()),
                     version: None,
                     confidence: Some(0.85),
                     ..Default::default()
@@ -1961,7 +2460,7 @@ mod tests {
         // format the emitted document must contain only results, even when
         // defense intelligence and advisory extras are requested.
         let dir = std::env::temp_dir().join(format!(
-            "rayscan-portlist-{}-{:?}",
+            "portensor-portlist-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -2102,7 +2601,7 @@ mod tests {
         let output = render_sarif(&results).unwrap();
         let payload: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(payload["version"], "2.1.0");
-        assert_eq!(payload["runs"][0]["tool"]["driver"]["name"], "rayscan");
+        assert_eq!(payload["runs"][0]["tool"]["driver"]["name"], "portensor");
         assert_eq!(payload["runs"][0]["results"][0]["ruleId"], "CVE-2011-2523");
         assert_eq!(payload["runs"][0]["results"][0]["level"], "error");
         assert!(
@@ -2149,12 +2648,13 @@ mod tests {
             hostname_matches: false,
             chain_len: 1,
             starttls: None,
+            sni: None,
         });
         crate::advisory::apply_advisories(&mut report);
 
         let results: Vec<&PortResult> = report.results.iter().collect();
         let output = render_markdown(&report, "192.0.2.1", &results, StateSet::all(), None);
-        assert!(output.contains("# rayscan scan report"));
+        assert!(output.contains("# portensor scan report"));
         assert!(output.contains("## Services"));
         assert!(output.contains("CVE-2011-2523"));
         assert!(output.contains("## TLS Certificates"));
@@ -2180,6 +2680,32 @@ mod tests {
                 agreement: Some(2.0 / 3.0),
                 ports: vec![80, 443, 8080],
                 evidence: Some("TTL=62 Window=29200".to_string()),
+                endpoints: vec![
+                    crate::fingerprint::OsEndpointGuess {
+                        port: 80,
+                        family: crate::fingerprint::OsFamily::Linux,
+                        stack_family: crate::fingerprint::OsFamily::Linux,
+                        stack_confidence: 0.90,
+                        detail: "Linux 5.x".to_string(),
+                        confidence: 0.90,
+                        initial_ttl: Some(64),
+                        hops: Some(2),
+                        evidence: Some("TTL=62 Window=29200".to_string()),
+                        service: Some("http".to_string()),
+                    },
+                    crate::fingerprint::OsEndpointGuess {
+                        port: 443,
+                        family: crate::fingerprint::OsFamily::Windows,
+                        stack_family: crate::fingerprint::OsFamily::Windows,
+                        stack_confidence: 0.80,
+                        detail: "Windows 10/11".to_string(),
+                        confidence: 0.80,
+                        initial_ttl: Some(128),
+                        hops: Some(2),
+                        evidence: Some("TTL=126 Window=65535".to_string()),
+                        service: Some("https".to_string()),
+                    },
+                ],
             },
         );
         let open: Vec<&PortResult> = report
@@ -2195,6 +2721,9 @@ mod tests {
         );
         assert!(output.contains("| 3 (67%) | 2 |"));
         assert!(output.contains("TTL=62 Window=29200"));
+        assert!(output.contains("### Endpoint OS assignments"));
+        assert!(output.contains("| 192.0.2.1 | 80 | http | linux | Linux 5.x | 90% | 2 |"));
+        assert!(output.contains("| 192.0.2.1 | 443 | https | windows | Windows 10/11 | 80% |"));
     }
 
     fn script_finding() -> crate::script::PluginFinding {
@@ -2273,7 +2802,7 @@ mod tests {
         let payload: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(payload["open"][0]["port"], 80);
         assert_eq!(payload["open"][0]["service"]["name"], "http");
-        assert_eq!(payload["open"][0]["service"]["product"], "rayscan-lab");
+        assert_eq!(payload["open"][0]["service"]["product"], "portensor-lab");
         assert_eq!(payload["open"][0]["banner"], "HTTP/1.1 200 OK");
         assert!(payload["open"][0]["confidence"].as_f64().unwrap() > 0.0);
         assert!(payload["open"][0]["evidence"].is_string());
@@ -2322,7 +2851,7 @@ mod tests {
         assert!(
             output.contains("host,port,state,latency_ms,service,product,version,banner,detail")
         );
-        assert!(output.contains("http,rayscan-lab"));
+        assert!(output.contains("http,portensor-lab"));
         assert!(output.contains("\"refused, then reset\""));
     }
 
@@ -2430,5 +2959,143 @@ mod tests {
         let payload: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(payload.get("defense").is_none());
         assert_eq!(payload["summary"]["unfiltered"], 0);
+    }
+
+    #[test]
+    fn html_report_is_self_contained_and_escapes_user_fields() {
+        let payload = "<script>alert('xss')</script>";
+        let mut report = sample_report();
+        let result = &mut report.results[0];
+        result.detail = Some(payload.to_string());
+        result.banner = Some(payload.to_string());
+        result.evidence = Some(payload.to_string());
+        if let Some(service) = result.service.as_mut() {
+            service.name = payload.to_string();
+            service.product = Some(payload.to_string());
+            service.version = Some(payload.to_string());
+        }
+        result.advisories.push(crate::advisory::AdvisoryMatch {
+            id: payload.to_string(),
+            title: payload.to_string(),
+            severity: crate::advisory::Severity::High,
+            cvss: 8.1,
+            cisa_kev: true,
+            epss: Some(0.42),
+            source: payload.to_string(),
+            confidence: 0.9,
+            evidence: payload.to_string(),
+        });
+        result.script_findings.push(crate::script::PluginFinding {
+            id: payload.to_string(),
+            title: payload.to_string(),
+            severity: crate::script::FindingSeverity::High,
+            confidence: Some(0.8),
+            description: Some(payload.to_string()),
+            evidence: Some(payload.to_string()),
+            cve: vec![payload.to_string()],
+            references: vec![payload.to_string()],
+            plugin: payload.to_string(),
+        });
+        result.tls = Some(crate::tls::TlsInfo {
+            version: payload.to_string(),
+            cipher: payload.to_string(),
+            alpn: Some(payload.to_string()),
+            key_algorithm: Some(payload.to_string()),
+            signature_algorithm: Some(payload.to_string()),
+            chain: vec![payload.to_string()],
+            subject: Some(payload.to_string()),
+            issuer: Some(payload.to_string()),
+            san: vec![payload.to_string()],
+            serial: Some(payload.to_string()),
+            not_before: None,
+            not_after: None,
+            days_remaining: Some(3),
+            expired: false,
+            not_yet_valid: false,
+            self_signed: true,
+            hostname_matches: false,
+            chain_len: 1,
+            starttls: None,
+            sni: None,
+        });
+        report.os_fingerprints.insert(
+            "192.0.2.1".parse().unwrap(),
+            crate::fingerprint::OsGuess {
+                family: crate::fingerprint::OsFamily::Linux,
+                role: None,
+                detail: payload.to_string(),
+                confidence: 0.8,
+                initial_ttl: Some(64),
+                hops: Some(1),
+                samples: Some(3),
+                agreement: Some(1.0),
+                ports: vec![80],
+                evidence: Some(payload.to_string()),
+                endpoints: Vec::new(),
+            },
+        );
+        let diff = crate::diff::ScanDiff {
+            baseline_source: payload.to_string(),
+            current_target: payload.to_string(),
+            port_changes: vec![crate::diff::PortChange {
+                host: "192.0.2.1".parse().unwrap(),
+                port: 80,
+                kind: crate::diff::ChangeKind::New,
+                old_state: None,
+                new_state: Some(PortState::Open),
+                old_service: None,
+                new_service: Some(payload.to_string()),
+                old_confidence: None,
+                new_confidence: Some(0.9),
+                new_advisories: Vec::new(),
+                resolved_advisories: Vec::new(),
+                summary: payload.to_string(),
+            }],
+            posture_changes: Vec::new(),
+            summary: crate::diff::DiffSummary {
+                new_ports: 1,
+                ..crate::diff::DiffSummary::default()
+            },
+        };
+        let results: Vec<&PortResult> = report.results.iter().collect();
+        let html = render_html(&report, payload, &results, Some(&diff));
+        assert!(html.starts_with("<!DOCTYPE html>"));
+        assert!(html.contains("</html>"));
+        assert!(!html.contains("<script>alert"), "raw script tag leaked");
+        assert!(html.contains("&lt;script&gt;alert"));
+        assert!(!html.contains("<link "), "remote or external styles leaked");
+        assert!(!html.contains("src="), "remote asset reference leaked");
+        assert!(!html.contains("http://"), "remote URL leaked");
+        assert!(!html.contains("https://"), "remote URL leaked");
+        assert_eq!(
+            html.matches("<table").count(),
+            html.matches("</table>").count()
+        );
+        assert_eq!(
+            html.matches("<details").count(),
+            html.matches("</details>").count()
+        );
+    }
+
+    #[test]
+    fn html_report_handles_large_reports() {
+        let mut report = sample_report();
+        let mut results = Vec::new();
+        for index in 0..5_000u32 {
+            let host =
+                std::net::Ipv4Addr::new(198, 51, ((index / 250) % 250) as u8, (index % 250) as u8);
+            results.push(PortResult::new(
+                IpAddr::V4(host),
+                (index % 65_535) as u16 + 1,
+                PortState::Open,
+                Duration::from_millis(1),
+            ));
+        }
+        let refs: Vec<&PortResult> = results.iter().collect();
+        let html = render_html(&report, "198.51.100.0/24", &refs, None);
+        assert!(html.contains("</body>"));
+        assert!(html.matches("<tr>").count() >= 5_000);
+        assert!(html.len() > 500_000);
+        report.results.clear();
     }
 }

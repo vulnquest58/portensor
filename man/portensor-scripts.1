@@ -1,0 +1,35 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-scripts 1  "scripts "
+.SH NAME
+portensor\-scripts \- List and validate script plugin manifests (sidecar or WASM)
+.SH SYNOPSIS
+\fBscripts\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+List and validate script plugin manifests (sidecar or WASM)
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.SH SUBCOMMANDS
+.TP
+portensor\-scripts\-list(1)
+List and validate script plugin manifests
+.TP
+portensor\-scripts\-search(1)
+Search a remote script pack registry index
+.TP
+portensor\-scripts\-install(1)
+Install a pack directory, archive URL, or registry pack into the local library
+.TP
+portensor\-scripts\-uninstall(1)
+Remove an installed pack from the local script library
+.TP
+portensor\-scripts\-update(1)
+Update registry\-installed packs using the digest\-pinned lockfile
+.TP
+portensor\-scripts\-library(1)
+Print the local script library location
+.TP
+portensor\-scripts\-help(1)
+Print this message or the help of the given subcommand(s)

@@ -180,7 +180,7 @@ impl ScanDiff {
     /// Compact plain-text alert suitable for log ingestion or webhook payloads.
     pub fn render_alert(&self) -> String {
         let mut out = String::new();
-        out.push_str("rayscan change alert\n");
+        out.push_str("portensor change alert\n");
         out.push_str(&format!("baseline: {}\n", self.baseline_source));
         out.push_str(&format!("target: {}\n", self.current_target));
         out.push_str(&format!(
@@ -963,7 +963,7 @@ fn load_nmap_xml(content: &str, path: &Path) -> Result<BaselineSnapshot, AppErro
     Ok(snapshot)
 }
 
-/// Parse any supported baseline file (rayscan JSON report, state file, or Nmap XML).
+/// Parse any supported baseline file (portensor JSON report, state file, or Nmap XML).
 pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         AppError::runtime(format!(
@@ -980,7 +980,7 @@ pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
         return load_nmap_xml(trimmed, path);
     }
 
-    // Try parsing as standard rayscan JSON report
+    // Try parsing as standard portensor JSON report
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
         let mut snapshot = BaselineSnapshot::default();
 
@@ -1167,7 +1167,7 @@ pub fn load_baseline(path: &Path) -> Result<BaselineSnapshot, AppError> {
     }
 
     Err(AppError::usage(format!(
-        "baseline file {} is not a valid rayscan JSON report, state file, or Nmap XML report",
+        "baseline file {} is not a valid portensor JSON report, state file, or Nmap XML report",
         path.display()
     )))
 }
@@ -1188,7 +1188,7 @@ pub fn write_alert(path: &Path, diff: &ScanDiff) -> Result<(), AppError> {
         .map_err(|error| AppError::runtime(format!("cannot write {}: {error}", path.display())))
 }
 
-/// CLI entry point for the standalone `rayscan diff <BASELINE> <CURRENT>` command.
+/// CLI entry point for the standalone `portensor diff <BASELINE> <CURRENT>` command.
 pub fn run_cli(
     args: crate::cli::DiffArgs,
     theme: Option<crate::theme::Theme>,
@@ -1440,8 +1440,10 @@ mod tests {
 
     #[test]
     fn nmap_xml_baseline_imports_tcp_ports_and_services() {
-        let path =
-            std::env::temp_dir().join(format!("rayscan-nmap-baseline-{}.xml", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "portensor-nmap-baseline-{}.xml",
+            std::process::id()
+        ));
         std::fs::write(
             &path,
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -1509,7 +1511,7 @@ mod tests {
     #[test]
     fn rejects_xml_that_is_not_an_nmap_report() {
         let path = std::env::temp_dir().join(format!(
-            "rayscan-invalid-nmap-baseline-{}.xml",
+            "portensor-invalid-nmap-baseline-{}.xml",
             std::process::id()
         ));
         std::fs::write(
@@ -1525,7 +1527,7 @@ mod tests {
     #[test]
     fn empty_json_report_is_a_valid_baseline() {
         let path = std::env::temp_dir().join(format!(
-            "rayscan-empty-baseline-{}.json",
+            "portensor-empty-baseline-{}.json",
             std::process::id()
         ));
         std::fs::write(

@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BINARY = ROOT / "target" / "release" / "rayscan"
+DEFAULT_BINARY = ROOT / "target" / "release" / "portensor"
 
 CASES = [
     ("top100", ["--top-ports", "100"]),

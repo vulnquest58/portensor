@@ -5,8 +5,9 @@
 *.pyc
 __pycache__/
 .DS_Store
-/rayscan-linux
-/rayscan-static-musl
-/rayscan.exe
+/portensor-linux
+/portensor-static-musl
+/portensor.exe
 /dist/*.tar.gz
 /dist/*.zip
+/dist/packages/

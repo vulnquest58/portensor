@@ -5,7 +5,7 @@
 //! Duplicate evidence, detail tags, findings, advisories, and compatible
 //! service metadata are unioned; conflicting service identities are recorded
 //! in the evidence string.  The merged document uses the same JSON schema as
-//! `rayscan scan --json`, so it can feed `--diff`, SIEM ingestion, or the
+//! `portensor scan --json`, so it can feed `--diff`, SIEM ingestion, or the
 //! Markdown/SARIF renderers.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -177,7 +177,7 @@ fn merge_file(path: &Path, merged: &mut MergedReport) -> Result<(), AppError> {
 
     if !parsed_any {
         return Err(AppError::usage(format!(
-            "{} is not a rayscan JSON or JSONL report",
+            "{} is not a portensor JSON or JSONL report",
             path.display()
         )));
     }
@@ -193,7 +193,10 @@ fn merge_file(path: &Path, merged: &mut MergedReport) -> Result<(), AppError> {
 
 fn merge_value(value: Value, merged: &mut MergedReport, path: &Path) -> Result<(), AppError> {
     let object = value.as_object().ok_or_else(|| {
-        AppError::usage(format!("{} is not a rayscan report object", path.display()))
+        AppError::usage(format!(
+            "{} is not a portensor report object",
+            path.display()
+        ))
     })?;
 
     if object.contains_key("version") && object.contains_key("ports_scanned") {
@@ -676,7 +679,7 @@ mod tests {
 
     fn temp_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "rayscan-merge-{}-{}-{name}.json",
+            "portensor-merge-{}-{}-{name}.json",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

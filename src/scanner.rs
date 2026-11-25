@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, TcpStream as StdTcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use async_channel::Sender;
@@ -23,15 +23,23 @@ use crate::rate::{AdaptiveRate, RateLimiter, TargetFeedback};
 use crate::rtt::RttEstimator;
 use crate::service;
 
-const MIN_CONNECT_TIMEOUT: Duration = Duration::from_millis(1_500);
+const MIN_CONNECT_TIMEOUT: Duration = Duration::from_millis(1_100);
 /// Upper bound on application-level timeout retries per port. Each retry can
 /// cost a full connect timeout, so a high `--retries` value must not turn a
 /// filtered port into a multi-second delay.
 const MAX_TIMEOUT_RETRIES: u32 = 3;
+/// Concurrent verification reconnects used when a handshake was silent.
+const VERIFICATION_RETRY_FANOUT: usize = 8;
 /// Verification reconnects are bounded separately from connect retries. A
 /// silent tarpit looks identical to a lost banner, so an aggressive profile
 /// must not turn every tarpit into many full probe windows.
-const MAX_VERIFICATION_RETRIES: u32 = 2;
+const MAX_VERIFICATION_RETRIES: u32 = 4;
+/// Refresh the cached per-host RTT estimate this often instead of on every
+/// probe; the value only shapes timeout ceilings and retry pacing.
+const RTT_SAMPLE_STRIDE: u64 = 16;
+/// Stack reserved for each blocking connect-only worker. The probe path is
+/// shallow, so a large default stack per thread only wastes address space.
+const CONNECT_THREAD_STACK: usize = 512 * 1024;
 const SERVICE_BANNER_LIMIT: usize = 1024;
 const SERVICE_BANNER_IDLE: Duration = Duration::from_millis(50);
 const SERVICE_BANNER_GRACE: Duration = Duration::from_millis(100);
@@ -137,6 +145,9 @@ struct Shared {
     options: ScanOptions,
     limiter: RateLimiter,
     rtt: Vec<Mutex<RttEstimator>>,
+    /// Cached connect timeout in nanoseconds so the hot path avoids taking the
+    /// RTT mutex before every probe.
+    timeout_nanos: Vec<AtomicU64>,
     /// Responses that prove the host is reachable. Used to distinguish an
     /// isolated dropped SYN from a host where every probe is filtered.
     healthy: Vec<AtomicU64>,
@@ -175,6 +186,10 @@ pub async fn scan(
     let rtt = (0..targets.len())
         .map(|_| Mutex::new(RttEstimator::new()))
         .collect();
+    let initial_timeout = MIN_CONNECT_TIMEOUT.as_nanos().min(u128::from(u64::MAX)) as u64;
+    let timeout_nanos = (0..targets.len())
+        .map(|_| AtomicU64::new(initial_timeout))
+        .collect();
     let healthy = (0..targets.len()).map(|_| AtomicU64::new(0)).collect();
     let timeouts = (0..targets.len()).map(|_| AtomicU64::new(0)).collect();
     let host_gates = if options.host_concurrency > 0 {
@@ -191,6 +206,7 @@ pub async fn scan(
         options: options.clone(),
         limiter: RateLimiter::new(options.rate),
         rtt,
+        timeout_nanos,
         healthy,
         timeouts,
         host_gates,
@@ -208,34 +224,48 @@ pub async fn scan(
     };
 
     let mut tasks = JoinSet::new();
-    // Verification pool: banner waits and active probes run outside the
-    // connect workers so slow-to-banner ports cannot throttle the connect
-    // pipeline (a worker slot is no longer occupied for the whole
-    // connect + verify sequence). Verification is pure IO-wait, so the pool
-    // is sized larger than the connect pool to absorb bursts of silent
-    // or slow-banner ports.
-    let verifier_count = workers.saturating_mul(4).clamp(16, 1024);
-    let (ver_tx, ver_rx) =
-        async_channel::bounded::<VerifyJob>(verifier_count.saturating_mul(2).max(64));
-    for _ in 0..verifier_count {
-        let ver_rx = ver_rx.clone();
-        let sender = sender.clone();
-        let shared = Arc::clone(&shared);
-        tasks.spawn(async move {
-            run_verifier(ver_rx, sender, shared).await;
-        });
-    }
-    for _ in 0..workers {
-        let shared = Arc::clone(&shared);
-        let next = Arc::clone(&next);
-        let sender = sender.clone();
-        let ver_tx = ver_tx.clone();
-        tasks.spawn(async move {
-            run_worker(shared, next, sender, ver_tx).await;
-        });
-    }
+    let blocking_monitor = if options.connect_only {
+        // Connect-only discovery has no post-handshake work. A synchronous
+        // worker pool avoids the per-probe timer and I/O-driver wakeup cost
+        // that otherwise dominates full-range scans, while still sharing the
+        // rate limiter, RTT cache, host gates, retries, and result channel.
+        Some(spawn_blocking_connect_workers(
+            Arc::clone(&shared),
+            Arc::clone(&next),
+            sender.clone(),
+            workers,
+        ))
+    } else {
+        // Verification pool: banner waits and active probes run outside the
+        // connect workers so slow-to-banner ports cannot throttle the connect
+        // pipeline (a worker slot is no longer occupied for the whole
+        // connect + verify sequence). Verification is pure IO-wait, so the pool
+        // is sized larger than the connect pool to absorb bursts of silent
+        // or slow-banner ports.
+        let verifier_count = workers.saturating_mul(4).clamp(16, 1024);
+        let (ver_tx, ver_rx) =
+            async_channel::bounded::<VerifyJob>(verifier_count.saturating_mul(2).max(64));
+        for _ in 0..verifier_count {
+            let ver_rx = ver_rx.clone();
+            let sender = sender.clone();
+            let shared = Arc::clone(&shared);
+            tasks.spawn(async move {
+                run_verifier(ver_rx, sender, shared).await;
+            });
+        }
+        for _ in 0..workers {
+            let shared = Arc::clone(&shared);
+            let next = Arc::clone(&next);
+            let sender = sender.clone();
+            let ver_tx = ver_tx.clone();
+            tasks.spawn(async move {
+                run_worker(shared, next, sender, ver_tx).await;
+            });
+        }
+        drop(ver_tx);
+        None
+    };
     drop(sender);
-    drop(ver_tx);
 
     let mut counts = StateCounts::default();
     let mut results = Vec::new();
@@ -268,6 +298,12 @@ pub async fn scan(
         }
     }
 
+    if let Some(monitor) = blocking_monitor {
+        tokio::task::spawn_blocking(move || monitor.join())
+            .await
+            .map_err(|error| AppError::runtime(format!("blocking scan monitor failed: {error}")))?
+            .map_err(|_| AppError::runtime("blocking scan worker panicked"))?;
+    }
     while let Some(joined) = tasks.join_next().await {
         joined.map_err(|error| AppError::runtime(format!("scan worker failed: {error}")))?;
     }
@@ -470,13 +506,14 @@ async fn verify_candidate(
                     options.service_detection,
                 )
                 .await;
-                // Retry inconclusive verifications: no listener evidence
-                // (closed/silent) or a port that accepted but produced no
-                // service identity yet. The latter covers flaky services that
-                // drop the first probe after the handshake (RSC-BUG-001 made
-                // that case Open instead of Silent).
+                // Retry inconclusive verifications: no listener evidence, or
+                // an accepted handshake that produced no banner at all. A
+                // banner with no service fingerprint is already conclusive and
+                // must not consume the retry budget on lossy paths.
                 let ambiguous = matches!(result.state, PortState::Closed | PortState::Silent)
-                    || (result.state == PortState::Open && result.service.is_none());
+                    || (result.state == PortState::Open
+                        && result.service.is_none()
+                        && result.banner.is_none());
                 if ambiguous && verify_attempts < options.retries.min(MAX_VERIFICATION_RETRIES) {
                     best = Some(prefer_best_evidence(best, result));
                     verify_attempts += 1;
@@ -490,6 +527,224 @@ async fn verify_candidate(
     }
 }
 
+/// Bounded per-host gate for blocking connect workers.
+struct HostGate {
+    limit: usize,
+    used: Mutex<usize>,
+    available: Condvar,
+}
+
+impl HostGate {
+    fn new(limit: usize) -> Arc<Self> {
+        Arc::new(Self {
+            limit,
+            used: Mutex::new(0),
+            available: Condvar::new(),
+        })
+    }
+
+    fn acquire(self: &Arc<Self>) -> HostPermit {
+        let mut used = self.used.lock().expect("host gate lock poisoned");
+        while *used >= self.limit {
+            used = self
+                .available
+                .wait(used)
+                .expect("host gate lock poisoned while waiting");
+        }
+        *used += 1;
+        HostPermit {
+            gate: Arc::clone(self),
+        }
+    }
+}
+
+struct HostPermit {
+    gate: Arc<HostGate>,
+}
+
+impl Drop for HostPermit {
+    fn drop(&mut self) {
+        let mut used = self.gate.used.lock().expect("host gate lock poisoned");
+        *used = used.saturating_sub(1);
+        self.gate.available.notify_one();
+    }
+}
+
+fn spawn_blocking_connect_workers(
+    shared: Arc<Shared>,
+    next: Arc<AtomicU64>,
+    sender: Sender<Vec<PortResult>>,
+    workers: usize,
+) -> std::thread::JoinHandle<()> {
+    let gates: Arc<Vec<Arc<HostGate>>> = if shared.options.host_concurrency > 0 {
+        Arc::new(
+            (0..shared.targets.len())
+                .map(|_| HostGate::new(shared.options.host_concurrency))
+                .collect(),
+        )
+    } else {
+        Arc::new(Vec::new())
+    };
+    let mut handles = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let shared = Arc::clone(&shared);
+        let next = Arc::clone(&next);
+        let sender = sender.clone();
+        let gates = Arc::clone(&gates);
+        match std::thread::Builder::new()
+            .name("portensor-connect".to_string())
+            .stack_size(CONNECT_THREAD_STACK)
+            .spawn(move || run_blocking_connect_worker(shared, next, sender, gates))
+        {
+            Ok(handle) => handles.push(handle),
+            Err(error) => diag::event(
+                Level::Warn,
+                "connect_worker_spawn_failed",
+                &[("error", serde_json::json!(error.to_string()))],
+            ),
+        }
+    }
+    std::thread::spawn(move || {
+        for handle in handles {
+            let _ = handle.join();
+        }
+    })
+}
+
+fn run_blocking_connect_worker(
+    shared: Arc<Shared>,
+    next: Arc<AtomicU64>,
+    sender: Sender<Vec<PortResult>>,
+    gates: Arc<Vec<Arc<HostGate>>>,
+) {
+    let port_count = shared.ports.len() as u64;
+    let mut batch: Vec<PortResult> = Vec::with_capacity(RESULT_BATCH);
+    let mut last_flush = Instant::now();
+
+    loop {
+        if shared.options.shutdown.load(Ordering::Relaxed) {
+            break;
+        }
+
+        let index = next.fetch_add(1, Ordering::Relaxed);
+        if index >= shared.jobs {
+            break;
+        }
+
+        let target_index = (index / port_count) as usize;
+        let port_index = (index % port_count) as usize;
+        let target = shared.targets[target_index];
+        let port = shared.ports[port_index];
+        batch.push(probe_connect_only_blocking(
+            &shared,
+            &gates,
+            target_index,
+            target,
+            port,
+        ));
+        let flush = batch.len() >= RESULT_BATCH
+            || (!batch.is_empty() && last_flush.elapsed() >= BATCH_FLUSH_INTERVAL);
+        if flush {
+            last_flush = Instant::now();
+            let pending = std::mem::replace(&mut batch, Vec::with_capacity(RESULT_BATCH));
+            if sender.send_blocking(pending).is_err() {
+                break;
+            }
+        }
+    }
+
+    if !batch.is_empty() {
+        let _ = sender.send_blocking(batch);
+    }
+}
+
+fn probe_connect_only_blocking(
+    shared: &Shared,
+    gates: &[Arc<HostGate>],
+    target_index: usize,
+    host: IpAddr,
+    port: u16,
+) -> PortResult {
+    let address = socket_addr(host, port);
+    let mut attempt = 0u32;
+    let mut timeout_attempts = 0u32;
+
+    loop {
+        shared.limiter.acquire_blocking();
+        apply_jitter_blocking(shared.options.jitter);
+        let _host_permit = gates.get(target_index).map(|gate| gate.acquire());
+        let timeout = current_timeout(shared, target_index);
+        let started = Instant::now();
+        let outcome = StdTcpStream::connect_timeout(&address, timeout);
+        let elapsed = started.elapsed();
+
+        match outcome {
+            Ok(stream) => {
+                drop(stream);
+                record_sample(shared, target_index, elapsed);
+                return PortResult::new(host, port, PortState::Open, elapsed);
+            }
+            Err(error) if connect_error_is_timeout(&error) => {
+                let timeout_count =
+                    shared.timeouts[target_index].fetch_add(1, Ordering::Relaxed) + 1;
+                let healthy = shared.healthy[target_index].load(Ordering::Relaxed);
+                if should_retry_timeout(
+                    healthy,
+                    timeout_count,
+                    timeout_attempts,
+                    shared.options.retries,
+                ) {
+                    timeout_attempts += 1;
+                    attempt += 1;
+                    std::thread::sleep(retry_delay(attempt));
+                    continue;
+                }
+                record_timeout(shared, target_index);
+                return result_with_detail(
+                    shared,
+                    FailureKind::Filtered.state(),
+                    host,
+                    port,
+                    elapsed,
+                    || Failure::timed_out(timeout).detail,
+                );
+            }
+            Err(error) => {
+                let kind = classify_kind(&error);
+                if kind.retryable() && attempt < shared.options.retries {
+                    attempt += 1;
+                    std::thread::sleep(retry_delay(attempt));
+                    continue;
+                }
+                if kind == FailureKind::Closed {
+                    record_sample(shared, target_index, elapsed);
+                }
+                let state = kind.state();
+                return result_with_detail(shared, state, host, port, elapsed, || {
+                    classify_io_error(&error).detail
+                });
+            }
+        }
+    }
+}
+
+fn connect_error_is_timeout(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    )
+}
+
+fn apply_jitter_blocking(jitter: Duration) {
+    if jitter.is_zero() {
+        return;
+    }
+    let max_millis = jitter.as_millis().min(u128::from(u64::MAX)) as u64;
+    let delay = rand::thread_rng().gen_range(0..=max_millis);
+    if delay > 0 {
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+}
 async fn run_worker(
     shared: Arc<Shared>,
     next: Arc<AtomicU64>,
@@ -588,57 +843,103 @@ async fn run_verifier(
 
 fn verification_is_ambiguous(result: &PortResult) -> bool {
     matches!(result.state, PortState::Closed | PortState::Silent)
-        || (result.state == PortState::Open && result.service.is_none())
+        || (result.state == PortState::Open && result.service.is_none() && result.banner.is_none())
 }
 
 /// Verify an accepted connection, reconnecting when the peer accepted the
 /// handshake but the banner was lost. Packet loss after a successful handshake
 /// otherwise turns a live service into `Silent`.
-async fn verify_connected(shared: &Shared, job: VerifyJob) -> PortResult {
-    let mut attempt = 0u32;
-    let mut best: Option<PortResult> = None;
-    let mut stream = Some(job.stream);
+async fn verify_connected(shared: &Arc<Shared>, job: VerifyJob) -> PortResult {
+    let initial = verify_service(
+        job.stream,
+        job.host,
+        job.port,
+        job.latency,
+        shared.options.probe_timeout,
+        shared.options.service_detection,
+    )
+    .await;
 
-    loop {
-        let result = verify_service(
-            stream.take().expect("verification stream is present"),
-            job.host,
-            job.port,
-            job.latency,
-            shared.options.probe_timeout,
-            shared.options.service_detection,
-        )
-        .await;
-
-        if verification_is_ambiguous(&result)
-            && attempt < shared.options.retries.min(MAX_VERIFICATION_RETRIES)
-        {
-            diag::event(
-                Level::Debug,
-                "verification_retry",
-                &[
-                    ("target", serde_json::json!(job.host.to_string())),
-                    ("port", serde_json::json!(job.port)),
-                    ("attempt", serde_json::json!(attempt + 1)),
-                    ("state", serde_json::json!(result.state.as_str())),
-                ],
-            );
-            best = Some(prefer_best_evidence(best, result));
-            attempt += 1;
-            tokio::time::sleep(retry_delay(attempt)).await;
-            match reconnect_for_verification(shared, job.target_index, job.host, job.port).await {
-                Ok(new_stream) => {
-                    stream = Some(new_stream);
-                }
-                Err(result) => return prefer_best_evidence(best, *result),
-            }
-            continue;
-        }
-
-        return prefer_best_evidence(best, result);
+    if !verification_is_ambiguous(&initial) {
+        return initial;
     }
+
+    // `--retries 0` disables post-handshake recovery. Otherwise two concurrent
+    // reconnects are allowed per retry, capped at eight, so a positive budget
+    // recovers independent banner losses without turning a tarpit into one
+    // full probe window per retry.
+    let fanout = (shared.options.retries as usize)
+        .saturating_mul(2)
+        .min(VERIFICATION_RETRY_FANOUT);
+    if fanout == 0 {
+        return initial;
+    }
+
+    diag::event(
+        Level::Debug,
+        "verification_retry",
+        &[
+            ("target", serde_json::json!(job.host.to_string())),
+            ("port", serde_json::json!(job.port)),
+            ("state", serde_json::json!(initial.state.as_str())),
+            ("fanout", serde_json::json!(fanout)),
+        ],
+    );
+
+    // A silent handshake can be a tarpit or a banner that was dropped. Retry
+    // candidates concurrently: a real service answers on at least one fresh
+    // connection, while a tarpit costs a single probe window instead of one
+    // window per retry. The initial attempt plus the fanout keeps the
+    // reconnect budget while keeping tail latency bounded.
+    let mut best = Some(initial);
+    let mut batch = JoinSet::new();
+    for _ in 0..fanout {
+        let shared = Arc::clone(shared);
+        let host = job.host;
+        let port = job.port;
+        let target_index = job.target_index;
+        let latency = job.latency;
+        batch.spawn(
+            async move { retry_verification(shared, target_index, host, port, latency).await },
+        );
+    }
+
+    while let Some(joined) = batch.join_next().await {
+        let Ok(result) = joined else {
+            continue;
+        };
+        if !verification_is_ambiguous(&result) {
+            batch.abort_all();
+            return result;
+        }
+        best = Some(prefer_best_evidence(best, result));
+    }
+
+    best.expect("initial verification result is present")
 }
 
+async fn retry_verification(
+    shared: Arc<Shared>,
+    target_index: usize,
+    host: IpAddr,
+    port: u16,
+    latency: Duration,
+) -> PortResult {
+    match reconnect_for_verification(&shared, target_index, host, port).await {
+        Ok(stream) => {
+            verify_service(
+                stream,
+                host,
+                port,
+                latency,
+                shared.options.probe_timeout,
+                shared.options.service_detection,
+            )
+            .await
+        }
+        Err(result) => *result,
+    }
+}
 async fn reconnect_for_verification(
     shared: &Shared,
     target_index: usize,
@@ -685,13 +986,14 @@ async fn reconnect_for_verification(
                 )));
             }
             Err(_) => {
-                shared.timeouts[target_index].fetch_add(1, Ordering::Relaxed);
                 if attempt < shared.options.retries.min(MAX_TIMEOUT_RETRIES) {
                     attempt += 1;
                     tokio::time::sleep(retry_delay(attempt)).await;
                     continue;
                 }
-                record_timeout(shared, target_index);
+                // The original handshake succeeded, so a reconnect timeout is
+                // isolated loss. Do not let verification retries inflate the
+                // cached connect ceiling for the rest of the scan.
                 return Err(Box::new(result_with_detail(
                     shared,
                     FailureKind::Filtered.state(),
@@ -817,11 +1119,8 @@ async fn probe(shared: &Shared, target_index: usize, host: IpAddr, port: u16) ->
 }
 
 fn current_timeout(shared: &Shared, target_index: usize) -> Duration {
-    let maximum = shared.options.timeout.max(MIN_CONNECT_TIMEOUT);
-    shared.rtt[target_index]
-        .lock()
-        .expect("RTT estimator lock poisoned")
-        .timeout(MIN_CONNECT_TIMEOUT, maximum)
+    let nanos = shared.timeout_nanos[target_index].load(Ordering::Relaxed);
+    Duration::from_nanos(nanos.max(1))
 }
 
 /// Retry a timed-out connect only while the host is demonstrably responding and
@@ -864,18 +1163,31 @@ fn result_with_detail(
 }
 
 fn record_sample(shared: &Shared, target_index: usize, sample: Duration) {
-    shared.healthy[target_index].fetch_add(1, Ordering::Relaxed);
-    shared.rtt[target_index]
-        .lock()
-        .expect("RTT estimator lock poisoned")
-        .observe(sample);
+    let observed = shared.healthy[target_index].fetch_add(1, Ordering::Relaxed) + 1;
+    // RTT only shapes the retry/timeout ceiling, so refreshing it on the first
+    // success and then periodically is enough. Taking this mutex on every
+    // closed-port probe turns the per-host lock into a futex hot spot on
+    // full-range scans without improving the estimate.
+    if observed == 1 || observed.is_multiple_of(RTT_SAMPLE_STRIDE) {
+        refresh_rtt(shared, target_index, |estimator| estimator.observe(sample));
+    }
 }
 
 fn record_timeout(shared: &Shared, target_index: usize) {
-    shared.rtt[target_index]
-        .lock()
-        .expect("RTT estimator lock poisoned")
-        .on_timeout();
+    refresh_rtt(shared, target_index, RttEstimator::on_timeout);
+}
+
+fn refresh_rtt(shared: &Shared, target_index: usize, update: impl FnOnce(&mut RttEstimator)) {
+    let maximum = shared.options.timeout.max(MIN_CONNECT_TIMEOUT);
+    let timeout = {
+        let mut estimator = shared.rtt[target_index]
+            .lock()
+            .expect("RTT estimator lock poisoned");
+        update(&mut estimator);
+        estimator.timeout(MIN_CONNECT_TIMEOUT, maximum)
+    };
+    let nanos = timeout.as_nanos().min(u128::from(u64::MAX)) as u64;
+    shared.timeout_nanos[target_index].store(nanos.max(1), Ordering::Relaxed);
 }
 
 fn retry_delay(attempt: u32) -> Duration {
@@ -1249,7 +1561,7 @@ mod tests {
         let task = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
             socket
-                .write_all(b"HTTP/1.1 200 OK\r\nServer: rayscan-lab\r\nContent-Length: 0\r\n\r\n")
+                .write_all(b"HTTP/1.1 200 OK\r\nServer: portensor-lab\r\nContent-Length: 0\r\n\r\n")
                 .await
                 .unwrap();
         });
@@ -1488,7 +1800,7 @@ mod tests {
         assert_eq!(open.state, PortState::Open);
         let service = open.service.as_ref().unwrap();
         assert_eq!(service.name, "http");
-        assert_eq!(service.product.as_deref(), Some("rayscan-lab"));
+        assert_eq!(service.product.as_deref(), Some("portensor-lab"));
         assert_eq!(open.banner.as_deref(), Some("HTTP/1.1 200 OK"));
     }
 

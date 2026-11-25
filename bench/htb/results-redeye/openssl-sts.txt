@@ -1,0 +1,55 @@
+depth=0 CN = sts.airways.htb
+verify error:num=18:self-signed certificate
+verify return:1
+depth=0 CN = sts.airways.htb
+verify return:1
+CONNECTED(00000003)
+---
+Certificate chain
+ 0 s:CN = sts.airways.htb
+   i:CN = sts.airways.htb
+   a:PKEY: rsaEncryption, 2048 (bit); sigalg: RSA-SHA256
+   v:NotBefore: Oct 19 16:59:44 2026 GMT; NotAfter: Oct 19 17:09:44 2035 GMT
+-----BEGIN CERTIFICATE-----
+MIIDNzCCAh+gAwIBAgIQXCNDQOf6grJLU0d8IokRDDANBgkqhkiG9w0BAQsFADAa
+MRgwFgYDVQQDDA9zdHMuYWlyd2F5cy5odGIwHhcNMjYxMDE5MTY1OTQ0WhcNMzUx
+MDE5MTcwOTQ0WjAaMRgwFgYDVQQDDA9zdHMuYWlyd2F5cy5odGIwggEiMA0GCSqG
+SIb3DQEBAQUAA4IBDwAwggEKAoIBAQDZZPDUxajHVAWEbeYx87Ry6Izq8a252x8j
+/JEoYfaqSJlrWSSjnFIVVEBzNl689p11nfJ6sDx7FAPeAyrG1qRwz7tBX4uhXMuI
+bFrBX12nnkjVj9PMpnqqIznPxl04zVwEGQTJZuWcq1KjAkXd8G+H5XABXQ1DOlGG
+nvG2h3tlg2+AzQtx/Un+0fX6hlu0LYDjPM8+Sw0MQGkr1QsDw5s9Zzc+azNdwXDP
+R0MT6mwSUnmLXu1tdyGBz3Ooq3sZ/+S0L/wMVH3/Ypk6kGrO19Fn5bjWAhE5qy3g
+gGq4XnY8UoSuj5TEeRuXCHCzuSRtRRCt2r43vh7lRSIbngOAH5ipAgMBAAGjeTB3
+MA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEFBQcDAgYIKwYBBQUHAwEw
+JwYDVR0RBCAwHoIPc3RzLmFpcndheXMuaHRiggthaXJ3YXlzLmh0YjAdBgNVHQ4E
+FgQUImj122duwb256cBw15LbeaRcnDEwDQYJKoZIhvcNAQELBQADggEBAF68c4q9
+W20B7CnhtP62RDHZ7RmYKAVBGmsux/qGftFh4o55rT5+pXQKtM0eTOmsm8v15OnN
+8XoZoBuPqJjTk7W77BJxnNPRV26f1kAtszXC7bw7iPc1t8rXWtbkQ0b/ok2CSiM8
+IOCXetpjOdK/IHiUFs+IYAUdRLC03XM3ZXfwDBN4ooJDAP6FwKn0267Cm2sWLvdj
+lI+DRLAr3tjZ4mzE8nHFLfuHMloLZvvkJFbvR9Ruk9ik6fY487RiYtt9r6WC4xoC
+wFYUdXnS8jTfcBtWNu/fvGr++cHcaGC6UBykF/6crQ2P0fn5KxYMOEhRZl1Ov8Pa
+c+7PPbRcbMvoZdw=
+-----END CERTIFICATE-----
+---
+Server certificate
+subject=CN = sts.airways.htb
+issuer=CN = sts.airways.htb
+---
+No client certificate CA names sent
+Peer signing digest: SHA256
+Peer signature type: RSA-PSS
+Server Temp Key: X25519, 253 bits
+---
+SSL handshake has read 1321 bytes and written 397 bytes
+Verification error: self-signed certificate
+---
+New, TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384
+Server public key is 2048 bit
+Secure Renegotiation IS NOT supported
+Compression: NONE
+Expansion: NONE
+No ALPN negotiated
+Early data was not sent
+Verify return code: 18 (self-signed certificate)
+---
+DONE

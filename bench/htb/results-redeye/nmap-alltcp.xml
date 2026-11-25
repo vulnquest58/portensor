@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.80 scan initiated Sat Nov 21 12:56:44 2026 as: nmap -Pn -p- -&#45;min-rate 1000 -&#45;max-retries 2 -oN bench/htb/results-redeye/nmap-alltcp.txt -oX bench/htb/results-redeye/nmap-alltcp.xml 10.129.214.126 -->
+<nmaprun scanner="nmap" args="nmap -Pn -p- -&#45;min-rate 1000 -&#45;max-retries 2 -oN bench/htb/results-redeye/nmap-alltcp.txt -oX bench/htb/results-redeye/nmap-alltcp.xml 10.129.214.126" start="1795262204" startstr="Sat Nov 21 12:56:44 2026" version="7.80" xmloutputversion="1.04">
+<scaninfo type="syn" protocol="tcp" numservices="65535" services="1-65535"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1795262205" endtime="1795262336"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="10.129.214.126" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="filtered" count="65531">
+<extrareasons reason="no-responses" count="65531"/>
+</extraports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="126"/><service name="ssh" method="table" conf="3"/></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="126"/><service name="http" method="table" conf="3"/></port>
+<port protocol="tcp" portid="443"><state state="open" reason="syn-ack" reason_ttl="126"/><service name="https" method="table" conf="3"/></port>
+<port protocol="tcp" portid="3000"><state state="open" reason="syn-ack" reason_ttl="126"/><service name="ppp" method="table" conf="3"/></port>
+</ports>
+<times srtt="100504" rttvar="12309" to="149740"/>
+</host>
+<runstats><finished time="1795262336" timestr="Sat Nov 21 12:58:56 2026" elapsed="131.54" summary="Nmap done at Sat Nov 21 12:58:56 2026; 1 IP address (1 host up) scanned in 131.54 seconds" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

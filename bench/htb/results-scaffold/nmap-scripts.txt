@@ -1,0 +1,265 @@
+# Nmap 7.80 scan initiated Sun Nov 22 19:56:43 2026 as: nmap -Pn --max-rate 80 --max-retries 2 --host-timeout 240s -p 53,88,135,139,389,443,445,464,593,636,3268,3269,5985,9389,9800,9801,47001 --script smb2-security-mode,smb2-time,smb-os-discovery,ldap-rootdse,ssl-cert -oN bench/htb/results-scaffold/nmap-scripts.txt 10.129.215.153
+Nmap scan report for 10.129.215.153
+Host is up (0.20s latency).
+
+PORT      STATE SERVICE
+53/tcp    open  domain
+88/tcp    open  kerberos-sec
+135/tcp   open  msrpc
+139/tcp   open  netbios-ssn
+389/tcp   open  ldap
+| ldap-rootdse: 
+| LDAP Results
+|   <ROOT>
+|       domainFunctionality: 7
+|       forestFunctionality: 7
+|       domainControllerFunctionality: 7
+|       rootDomainNamingContext: DC=scaffold,DC=htb
+|       ldapServiceName: scaffold.htb:dc$@SCAFFOLD.HTB
+|       isGlobalCatalogReady: TRUE
+|       supportedSASLMechanisms: GSSAPI
+|       supportedSASLMechanisms: GSS-SPNEGO
+|       supportedSASLMechanisms: EXTERNAL
+|       supportedSASLMechanisms: DIGEST-MD5
+|       supportedLDAPVersion: 3
+|       supportedLDAPVersion: 2
+|       supportedLDAPPolicies: MaxPoolThreads
+|       supportedLDAPPolicies: MaxPercentDirSyncRequests
+|       supportedLDAPPolicies: MaxDatagramRecv
+|       supportedLDAPPolicies: MaxReceiveBuffer
+|       supportedLDAPPolicies: InitRecvTimeout
+|       supportedLDAPPolicies: MaxConnections
+|       supportedLDAPPolicies: MaxConnIdleTime
+|       supportedLDAPPolicies: MaxPageSize
+|       supportedLDAPPolicies: MaxBatchReturnMessages
+|       supportedLDAPPolicies: MaxQueryDuration
+|       supportedLDAPPolicies: MaxDirSyncDuration
+|       supportedLDAPPolicies: MaxTempTableSize
+|       supportedLDAPPolicies: MaxResultSetSize
+|       supportedLDAPPolicies: MinResultSets
+|       supportedLDAPPolicies: MaxResultSetsPerConn
+|       supportedLDAPPolicies: MaxNotificationPerConn
+|       supportedLDAPPolicies: MaxValRange
+|       supportedLDAPPolicies: MaxValRangeTransitive
+|       supportedLDAPPolicies: ThreadMemoryLimit
+|       supportedLDAPPolicies: SystemMemoryLimitPercent
+|       supportedControl: 1.2.840.113556.1.4.319
+|       supportedControl: 1.2.840.113556.1.4.801
+|       supportedControl: 1.2.840.113556.1.4.473
+|       supportedControl: 1.2.840.113556.1.4.528
+|       supportedControl: 1.2.840.113556.1.4.417
+|       supportedControl: 1.2.840.113556.1.4.619
+|       supportedControl: 1.2.840.113556.1.4.841
+|       supportedControl: 1.2.840.113556.1.4.529
+|       supportedControl: 1.2.840.113556.1.4.805
+|       supportedControl: 1.2.840.113556.1.4.521
+|       supportedControl: 1.2.840.113556.1.4.970
+|       supportedControl: 1.2.840.113556.1.4.1338
+|       supportedControl: 1.2.840.113556.1.4.474
+|       supportedControl: 1.2.840.113556.1.4.1339
+|       supportedControl: 1.2.840.113556.1.4.1340
+|       supportedControl: 1.2.840.113556.1.4.1413
+|       supportedControl: 2.16.840.1.113730.3.4.9
+|       supportedControl: 2.16.840.1.113730.3.4.10
+|       supportedControl: 1.2.840.113556.1.4.1504
+|       supportedControl: 1.2.840.113556.1.4.1852
+|       supportedControl: 1.2.840.113556.1.4.802
+|       supportedControl: 1.2.840.113556.1.4.1907
+|       supportedControl: 1.2.840.113556.1.4.1948
+|       supportedControl: 1.2.840.113556.1.4.1974
+|       supportedControl: 1.2.840.113556.1.4.1341
+|       supportedControl: 1.2.840.113556.1.4.2026
+|       supportedControl: 1.2.840.113556.1.4.2064
+|       supportedControl: 1.2.840.113556.1.4.2065
+|       supportedControl: 1.2.840.113556.1.4.2066
+|       supportedControl: 1.2.840.113556.1.4.2090
+|       supportedControl: 1.2.840.113556.1.4.2205
+|       supportedControl: 1.2.840.113556.1.4.2204
+|       supportedControl: 1.2.840.113556.1.4.2206
+|       supportedControl: 1.2.840.113556.1.4.2211
+|       supportedControl: 1.2.840.113556.1.4.2239
+|       supportedControl: 1.2.840.113556.1.4.2255
+|       supportedControl: 1.2.840.113556.1.4.2256
+|       supportedControl: 1.2.840.113556.1.4.2309
+|       supportedControl: 1.2.840.113556.1.4.2330
+|       supportedControl: 1.2.840.113556.1.4.2354
+|       supportedCapabilities: 1.2.840.113556.1.4.800
+|       supportedCapabilities: 1.2.840.113556.1.4.1670
+|       supportedCapabilities: 1.2.840.113556.1.4.1791
+|       supportedCapabilities: 1.2.840.113556.1.4.1935
+|       supportedCapabilities: 1.2.840.113556.1.4.2080
+|       supportedCapabilities: 1.2.840.113556.1.4.2237
+|       subschemaSubentry: CN=Aggregate,CN=Schema,CN=Configuration,DC=scaffold,DC=htb
+|       serverName: CN=DC,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=scaffold,DC=htb
+|       schemaNamingContext: CN=Schema,CN=Configuration,DC=scaffold,DC=htb
+|       namingContexts: DC=scaffold,DC=htb
+|       namingContexts: CN=Configuration,DC=scaffold,DC=htb
+|       namingContexts: CN=Schema,CN=Configuration,DC=scaffold,DC=htb
+|       namingContexts: DC=DomainDnsZones,DC=scaffold,DC=htb
+|       namingContexts: DC=ForestDnsZones,DC=scaffold,DC=htb
+|       isSynchronized: TRUE
+|       highestCommittedUSN: 237749
+|       dsServiceName: CN=NTDS Settings,CN=DC,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=scaffold,DC=htb
+|       dnsHostName: dc.scaffold.htb
+|       defaultNamingContext: DC=scaffold,DC=htb
+|       currentTime: 20261123015644.0Z
+|_      configurationNamingContext: CN=Configuration,DC=scaffold,DC=htb
+| ssl-cert: Subject: 
+| Subject Alternative Name: DNS:dc.scaffold.htb, DNS:scaffold.htb, DNS:SCAFFOLD
+| Issuer: commonName=scaffold-DC-CA
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2026-09-01T23:51:52
+| Not valid after:  2106-09-01T23:51:52
+| MD5:   9863 698b 85b6 5dea 1fbe a6c5 2745 233e
+|_SHA-1: 72aa aef2 ce92 9765 e11e f6a0 ec8c 5ee0 8b49 70e2
+443/tcp   open  https
+| ssl-cert: Subject: commonName=portal.scaffold.htb
+| Subject Alternative Name: DNS:portal.scaffold.htb, DNS:DC01
+| Issuer: commonName=portal.scaffold.htb
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2026-05-23T12:31:56
+| Not valid after:  2029-05-23T12:41:56
+| MD5:   d88d d3c7 da59 276d dc14 6c15 982d 378d
+|_SHA-1: 2378 bb23 7c1e 8fac 0368 10c1 cf0c d43d 0026 07ec
+445/tcp   open  microsoft-ds
+464/tcp   open  kpasswd5
+593/tcp   open  http-rpc-epmap
+636/tcp   open  ldap
+| ldap-rootdse: 
+| LDAP Results
+|   <ROOT>
+|       domainFunctionality: 7
+|       forestFunctionality: 7
+|       domainControllerFunctionality: 7
+|       rootDomainNamingContext: DC=scaffold,DC=htb
+|       ldapServiceName: scaffold.htb:dc$@SCAFFOLD.HTB
+|       isGlobalCatalogReady: TRUE
+|       supportedSASLMechanisms: GSSAPI
+|       supportedSASLMechanisms: GSS-SPNEGO
+|       supportedSASLMechanisms: EXTERNAL
+|       supportedSASLMechanisms: DIGEST-MD5
+|       supportedLDAPVersion: 3
+|       supportedLDAPVersion: 2
+|       supportedLDAPPolicies: MaxPoolThreads
+|       supportedLDAPPolicies: MaxPercentDirSyncRequests
+|       supportedLDAPPolicies: MaxDatagramRecv
+|       supportedLDAPPolicies: MaxReceiveBuffer
+|       supportedLDAPPolicies: InitRecvTimeout
+|       supportedLDAPPolicies: MaxConnections
+|       supportedLDAPPolicies: MaxConnIdleTime
+|       supportedLDAPPolicies: MaxPageSize
+|       supportedLDAPPolicies: MaxBatchReturnMessages
+|       supportedLDAPPolicies: MaxQueryDuration
+|       supportedLDAPPolicies: MaxDirSyncDuration
+|       supportedLDAPPolicies: MaxTempTableSize
+|       supportedLDAPPolicies: MaxResultSetSize
+|       supportedLDAPPolicies: MinResultSets
+|       supportedLDAPPolicies: MaxResultSetsPerConn
+|       supportedLDAPPolicies: MaxNotificationPerConn
+|       supportedLDAPPolicies: MaxValRange
+|       supportedLDAPPolicies: MaxValRangeTransitive
+|       supportedLDAPPolicies: ThreadMemoryLimit
+|       supportedLDAPPolicies: SystemMemoryLimitPercent
+|       supportedControl: 1.2.840.113556.1.4.319
+|       supportedControl: 1.2.840.113556.1.4.801
+|       supportedControl: 1.2.840.113556.1.4.473
+|       supportedControl: 1.2.840.113556.1.4.528
+|       supportedControl: 1.2.840.113556.1.4.417
+|       supportedControl: 1.2.840.113556.1.4.619
+|       supportedControl: 1.2.840.113556.1.4.841
+|       supportedControl: 1.2.840.113556.1.4.529
+|       supportedControl: 1.2.840.113556.1.4.805
+|       supportedControl: 1.2.840.113556.1.4.521
+|       supportedControl: 1.2.840.113556.1.4.970
+|       supportedControl: 1.2.840.113556.1.4.1338
+|       supportedControl: 1.2.840.113556.1.4.474
+|       supportedControl: 1.2.840.113556.1.4.1339
+|       supportedControl: 1.2.840.113556.1.4.1340
+|       supportedControl: 1.2.840.113556.1.4.1413
+|       supportedControl: 2.16.840.1.113730.3.4.9
+|       supportedControl: 2.16.840.1.113730.3.4.10
+|       supportedControl: 1.2.840.113556.1.4.1504
+|       supportedControl: 1.2.840.113556.1.4.1852
+|       supportedControl: 1.2.840.113556.1.4.802
+|       supportedControl: 1.2.840.113556.1.4.1907
+|       supportedControl: 1.2.840.113556.1.4.1948
+|       supportedControl: 1.2.840.113556.1.4.1974
+|       supportedControl: 1.2.840.113556.1.4.1341
+|       supportedControl: 1.2.840.113556.1.4.2026
+|       supportedControl: 1.2.840.113556.1.4.2064
+|       supportedControl: 1.2.840.113556.1.4.2065
+|       supportedControl: 1.2.840.113556.1.4.2066
+|       supportedControl: 1.2.840.113556.1.4.2090
+|       supportedControl: 1.2.840.113556.1.4.2205
+|       supportedControl: 1.2.840.113556.1.4.2204
+|       supportedControl: 1.2.840.113556.1.4.2206
+|       supportedControl: 1.2.840.113556.1.4.2211
+|       supportedControl: 1.2.840.113556.1.4.2239
+|       supportedControl: 1.2.840.113556.1.4.2255
+|       supportedControl: 1.2.840.113556.1.4.2256
+|       supportedControl: 1.2.840.113556.1.4.2309
+|       supportedControl: 1.2.840.113556.1.4.2330
+|       supportedControl: 1.2.840.113556.1.4.2354
+|       supportedCapabilities: 1.2.840.113556.1.4.800
+|       supportedCapabilities: 1.2.840.113556.1.4.1670
+|       supportedCapabilities: 1.2.840.113556.1.4.1791
+|       supportedCapabilities: 1.2.840.113556.1.4.1935
+|       supportedCapabilities: 1.2.840.113556.1.4.2080
+|       supportedCapabilities: 1.2.840.113556.1.4.2237
+|       subschemaSubentry: CN=Aggregate,CN=Schema,CN=Configuration,DC=scaffold,DC=htb
+|       serverName: CN=DC,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=scaffold,DC=htb
+|       schemaNamingContext: CN=Schema,CN=Configuration,DC=scaffold,DC=htb
+|       namingContexts: DC=scaffold,DC=htb
+|       namingContexts: CN=Configuration,DC=scaffold,DC=htb
+|       namingContexts: CN=Schema,CN=Configuration,DC=scaffold,DC=htb
+|       namingContexts: DC=DomainDnsZones,DC=scaffold,DC=htb
+|       namingContexts: DC=ForestDnsZones,DC=scaffold,DC=htb
+|       isSynchronized: TRUE
+|       highestCommittedUSN: 237749
+|       dsServiceName: CN=NTDS Settings,CN=DC,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=scaffold,DC=htb
+|       dnsHostName: dc.scaffold.htb
+|       defaultNamingContext: DC=scaffold,DC=htb
+|       currentTime: 20261123015645.0Z
+|_      configurationNamingContext: CN=Configuration,DC=scaffold,DC=htb
+| ssl-cert: Subject: 
+| Subject Alternative Name: DNS:dc.scaffold.htb, DNS:scaffold.htb, DNS:SCAFFOLD
+| Issuer: commonName=scaffold-DC-CA
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2026-09-01T23:51:52
+| Not valid after:  2106-09-01T23:51:52
+| MD5:   9863 698b 85b6 5dea 1fbe a6c5 2745 233e
+|_SHA-1: 72aa aef2 ce92 9765 e11e f6a0 ec8c 5ee0 8b49 70e2
+3268/tcp  open  globalcatLDAP
+3269/tcp  open  globalcatLDAPssl
+| ssl-cert: Subject: 
+| Subject Alternative Name: DNS:dc.scaffold.htb, DNS:scaffold.htb, DNS:SCAFFOLD
+| Issuer: commonName=scaffold-DC-CA
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2026-09-01T23:51:52
+| Not valid after:  2106-09-01T23:51:52
+| MD5:   9863 698b 85b6 5dea 1fbe a6c5 2745 233e
+|_SHA-1: 72aa aef2 ce92 9765 e11e f6a0 ec8c 5ee0 8b49 70e2
+5985/tcp  open  wsman
+9389/tcp  open  adws
+9800/tcp  open  davsrc
+9801/tcp  open  sstp-2
+47001/tcp open  winrm
+Service Info: Host: DC; OS: Windows
+
+Host script results:
+| smb2-security-mode: 
+|   2.02: 
+|_    Message signing enabled and required
+| smb2-time: 
+|   date: 2026-11-23T01:56:46
+|_  start_date: N/A
+
+# Nmap done at Sun Nov 22 19:57:20 2026 -- 1 IP address (1 host up) scanned in 37.02 seconds

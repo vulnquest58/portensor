@@ -12,7 +12,7 @@ use crate::theme::Theme;
 pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         return Err(AppError::usage(
-            "interactive mode requires a terminal; use `rayscan scan ...` for scripts",
+            "interactive mode requires a terminal; use `portensor scan ...` for scripts",
         ));
     }
 
@@ -79,7 +79,16 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         .prompt()
         .map_err(prompt_error)?;
 
-    let formats = vec!["table", "json", "jsonl", "csv", "nmap-xml", "greppable"];
+    let formats = vec![
+        "table",
+        "json",
+        "jsonl",
+        "csv",
+        "nmap-xml",
+        "greppable",
+        "markdown",
+        "html",
+    ];
     let format_choice = Select::new("Output format:", formats)
         .with_starting_cursor(0)
         .prompt()
@@ -90,6 +99,8 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         "csv" => OutputFormat::Csv,
         "nmap-xml" => OutputFormat::NmapXml,
         "greppable" => OutputFormat::Greppable,
+        "markdown" => OutputFormat::Markdown,
+        "html" => OutputFormat::Html,
         _ => OutputFormat::Table,
     };
 
@@ -173,13 +184,26 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
         source_port_range: None,
         tls: false,
         no_tls: false,
+        sni: None,
         shard_index: None,
         shard_count: None,
+        work_part_index: None,
+        work_part_count: None,
         exclude_ports: None,
         save_baseline: None,
         alert_file: None,
         fail_on_change: false,
     };
+
+    let plan = crate::plan::build_for_interactive(&args, raw_syn_available).await?;
+    println!("{}", plan.render_human());
+    let plan_path = Text::new("Save plan JSON (leave empty to skip):")
+        .prompt()
+        .map_err(prompt_error)?;
+    if !plan_path.trim().is_empty() {
+        crate::plan::save(std::path::Path::new(plan_path.trim()), &plan)?;
+        println!("plan saved to {}", plan_path.trim());
+    }
 
     let start = Confirm::new("Start scan?")
         .with_default(true)
@@ -195,9 +219,9 @@ pub async fn run(theme: Option<Theme>) -> Result<(), AppError> {
 
 fn prompt_error(error: InquireError) -> AppError {
     match error {
-        InquireError::NotTTY => {
-            AppError::usage("interactive mode requires a terminal; use `rayscan scan ...` instead")
-        }
+        InquireError::NotTTY => AppError::usage(
+            "interactive mode requires a terminal; use `portensor scan ...` instead",
+        ),
         InquireError::OperationCanceled | InquireError::OperationInterrupted => {
             AppError::usage("interactive session cancelled")
         }

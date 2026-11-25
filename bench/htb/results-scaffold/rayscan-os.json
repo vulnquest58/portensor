@@ -1,0 +1,155 @@
+{
+  "target": "10.129.215.153",
+  "targets": 1,
+  "ports": 6,
+  "jobs": 6,
+  "workers": 7,
+  "open": [
+    {
+      "host": "10.129.215.153",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 172.049,
+      "banner": "HTTP/1.1 401 Unauthorized",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-IIS",
+        "version": "10.0",
+        "confidence": 0.98
+      },
+      "confidence": 1.0,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-IIS(40%) stack:windows(20%) latency:172.0ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 148.546,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.88,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:windows(20%) latency:148.5ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 235.75,
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:windows(20%) latency:235.7ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 389,
+      "state": "open",
+      "latency_ms": 237.564,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.88,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:windows(20%) latency:237.6ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 195.402,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 1.0,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:windows(20%) latency:195.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 221.58,
+      "banner": "HTTP/1.1 401",
+      "service": {
+        "name": "winrm",
+        "product": "Microsoft WinRM",
+        "confidence": 0.9,
+        "cpe": "cpe:2.3:a:microsoft:windows_remote_management"
+      },
+      "detail": "plugin:remote/winrm-wsman",
+      "confidence": 1.0,
+      "evidence": "handshake:ok(20%) banner:winrm/Microsoft WinRM(40%) stack:windows(20%) latency:221.6ms(20%) | probe match plugin:remote/winrm-wsman (1 step(s): wsman-probe)"
+    }
+  ],
+  "os_fingerprints": {
+    "10.129.215.153": {
+      "family": "windows",
+      "role": "domaincontroller",
+      "detail": "Windows (microsoft-iis service evidence)",
+      "confidence": 0.9332624,
+      "initial_ttl": 128,
+      "hops": 2,
+      "samples": 3,
+      "agreement": 1.0,
+      "ports": [
+        80,
+        88,
+        139
+      ],
+      "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains microsoft-iis",
+      "endpoints": [
+        {
+          "port": 80,
+          "family": "windows",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Windows (microsoft-iis service evidence)",
+          "confidence": 0.97,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains microsoft-iis",
+          "service": "http"
+        },
+        {
+          "port": 88,
+          "family": "windows",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Windows 10/11",
+          "confidence": 0.9148936,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack"
+        },
+        {
+          "port": 139,
+          "family": "windows",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Windows 10/11",
+          "confidence": 0.9148936,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=8192, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack"
+        }
+      ]
+    }
+  },
+  "defense": {
+    "10.129.215.153": {
+      "host": "10.129.215.153",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 6 open port(s) (with 3 identified services) responded with standard TCP semantics (conforming to Windows (microsoft-iis service evidence) stack)"
+      ]
+    }
+  },
+  "summary": {
+    "open": 6,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 3184.405
+}

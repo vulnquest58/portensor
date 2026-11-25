@@ -1,0 +1,94 @@
+# P4 formal sign-off readiness report
+
+Status: **NOT READY FOR FORMAL SIGN-OFF.** P4 remains **NOT CLOSED**, and v1.0
+implementation must not start.
+
+This report separates completed local validation from the external evidence
+that is still required. It does not approve P4 and contains no invented names,
+dates, signatures, or external records.
+
+## Local readiness
+
+| Check | Result | Evidence |
+|---|---|---|
+| P4 evidence audit | Pass: 0 errors, 0 warnings | `make p4-evidence-check` |
+| Local signing and SBOM check | Pass with ephemeral keys | `make p4-local-check` |
+| SBOM | CycloneDX 1.5, 280 components | `bench/p4/rayscan-0.7.0.cdx.json` |
+| Checksum coverage | Both archives and SBOM | `dist/SHA256SUMS`, `bench/p4/p4-local-check.txt` |
+| Workflow lint | Pass | `actionlint` |
+| Rust formatting | Pass | `cargo fmt --all -- --check` |
+| Rust lint | Pass | `cargo clippy --all-targets --all-features -- -D warnings` |
+| Rust tests | Pass: 440 lib, 43 CLI, 3 official | `cargo test --all-targets --all-features` |
+| Python tests | Pass: 63 | `python3 -m unittest discover -s bench/tests -t . -v` |
+| Package metadata checks | Pass: static checks and 10 packaging tests; installs not executed | `make package-check` |
+| External evidence validator | Pass: structural checks and 7 validator tests; template reports incomplete | `make p4-external-evidence-status` |
+| Evidence references | Automated link and status checks pass; human review not performed | `make p4-evidence-check` |
+| Documentation/security review | Not performed | P4-6 approval outstanding |
+| Whitespace validation | Pass | `git diff --check` |
+| Release preflight | Not run: worktree is intentionally dirty | `make release-check` |
+
+Local results do not establish production custody, registry ownership,
+clean-runner isolation, published provenance, independent assessment, or formal
+approval. The local SBOM and signatures are evidence of tooling behavior only.
+
+## External readiness
+
+| ID | Requirement | External evidence present | Ready for closure |
+|---|---|---|---|
+| P4-1 | Production signing and custody | No; on hold | No |
+| P4-2 | Package registry ownership | No; local preparation complete | No |
+| P4-3 | Clean CI runner attestation | No; not started | No |
+| P4-4 | SBOM and build provenance | No | No |
+| P4-5 | OT/ICS external assessment | No | No |
+| P4-6 | Final documentation and security sign-off | No; local documentation prepared | No |
+
+## Formal sign-off prerequisites
+
+- [ ] P4-1 evidence is independently reviewed and accepted.
+- [ ] P4-2 evidence is independently reviewed and accepted.
+- [ ] P4-3 evidence is independently reviewed and accepted.
+- [ ] P4-4 evidence is independently reviewed and accepted.
+- [ ] P4-5 evidence is independently reviewed and accepted.
+- [ ] P4-6 documentation and security review findings are resolved.
+- [ ] The Windows Npcap raw runtime is verified or explicitly waived with
+      limitations recorded.
+- [ ] `docs/p4-closure-checklist.md` and `docs/p4-closure-evidence.json` agree
+      and all evidence references resolve.
+- [ ] The final P4 reviewer, security reviewer, and release owner are named and
+      have no unresolved conflicts.
+- [ ] Formal approval fields are completed from reviewable evidence.
+
+## Review procedure
+
+1. Use `docs/p4-external-evidence-owners.md` to obtain a named owner and
+   reviewer for each open requirement.
+2. Collect evidence under the intake rules in
+   `docs/p4-external-blockers.md`; use the
+   [P4-2 external evidence intake packet](distribution/p4-2-external-evidence-intake.md)
+   and its [machine-readable template](distribution/p4-2-external-evidence.template.json)
+   for channel records. Run `make p4-external-evidence-check` before acceptance.
+   Never submit private keys, tokens, recovery codes, or credentials.
+3. Verify provenance, scope, date, version, and acceptance criteria before
+   changing any status.
+4. Update the checklist and JSON inventory together. Do not change a status on
+   one record only.
+5. Rerun `make p4-evidence-check`, `make p4-local-check`, and all release checks.
+   Run `make release-check` only from a clean worktree.
+6. Record the formal decision only after all six requirements and the platform
+   waiver are resolved.
+
+## Approval record
+
+No approval is recorded. The fields below remain intentionally incomplete.
+
+| Role | Name | Decision | Date | Evidence reviewed |
+|---|---|---|---|---|
+| P4 reviewer |  |  |  |  |
+| Security reviewer |  |  |  |  |
+| Release owner |  |  |  |  |
+
+## Decision
+
+**Do not close P4.** The local pipeline is auditable and passes, but external
+trust evidence is absent. No commit, push, tag, publication, release, or v1.0
+implementation is authorized by this report.

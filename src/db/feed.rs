@@ -21,7 +21,7 @@ use super::{
 };
 use crate::error::AppError;
 
-const USER_AGENT: &str = concat!("rayscan/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("portensor/", env!("CARGO_PKG_VERSION"));
 
 /// A change to apply to the local database.
 pub enum Change {
@@ -545,7 +545,8 @@ mod tests {
         encoder.write_all(plaintext).unwrap();
         let compressed = encoder.finish().unwrap();
 
-        let dir = std::env::temp_dir().join(format!("rayscan-feed-digest-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("portensor-feed-digest-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("feed.json.gz");
         fs::write(&path, compressed).unwrap();

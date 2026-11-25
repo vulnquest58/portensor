@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare rayscan worker counts with and without service verification.
+"""Compare portensor worker counts with and without service verification.
 
 `--connect-only` skips banner reads on open ports, so the comparison separates
 per-probe pipeline cost from tail latency caused by transient local listeners.
@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-BINARY = Path("/mnt/e/VulnQuest_Pro/rayscan/target/release/rayscan")
+BINARY = Path("/mnt/e/VulnQuest_Pro/portensor/target/release/portensor")
 
 
 def run(workers: int, extra: list[str]) -> tuple[float, dict]:

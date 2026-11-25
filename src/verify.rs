@@ -1,8 +1,10 @@
-use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::Ordering;
+use std::collections::HashSet;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use tokio::net::TcpStream;
+use tokio::net::{TcpSocket, TcpStream};
 
 use crate::classify::{FailureKind, classify_kind};
 use crate::discovery::socket_addr;
@@ -95,19 +97,58 @@ pub async fn recheck_local_opens(report: &mut ScanReport, options: &ScanOptions)
         return;
     }
 
-    let limiter = RateLimiter::new(options.rate);
+    // Concurrent rechecks are safe when no source port can also be a target.
+    // Two scanner sockets only pair by simultaneous open when one socket's
+    // source port equals another's destination port. Binding the recheck
+    // source to a port outside the open-candidate set makes that impossible,
+    // so the whole open set can be rechecked in parallel instead of paying a
+    // full loss-driven timeout for every listener sequentially.
+    let forbidden: Arc<HashSet<u16>> = Arc::new(candidates.iter().map(|(_, port)| *port).collect());
+    let candidates = Arc::new(candidates);
+    let limiter = Arc::new(RateLimiter::new(options.rate));
+    let next = Arc::new(AtomicU64::new(0));
+    let workers = candidates.len().clamp(1, 32);
+    let mut tasks = tokio::task::JoinSet::new();
+    for _ in 0..workers {
+        let candidates = Arc::clone(&candidates);
+        let forbidden = Arc::clone(&forbidden);
+        let limiter = Arc::clone(&limiter);
+        let next = Arc::clone(&next);
+        let shutdown = Arc::clone(&options.shutdown);
+        let timeout = options.timeout;
+        tasks.spawn(async move {
+            let mut refused = Vec::new();
+            loop {
+                if shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+                let index = next.fetch_add(1, Ordering::Relaxed) as usize;
+                let Some(&(host, port)) = candidates.get(index) else {
+                    break;
+                };
+                limiter.acquire().await;
+                let started = Instant::now();
+                let attempt =
+                    tokio::time::timeout(timeout, recheck_connect(host, port, &forbidden)).await;
+                let elapsed = started.elapsed();
+                let refused_state = matches!(
+                    &attempt,
+                    Ok(Err(error)) if classify_kind(error) == FailureKind::Closed
+                );
+                if refused_state {
+                    refused.push((host, port, elapsed));
+                }
+            }
+            refused
+        });
+    }
+
     let mut rejected = Vec::new();
-    for (host, port) in candidates {
-        limiter.acquire().await;
-        let address = socket_addr(host, port);
-        let started = Instant::now();
-        let outcome = tokio::time::timeout(options.timeout, TcpStream::connect(address)).await;
-        let elapsed = started.elapsed();
-        let refused = match &outcome {
-            Ok(Err(error)) => classify_kind(error) == FailureKind::Closed,
-            _ => false,
+    while let Some(joined) = tasks.join_next().await {
+        let Ok(refused) = joined else {
+            continue;
         };
-        if refused {
+        for (host, port, elapsed) in refused {
             rejected.push(
                 PortResult::new(host, port, PortState::Closed, elapsed).with_detail(
                     "connection refused on recheck; the initial open was a loopback \
@@ -122,6 +163,35 @@ pub async fn recheck_local_opens(report: &mut ScanReport, options: &ScanOptions)
     }
 }
 
+async fn recheck_connect(
+    host: IpAddr,
+    port: u16,
+    forbidden: &HashSet<u16>,
+) -> std::io::Result<TcpStream> {
+    let address = socket_addr(host, port);
+    for _ in 0..64 {
+        let (socket, bind) = if host.is_ipv4() {
+            (
+                TcpSocket::new_v4()?,
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            )
+        } else {
+            (
+                TcpSocket::new_v6()?,
+                SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
+            )
+        };
+        socket.bind(bind)?;
+        if forbidden.contains(&socket.local_addr()?.port()) {
+            continue;
+        }
+        return socket.connect(address).await;
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AddrNotAvailable,
+        "no safe source port for local open recheck",
+    ))
+}
 /// True when `ip` addresses this machine, i.e. a scan against it can finish
 /// inside the kernel and pair up two of our own connections.
 fn is_local_target(ip: IpAddr) -> bool {
@@ -355,6 +425,57 @@ mod tests {
         assert_eq!(report.results.len(), 1);
         assert_eq!(report.results[0].state, PortState::Closed);
         assert!(report.results[0].detail.is_some());
+    }
+
+    #[tokio::test]
+    async fn recheck_keeps_listeners_and_rejects_multiple_dead_ports() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let live = listener.local_addr().unwrap().port();
+        let first = dead_port();
+        let second = dead_port();
+        let mut report = local_open_report(live);
+        report.counts.open = 3;
+        report.results = vec![
+            PortResult::new(
+                local_host(),
+                live,
+                PortState::Open,
+                Duration::from_micros(100),
+            ),
+            PortResult::new(
+                local_host(),
+                first,
+                PortState::Open,
+                Duration::from_micros(100),
+            ),
+            PortResult::new(
+                local_host(),
+                second,
+                PortState::Open,
+                Duration::from_micros(100),
+            ),
+        ];
+        report.probed_ports = vec![live, first, second];
+
+        recheck_local_opens(&mut report, &options(StateSet::open())).await;
+
+        assert_eq!(report.counts.open, 1);
+        assert_eq!(report.counts.closed, 2);
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].port, live);
+    }
+
+    #[tokio::test]
+    async fn recheck_source_port_is_outside_the_candidate_set() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let forbidden = HashSet::from([port]);
+
+        let stream = recheck_connect(local_host(), port, &forbidden)
+            .await
+            .unwrap();
+
+        assert_ne!(stream.local_addr().unwrap().port(), port);
     }
 
     #[tokio::test]

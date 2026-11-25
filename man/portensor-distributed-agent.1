@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-distributed-agent 1  "agent "
+.SH NAME
+portensor\-distributed\-agent \- Listen for jobs pushed by a coordinator (inbound mode)
+.SH SYNOPSIS
+\fBagent\fR [\fB\-\-listen\fR] [\fB\-\-token\fR] [\fB\-\-tls\-cert\fR] [\fB\-\-tls\-key\fR] [\fB\-\-concurrency\fR] [\fB\-h\fR|\fB\-\-help\fR]
+.SH DESCRIPTION
+Listen for jobs pushed by a coordinator (inbound mode)
+.SH OPTIONS
+.TP
+\fB\-\-listen\fR \fI<ADDR>\fR [default: 127.0.0.1:9091]
+Agent listen address. Set \-\-tls\-cert and \-\-tls\-key to serve HTTPS
+.TP
+\fB\-\-token\fR \fI<TOKEN>\fR
+Bearer token (or PORTENSOR_DISTRIBUTED_TOKEN), at least 16 characters
+.TP
+\fB\-\-tls\-cert\fR \fI<FILE>\fR
+PEM certificate chain for the agent\*(Aqs HTTPS listener
+.TP
+\fB\-\-tls\-key\fR \fI<FILE>\fR
+PEM private key for the agent\*(Aqs HTTPS listener
+.TP
+\fB\-\-concurrency\fR \fI<N>\fR [default: 1]
+Maximum scans executed concurrently on this agent
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help

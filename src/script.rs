@@ -6,7 +6,7 @@
 //! * **Sidecar** (`command = ["python3", "check.py"]`): an external program
 //!   with the manifest directory as working directory. The protocol stays
 //!   language-neutral: Python, Go, Rust, or a shell script can provide
-//!   discovery and vulnerability checks without linking to rayscan.
+//!   discovery and vulnerability checks without linking to portensor.
 //! * **WASM** (`wasm = "check.wasm"`): a WebAssembly module executed in-process
 //!   by wasmtime. Modules run without WASI, so they cannot touch the file
 //!   system, network, or environment; execution is bounded by fuel metering,
@@ -89,10 +89,13 @@
 //! `confidence` defaults to the probe ladder (0.98 with a version, 0.85 with a
 //! product, 0.70 name-only).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
+use std::io::Write as _;
+use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -103,6 +106,7 @@ use crate::error::AppError;
 use crate::marketplace::{self, REGISTRY_ENV};
 use crate::model::{PortResult, PortState};
 use crate::plugin::{Assessment, merge_assessment};
+use crate::scope::ScopeGuard;
 use crate::service::ServiceInfo;
 use crate::tls::TlsInfo;
 
@@ -139,6 +143,20 @@ const MAX_INFO_VALUE_CHARS: usize = 200;
 const DEFAULT_TIMEOUT_MS: u64 = 5000;
 const MIN_TIMEOUT_MS: u64 = 100;
 const MAX_TIMEOUT_MS: u64 = 30_000;
+/// Active-host limits from ADR 0001.
+const ACTIVE_MAX_CONNECTIONS: u32 = 10;
+const ACTIVE_RATE_PER_SECOND: usize = 5;
+const ACTIVE_MAX_BYTES: usize = 1024 * 1024;
+const ACTIVE_OP_TIMEOUT: Duration = Duration::from_secs(5);
+const ACTIVE_OK: i32 = 0;
+const ACTIVE_DENIED: i32 = -1;
+const ACTIVE_WRONG_PORT: i32 = -2;
+const ACTIVE_ATTEMPT_LIMIT: i32 = -3;
+const ACTIVE_RATE_LIMIT: i32 = -4;
+const ACTIVE_NOT_OPEN: i32 = -5;
+const ACTIVE_IO_ERROR: i32 = -6;
+const ACTIVE_BYTE_LIMIT: i32 = -7;
+const ACTIVE_BAD_REQUEST: i32 = -8;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -176,6 +194,23 @@ impl Danger {
         match self {
             Self::Safe => "safe",
             Self::Intrusive => "intrusive",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Capability {
+    #[default]
+    Metadata,
+    TargetTcp,
+}
+
+impl Capability {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Metadata => "metadata",
+            Self::TargetTcp => "target-tcp",
         }
     }
 }
@@ -266,6 +301,8 @@ struct RawScript {
     #[serde(default)]
     danger: Danger,
     #[serde(default)]
+    capabilities: Vec<Capability>,
+    #[serde(default)]
     command: Option<Vec<String>>,
     #[serde(default)]
     wasm: Option<String>,
@@ -292,7 +329,7 @@ impl ScriptKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct CompiledScript {
     pack: String,
     name: String,
@@ -300,6 +337,7 @@ struct CompiledScript {
     description: Option<String>,
     category: Category,
     danger: Danger,
+    capabilities: Vec<Capability>,
     /// Sidecar argv (kind Sidecar) or empty (kind Wasm).
     command: Vec<String>,
     kind: ScriptKind,
@@ -321,6 +359,7 @@ pub struct ScriptSummary {
     pub description: Option<String>,
     pub category: Category,
     pub danger: Danger,
+    pub capabilities: Vec<Capability>,
     /// Sidecar argv; empty for WASM scripts, which carry `wasm_path` instead.
     pub command: Vec<String>,
     /// Path of the WASM module for wasm scripts; `None` for sidecar scripts.
@@ -373,9 +412,12 @@ impl Registry {
                 let is_manifest = candidate
                     .extension()
                     .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
+                let hidden = candidate
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with('.'));
                 if is_manifest && file_type.is_some_and(|kind| kind.is_file()) {
                     files.push(candidate);
-                } else if file_type.is_some_and(|kind| kind.is_dir()) {
+                } else if file_type.is_some_and(|kind| kind.is_dir()) && !hidden {
                     subdirectories.push(candidate);
                 }
             }
@@ -501,6 +543,7 @@ impl Registry {
                 description: script.description.clone(),
                 category: script.category,
                 danger: script.danger,
+                capabilities: script.capabilities.clone(),
                 command: script.command.clone(),
                 wasm_path: script
                     .wasm_path
@@ -522,10 +565,25 @@ impl Registry {
         allow_intrusive: bool,
         quiet: bool,
     ) -> usize {
+        self.apply_with_scope(results, allow_intrusive, quiet, None, false)
+            .await
+    }
+
+    /// Run matching scripts with the active-script scope policy. The rate
+    /// limiter is shared across every script and result in this invocation.
+    pub async fn apply_with_scope(
+        &self,
+        results: &mut [PortResult],
+        allow_intrusive: bool,
+        quiet: bool,
+        scope: Option<&ScopeGuard>,
+        force_out_of_scope: bool,
+    ) -> usize {
         if self.is_empty() {
             return 0;
         }
 
+        let context = ScriptExecutionContext::new(scope, force_out_of_scope);
         let mut findings = 0;
         for result in results.iter_mut() {
             if result.state != PortState::Open {
@@ -556,7 +614,7 @@ impl Registry {
                     }
                 }
 
-                match run_script(script, result).await {
+                match run_script(script, result, Some(&context)).await {
                     Ok((found, assessment)) => {
                         if !found.is_empty() {
                             findings += found.len();
@@ -591,20 +649,20 @@ impl Registry {
 
 /// Resolve the local script pack library directory.
 ///
-/// Priority: explicit `--scripts-dir`, `RAYSCAN_SCRIPTS_DIR`, then the
-/// platform data directory (`<data>/rayscan/scripts`, sibling of the NVD db).
+/// Priority: explicit `--scripts-dir`, `PORTENSOR_SCRIPTS_DIR`, then the
+/// platform data directory (`<data>/portensor/scripts`, sibling of the NVD db).
 pub fn library_dir(explicit: Option<&Path>) -> Result<PathBuf, AppError> {
     if let Some(path) = explicit {
         return Ok(path.to_path_buf());
     }
-    if let Some(path) = std::env::var_os("RAYSCAN_SCRIPTS_DIR") {
+    if let Some(path) = std::env::var_os("PORTENSOR_SCRIPTS_DIR") {
         return Ok(PathBuf::from(path));
     }
     crate::db::default_data_root()
         .map(|base| base.join("scripts"))
         .ok_or_else(|| {
             AppError::usage(
-                "cannot determine the script library directory; set RAYSCAN_SCRIPTS_DIR or --scripts-dir",
+                "cannot determine the script library directory; set PORTENSOR_SCRIPTS_DIR or --scripts-dir",
             )
         })
 }
@@ -686,6 +744,10 @@ pub fn run_cli(args: ScriptsArgs, scripts_dir: Option<&Path>) -> Result<(), AppE
             println!("removed {}", removed.display());
             Ok(())
         }
+        ScriptsAction::Update(update) => {
+            let library = library_dir(scripts_dir)?;
+            marketplace::update_cli(update, &library)
+        }
         ScriptsAction::Library(library_args) => {
             let library = library_dir(scripts_dir)?;
             let exists = library.is_dir();
@@ -704,7 +766,7 @@ pub fn run_cli(args: ScriptsArgs, scripts_dir: Option<&Path>) -> Result<(), AppE
                 println!("{}", library.display());
                 if !exists {
                     println!(
-                        "(directory does not exist yet; install a pack with `rayscan scripts install DIR`)"
+                        "(directory does not exist yet; install a pack with `portensor scripts install DIR`)"
                     );
                 }
             }
@@ -720,13 +782,14 @@ fn list_cli(args: ScriptsListArgs, scripts_dir: Option<&Path>) -> Result<(), App
             let library = library_dir(scripts_dir)?;
             if !library.is_dir() {
                 return Err(AppError::usage(format!(
-                    "no script library directory at {}; install a pack with `rayscan scripts install <DIR>` or pass an explicit PATH",
+                    "no script library directory at {}; install a pack with `portensor scripts install <DIR>` or pass an explicit PATH",
                     library.display()
                 )));
             }
             library
         }
     };
+    recover_library(&path)?;
     let registry = Registry::load(&path)?;
     let summaries = registry.summaries();
     if args.json {
@@ -762,12 +825,19 @@ fn list_cli(args: ScriptsListArgs, scripts_dir: Option<&Path>) -> Result<(), App
         } else {
             summary.services.join(",")
         };
+        let capabilities = summary
+            .capabilities
+            .iter()
+            .map(|capability| capability.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
         println!(
-            "  {:<28} [{}/{}] {} ms  ports={} services={}",
+            "  {:<28} [{}/{}] {} ms  capabilities={}  ports={} services={}",
             summary.name,
             summary.danger.as_str(),
             summary.category.as_str(),
             summary.timeout_ms,
+            capabilities,
             ports,
             services
         );
@@ -786,9 +856,121 @@ fn list_cli(args: ScriptsListArgs, scripts_dir: Option<&Path>) -> Result<(), App
     Ok(())
 }
 
+pub(crate) struct LibraryLock {
+    path: PathBuf,
+}
+
+impl LibraryLock {
+    pub(crate) fn acquire(library: &Path) -> Result<Self, AppError> {
+        std::fs::create_dir_all(library).map_err(|error| {
+            AppError::usage(format!(
+                "cannot create script library {}: {error}",
+                library.display()
+            ))
+        })?;
+        let path = library.join("packs.lock.lock");
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Err(AppError::usage(format!(
+                    "another script pack operation holds {}; remove it only if no portensor process is running",
+                    path.display()
+                )));
+            }
+            Err(error) => {
+                return Err(AppError::usage(format!(
+                    "cannot lock script library {}: {error}",
+                    library.display()
+                )));
+            }
+        };
+        let _ = writeln!(file, "{}", std::process::id());
+        Ok(Self { path })
+    }
+}
+
+impl Drop for LibraryLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn staging_path(library: &Path, name: &str) -> PathBuf {
+    library.join(format!(".staging-{name}"))
+}
+
+fn backup_path(library: &Path, name: &str) -> PathBuf {
+    library.join(format!(".backup-{name}"))
+}
+
+pub(crate) fn recover_library(library: &Path) -> Result<(), AppError> {
+    if !library.is_dir() {
+        return Ok(());
+    }
+    let _lock = LibraryLock::acquire(library)?;
+    recover_library_unlocked(library)
+}
+
+/// Restore or clean interrupted installs. Callers must hold `LibraryLock`.
+pub(crate) fn recover_library_unlocked(library: &Path) -> Result<(), AppError> {
+    if !library.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(library).map_err(|error| {
+        AppError::usage(format!(
+            "cannot inspect script library {}: {error}",
+            library.display()
+        ))
+    })? {
+        let entry = entry.map_err(|error| {
+            AppError::usage(format!("cannot inspect script library entry: {error}"))
+        })?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if let Some(pack) = name.strip_prefix(".backup-") {
+            if validate_library_name(pack).is_err() {
+                continue;
+            }
+            let destination = library.join(pack);
+            if destination.exists() {
+                let _ = std::fs::remove_dir_all(entry.path());
+            } else {
+                std::fs::rename(entry.path(), &destination).map_err(|error| {
+                    AppError::runtime(format!(
+                        "cannot restore interrupted script pack update for '{pack}': {error}"
+                    ))
+                })?;
+            }
+        } else if name.starts_with(".staging-") {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+    Ok(())
+}
+
 /// Validate a pack directory and copy it into the library under its
 /// directory name. Existing installations require `force`.
 pub fn install_pack(source: &Path, library: &Path, force: bool) -> Result<PathBuf, AppError> {
+    let _lock = LibraryLock::acquire(library)?;
+    let installed = install_pack_locked(source, library, force)?;
+    if let Some(name) = installed.file_name().and_then(|name| name.to_str()) {
+        let _ = marketplace::remove_lock_entry_unlocked(library, name);
+    }
+    Ok(installed)
+}
+
+pub(crate) fn install_pack_locked(
+    source: &Path,
+    library: &Path,
+    force: bool,
+) -> Result<PathBuf, AppError> {
+    recover_library_unlocked(library)?;
     let metadata = std::fs::metadata(source).map_err(|error| {
         AppError::usage(format!(
             "cannot read script pack {}: {error}",
@@ -825,12 +1007,6 @@ pub fn install_pack(source: &Path, library: &Path, force: bool) -> Result<PathBu
                 destination.display()
             )));
         }
-        std::fs::remove_dir_all(&destination).map_err(|error| {
-            AppError::usage(format!(
-                "cannot replace installed pack {}: {error}",
-                destination.display()
-            ))
-        })?;
     }
     std::fs::create_dir_all(library).map_err(|error| {
         AppError::usage(format!(
@@ -838,13 +1014,63 @@ pub fn install_pack(source: &Path, library: &Path, force: bool) -> Result<PathBu
             library.display()
         ))
     })?;
-    copy_tree(source, &destination)?;
-    Ok(destination)
+    let stage = staging_path(library, name);
+    if stage.exists() {
+        std::fs::remove_dir_all(&stage).map_err(|error| {
+            AppError::usage(format!(
+                "cannot clear stale script staging directory {}: {error}",
+                stage.display()
+            ))
+        })?;
+    }
+    if let Err(error) = copy_tree(source, &stage) {
+        let _ = std::fs::remove_dir_all(&stage);
+        return Err(error);
+    }
+    let backup = backup_path(library, name);
+    let had_destination = destination.exists();
+    if had_destination {
+        if backup.exists() {
+            std::fs::remove_dir_all(&backup).map_err(|error| {
+                AppError::usage(format!(
+                    "cannot clear stale script backup directory {}: {error}",
+                    backup.display()
+                ))
+            })?;
+        }
+        std::fs::rename(&destination, &backup).map_err(|error| {
+            let _ = std::fs::remove_dir_all(&stage);
+            AppError::usage(format!(
+                "cannot stage installed pack {} for replacement: {error}",
+                destination.display()
+            ))
+        })?;
+    }
+    match std::fs::rename(&stage, &destination) {
+        Ok(()) => {
+            if had_destination {
+                let _ = std::fs::remove_dir_all(&backup);
+            }
+            Ok(destination)
+        }
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&stage);
+            if had_destination {
+                let _ = std::fs::rename(&backup, &destination);
+            }
+            Err(AppError::runtime(format!(
+                "cannot install script pack into {}: {error}",
+                destination.display()
+            )))
+        }
+    }
 }
 
 /// Remove an installed pack from the library. Only direct child directories
 /// are addressable; names are identifier-validated.
 pub fn uninstall_pack(name: &str, library: &Path) -> Result<PathBuf, AppError> {
+    let _lock = LibraryLock::acquire(library)?;
+    recover_library_unlocked(library)?;
     validate_library_name(name)?;
     let target = library.join(name);
     let metadata = std::fs::metadata(&target).map_err(|error| {
@@ -865,11 +1091,12 @@ pub fn uninstall_pack(name: &str, library: &Path) -> Result<PathBuf, AppError> {
             target.display()
         ))
     })?;
+    let _ = marketplace::remove_lock_entry_unlocked(library, name);
     Ok(target)
 }
 
 fn validate_library_name(name: &str) -> Result<(), AppError> {
-    if name == "." || name == ".." {
+    if name == "." || name == ".." || name.starts_with('.') {
         return Err(AppError::usage("invalid script pack name"));
     }
     validate_identifier("script pack", name)
@@ -924,6 +1151,23 @@ fn copy_error(path: &Path) -> impl Fn(std::io::Error) -> AppError + '_ {
     }
 }
 
+fn normalize_capabilities(
+    plugin: &str,
+    capabilities: Vec<Capability>,
+) -> Result<Vec<Capability>, AppError> {
+    let capabilities = if capabilities.is_empty() {
+        vec![Capability::Metadata]
+    } else {
+        capabilities
+    };
+    if capabilities.len() != 1 {
+        return Err(AppError::usage(format!(
+            "script '{plugin}' must declare exactly one capability (metadata or target-tcp)"
+        )));
+    }
+    Ok(capabilities)
+}
+
 fn compile_script(pack: &str, dir: &Path, raw: RawScript) -> Result<CompiledScript, AppError> {
     validate_identifier("script", &raw.name)?;
     let plugin = format!("{pack}/{}", raw.name);
@@ -936,6 +1180,7 @@ fn compile_script(pack: &str, dir: &Path, raw: RawScript) -> Result<CompiledScri
         None => None,
     };
 
+    let capabilities = normalize_capabilities(&plugin, raw.capabilities)?;
     let (kind, command, wasm_path, module) = match (raw.command, raw.wasm) {
         (Some(_), Some(_)) => {
             return Err(AppError::usage(format!(
@@ -958,6 +1203,12 @@ fn compile_script(pack: &str, dir: &Path, raw: RawScript) -> Result<CompiledScri
             )));
         }
     };
+
+    if kind == ScriptKind::Sidecar && capabilities.contains(&Capability::TargetTcp) {
+        return Err(AppError::usage(format!(
+            "script '{plugin}' requests target-tcp with a sidecar command; active capabilities require wasm"
+        )));
+    }
 
     /// Resolves and validates a sidecar command argv.
     fn compile_sidecar_command(
@@ -1067,6 +1318,7 @@ fn compile_script(pack: &str, dir: &Path, raw: RawScript) -> Result<CompiledScri
         description,
         category: raw.category,
         danger: raw.danger,
+        capabilities,
         kind,
         command,
         wasm_path,
@@ -1138,10 +1390,19 @@ struct RawFinding {
 async fn run_script(
     script: &CompiledScript,
     result: &PortResult,
+    context: Option<&ScriptExecutionContext>,
 ) -> Result<(Vec<PluginFinding>, Option<Assessment>), String> {
+    let fallback;
+    let context = match context {
+        Some(context) => context,
+        None => {
+            fallback = ScriptExecutionContext::new(None, false);
+            &fallback
+        }
+    };
     match script.kind {
         ScriptKind::Sidecar => run_sidecar_script(script, result).await,
-        ScriptKind::Wasm => run_wasm_script(script, result).await,
+        ScriptKind::Wasm => run_wasm_script(script, result, context).await,
     }
 }
 
@@ -1188,6 +1449,337 @@ fn parse_script_output(
     Ok((findings, assessment))
 }
 
+#[derive(Clone)]
+struct ScriptExecutionContext {
+    scope: Option<Arc<ScopeGuard>>,
+    force_out_of_scope: bool,
+    rate: Arc<Mutex<VecDeque<Instant>>>,
+}
+
+impl ScriptExecutionContext {
+    fn new(scope: Option<&ScopeGuard>, force_out_of_scope: bool) -> Self {
+        Self {
+            scope: scope.cloned().map(Arc::new),
+            force_out_of_scope,
+            rate: Arc::new(Mutex::new(VecDeque::new())),
+        }
+    }
+}
+
+struct WasmHostState {
+    limits: wasmtime::StoreLimits,
+    plugin: String,
+    target: IpAddr,
+    port: u16,
+    scope: Option<Arc<ScopeGuard>>,
+    force_out_of_scope: bool,
+    connection: Option<TcpStream>,
+    attempts: u32,
+    bytes_read: usize,
+    bytes_written: usize,
+    rate: Arc<Mutex<VecDeque<Instant>>>,
+}
+
+fn audit_active(plugin: &str, target: IpAddr, port: u16, action: &str, outcome: &str, code: i32) {
+    crate::diag::event(
+        crate::diag::Level::Info,
+        "script",
+        &[
+            ("script", serde_json::json!(plugin)),
+            ("capability", serde_json::json!("target-tcp")),
+            ("target", serde_json::json!(target.to_string())),
+            ("port", serde_json::json!(port)),
+            ("action", serde_json::json!(action)),
+            ("outcome", serde_json::json!(outcome)),
+            ("error_code", serde_json::json!(code)),
+        ],
+    );
+}
+
+fn active_scope_allows(state: &WasmHostState) -> bool {
+    state.force_out_of_scope
+        || state
+            .scope
+            .as_ref()
+            .is_none_or(|scope| scope.allows_ip(state.target))
+}
+
+fn active_timeout(timeout_ms: i32) -> Duration {
+    Duration::from_millis(timeout_ms.clamp(1, 5000) as u64)
+}
+
+fn active_tcp_connect(
+    mut caller: wasmtime::Caller<'_, WasmHostState>,
+    port: i32,
+    timeout_ms: i32,
+) -> i32 {
+    let (target, expected_port, plugin) = {
+        let data = caller.data();
+        (data.target, data.port, data.plugin.clone())
+    };
+    if port != i32::from(expected_port) {
+        audit_active(
+            &plugin,
+            target,
+            expected_port,
+            "connect",
+            "denied",
+            ACTIVE_WRONG_PORT,
+        );
+        return ACTIVE_WRONG_PORT;
+    }
+    if timeout_ms <= 0 {
+        audit_active(
+            &plugin,
+            target,
+            expected_port,
+            "connect",
+            "denied",
+            ACTIVE_BAD_REQUEST,
+        );
+        return ACTIVE_BAD_REQUEST;
+    }
+    if !active_scope_allows(caller.data()) {
+        audit_active(
+            &plugin,
+            target,
+            expected_port,
+            "connect",
+            "denied",
+            ACTIVE_DENIED,
+        );
+        return ACTIVE_DENIED;
+    }
+    {
+        let data = caller.data_mut();
+        if data.connection.is_some() {
+            audit_active(
+                &plugin,
+                target,
+                expected_port,
+                "connect",
+                "denied",
+                ACTIVE_NOT_OPEN,
+            );
+            return ACTIVE_NOT_OPEN;
+        }
+        if data.attempts >= ACTIVE_MAX_CONNECTIONS {
+            audit_active(
+                &plugin,
+                target,
+                expected_port,
+                "connect",
+                "denied",
+                ACTIVE_ATTEMPT_LIMIT,
+            );
+            return ACTIVE_ATTEMPT_LIMIT;
+        }
+        data.attempts += 1;
+    }
+    let allowed_rate = {
+        let history = caller.data().rate.clone();
+        match history.lock() {
+            Ok(mut history) => {
+                let now = Instant::now();
+                while history.front().is_some_and(|timestamp| {
+                    now.duration_since(*timestamp) >= Duration::from_secs(1)
+                }) {
+                    history.pop_front();
+                }
+                if history.len() >= ACTIVE_RATE_PER_SECOND {
+                    false
+                } else {
+                    history.push_back(now);
+                    true
+                }
+            }
+            Err(_) => false,
+        }
+    };
+    if !allowed_rate {
+        audit_active(
+            &plugin,
+            target,
+            expected_port,
+            "connect",
+            "denied",
+            ACTIVE_RATE_LIMIT,
+        );
+        return ACTIVE_RATE_LIMIT;
+    }
+
+    let address = SocketAddr::new(target, expected_port);
+    match TcpStream::connect_timeout(&address, active_timeout(timeout_ms)) {
+        Ok(stream) => {
+            let _ = stream.set_read_timeout(Some(ACTIVE_OP_TIMEOUT));
+            let _ = stream.set_write_timeout(Some(ACTIVE_OP_TIMEOUT));
+            caller.data_mut().connection = Some(stream);
+            audit_active(
+                &plugin,
+                target,
+                expected_port,
+                "connect",
+                "allowed",
+                ACTIVE_OK,
+            );
+            ACTIVE_OK
+        }
+        Err(_) => {
+            audit_active(
+                &plugin,
+                target,
+                expected_port,
+                "connect",
+                "failed",
+                ACTIVE_IO_ERROR,
+            );
+            ACTIVE_IO_ERROR
+        }
+    }
+}
+
+fn active_tcp_read(
+    mut caller: wasmtime::Caller<'_, WasmHostState>,
+    handle: i32,
+    buffer_ptr: i32,
+    buffer_len: i32,
+    timeout_ms: i32,
+) -> i32 {
+    let (target, port, plugin) = {
+        let data = caller.data();
+        (data.target, data.port, data.plugin.clone())
+    };
+    if handle != 0 || buffer_ptr < 0 || buffer_len < 0 || timeout_ms <= 0 {
+        audit_active(&plugin, target, port, "read", "denied", ACTIVE_BAD_REQUEST);
+        return ACTIVE_BAD_REQUEST;
+    }
+    let memory = match caller
+        .get_export("memory")
+        .and_then(|export| export.into_memory())
+    {
+        Some(memory) => memory,
+        None => {
+            audit_active(&plugin, target, port, "read", "denied", ACTIVE_BAD_REQUEST);
+            return ACTIVE_BAD_REQUEST;
+        }
+    };
+    let requested = buffer_len as usize;
+    let remaining = ACTIVE_MAX_BYTES.saturating_sub(caller.data().bytes_read);
+    if requested > remaining {
+        audit_active(&plugin, target, port, "read", "denied", ACTIVE_BYTE_LIMIT);
+        return ACTIVE_BYTE_LIMIT;
+    }
+    let mut stream = match caller.data_mut().connection.take() {
+        Some(stream) => stream,
+        None => {
+            audit_active(&plugin, target, port, "read", "denied", ACTIVE_NOT_OPEN);
+            return ACTIVE_NOT_OPEN;
+        }
+    };
+    let _ = stream.set_read_timeout(Some(active_timeout(timeout_ms)));
+    let mut buffer = vec![0u8; requested];
+    let result = std::io::Read::read(&mut stream, &mut buffer);
+    caller.data_mut().connection = Some(stream);
+    match result {
+        Ok(read) => {
+            caller.data_mut().bytes_read += read;
+            if memory
+                .write(&mut caller, buffer_ptr as usize, &buffer[..read])
+                .is_err()
+            {
+                audit_active(&plugin, target, port, "read", "denied", ACTIVE_BAD_REQUEST);
+                return ACTIVE_BAD_REQUEST;
+            }
+            audit_active(&plugin, target, port, "read", "allowed", ACTIVE_OK);
+            read as i32
+        }
+        Err(_) => {
+            audit_active(&plugin, target, port, "read", "failed", ACTIVE_IO_ERROR);
+            ACTIVE_IO_ERROR
+        }
+    }
+}
+
+fn active_tcp_write(
+    mut caller: wasmtime::Caller<'_, WasmHostState>,
+    handle: i32,
+    buffer_ptr: i32,
+    buffer_len: i32,
+) -> i32 {
+    let (target, port, plugin) = {
+        let data = caller.data();
+        (data.target, data.port, data.plugin.clone())
+    };
+    if handle != 0 || buffer_ptr < 0 || buffer_len < 0 {
+        audit_active(&plugin, target, port, "write", "denied", ACTIVE_BAD_REQUEST);
+        return ACTIVE_BAD_REQUEST;
+    }
+    let memory = match caller
+        .get_export("memory")
+        .and_then(|export| export.into_memory())
+    {
+        Some(memory) => memory,
+        None => {
+            audit_active(&plugin, target, port, "write", "denied", ACTIVE_BAD_REQUEST);
+            return ACTIVE_BAD_REQUEST;
+        }
+    };
+    let requested = buffer_len as usize;
+    let remaining = ACTIVE_MAX_BYTES.saturating_sub(caller.data().bytes_written);
+    if requested > remaining {
+        audit_active(&plugin, target, port, "write", "denied", ACTIVE_BYTE_LIMIT);
+        return ACTIVE_BYTE_LIMIT;
+    }
+    let mut buffer = vec![0u8; requested];
+    if memory
+        .read(&caller, buffer_ptr as usize, &mut buffer)
+        .is_err()
+    {
+        audit_active(&plugin, target, port, "write", "denied", ACTIVE_BAD_REQUEST);
+        return ACTIVE_BAD_REQUEST;
+    }
+    let mut stream = match caller.data_mut().connection.take() {
+        Some(stream) => stream,
+        None => {
+            audit_active(&plugin, target, port, "write", "denied", ACTIVE_NOT_OPEN);
+            return ACTIVE_NOT_OPEN;
+        }
+    };
+    let _ = stream.set_write_timeout(Some(ACTIVE_OP_TIMEOUT));
+    let result = std::io::Write::write(&mut stream, &buffer);
+    caller.data_mut().connection = Some(stream);
+    match result {
+        Ok(written) => {
+            caller.data_mut().bytes_written += written;
+            audit_active(&plugin, target, port, "write", "allowed", ACTIVE_OK);
+            written as i32
+        }
+        Err(_) => {
+            audit_active(&plugin, target, port, "write", "failed", ACTIVE_IO_ERROR);
+            ACTIVE_IO_ERROR
+        }
+    }
+}
+
+fn active_tcp_close(mut caller: wasmtime::Caller<'_, WasmHostState>, handle: i32) -> i32 {
+    let (target, port, plugin) = {
+        let data = caller.data();
+        (data.target, data.port, data.plugin.clone())
+    };
+    if handle != 0 {
+        audit_active(&plugin, target, port, "close", "denied", ACTIVE_BAD_REQUEST);
+        return ACTIVE_BAD_REQUEST;
+    }
+    let present = caller.data_mut().connection.take();
+    if present.is_none() {
+        audit_active(&plugin, target, port, "close", "denied", ACTIVE_NOT_OPEN);
+        return ACTIVE_NOT_OPEN;
+    }
+    drop(present);
+    audit_active(&plugin, target, port, "close", "allowed", ACTIVE_OK);
+    ACTIVE_OK
+}
+
 /// Lazily-created process-wide wasmtime engine (fuel metering enabled).
 fn wasm_engine() -> &'static wasmtime::Engine {
     static ENGINE: std::sync::OnceLock<wasmtime::Engine> = std::sync::OnceLock::new();
@@ -1201,21 +1793,33 @@ fn wasm_engine() -> &'static wasmtime::Engine {
 /// WASM module execution on a blocking thread. Fuel metering plus the store
 /// limiter bound any runaway work; the wall-clock timeout is enforced by the
 /// async wrapper.
-fn wasm_execute(module: &wasmtime::Module, input: &[u8]) -> Result<Vec<u8>, String> {
-    struct StoreData {
-        limits: wasmtime::StoreLimits,
-    }
-
+fn wasm_execute(
+    module: &wasmtime::Module,
+    input: &[u8],
+    script: &CompiledScript,
+    result: &PortResult,
+    context: &ScriptExecutionContext,
+) -> Result<Vec<u8>, String> {
     let engine = wasm_engine();
     let mut store = wasmtime::Store::new(
         engine,
-        StoreData {
+        WasmHostState {
             limits: wasmtime::StoreLimitsBuilder::new()
                 .memory_size(WASM_MEMORY_BYTES)
                 .memories(1)
                 .tables(1)
                 .table_elements(WASM_TABLE_ELEMENTS)
                 .build(),
+            plugin: script.plugin.clone(),
+            target: result.host,
+            port: result.port,
+            scope: context.scope.clone(),
+            force_out_of_scope: context.force_out_of_scope,
+            connection: None,
+            attempts: 0,
+            bytes_read: 0,
+            bytes_written: 0,
+            rate: context.rate.clone(),
         },
     );
     store.limiter(|data| &mut data.limits);
@@ -1223,7 +1827,52 @@ fn wasm_execute(module: &wasmtime::Module, input: &[u8]) -> Result<Vec<u8>, Stri
         .set_fuel(WASM_FUEL)
         .map_err(|error| format!("cannot set fuel budget: {error}"))?;
 
-    let instance = wasmtime::Instance::new(&mut store, module, &[])
+    let mut linker = wasmtime::Linker::new(engine);
+    if script.capabilities.contains(&Capability::TargetTcp) {
+        linker
+            .func_wrap(
+                "portensor.script.v1",
+                "tcp_connect",
+                |caller: wasmtime::Caller<'_, WasmHostState>, port: i32, timeout_ms: i32| {
+                    active_tcp_connect(caller, port, timeout_ms)
+                },
+            )
+            .map_err(|error| format!("cannot define tcp_connect: {error}"))?;
+        linker
+            .func_wrap(
+                "portensor.script.v1",
+                "tcp_read",
+                |caller: wasmtime::Caller<'_, WasmHostState>,
+                 handle: i32,
+                 ptr: i32,
+                 len: i32,
+                 timeout_ms: i32| {
+                    active_tcp_read(caller, handle, ptr, len, timeout_ms)
+                },
+            )
+            .map_err(|error| format!("cannot define tcp_read: {error}"))?;
+        linker
+            .func_wrap(
+                "portensor.script.v1",
+                "tcp_write",
+                |caller: wasmtime::Caller<'_, WasmHostState>, handle: i32, ptr: i32, len: i32| {
+                    active_tcp_write(caller, handle, ptr, len)
+                },
+            )
+            .map_err(|error| format!("cannot define tcp_write: {error}"))?;
+        linker
+            .func_wrap(
+                "portensor.script.v1",
+                "tcp_close",
+                |caller: wasmtime::Caller<'_, WasmHostState>, handle: i32| {
+                    active_tcp_close(caller, handle)
+                },
+            )
+            .map_err(|error| format!("cannot define tcp_close: {error}"))?;
+    }
+
+    let instance = linker
+        .instantiate(&mut store, module)
         .map_err(|error| format!("cannot instantiate module: {error}"))?;
     let memory = instance
         .get_memory(&mut store, "memory")
@@ -1271,6 +1920,7 @@ fn wasm_execute(module: &wasmtime::Module, input: &[u8]) -> Result<Vec<u8>, Stri
 async fn run_wasm_script(
     script: &CompiledScript,
     result: &PortResult,
+    context: &ScriptExecutionContext,
 ) -> Result<(Vec<PluginFinding>, Option<Assessment>), String> {
     let module = script
         .module
@@ -1280,7 +1930,10 @@ async fn run_wasm_script(
 
     let task = tokio::task::spawn_blocking({
         let module = module.clone();
-        move || wasm_execute(&module, &input)
+        let script = script.clone();
+        let result = result.clone();
+        let context = context.clone();
+        move || wasm_execute(&module, &input, &script, &result, &context)
     });
     let output = match tokio::time::timeout(script.timeout, task).await {
         Ok(joined) => joined.map_err(|error| format!("wasm worker failed: {error}"))?,
@@ -1292,10 +1945,115 @@ async fn run_wasm_script(
     parse_script_output(&script.plugin, &script.name, &output)
 }
 
+#[cfg(not(target_os = "linux"))]
+fn sidecar_isolation() -> Result<(), String> {
+    Err(
+        "sidecar scripts require a verified network-deny sandbox and are disabled on this platform; use a WASM script instead"
+            .to_string(),
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn sidecar_isolation() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn sidecar_filter() -> Vec<libc::sock_filter> {
+    const BPF_LD_W_ABS: u16 = 0x20;
+    const BPF_JEQ_K: u16 = 0x15;
+    const BPF_RET_K: u16 = 0x06;
+    const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
+    const SECCOMP_RET_ERRNO: u32 = 0x0005_0000;
+    const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+
+    #[cfg(target_arch = "x86_64")]
+    const AUDIT_ARCH: u32 = 0xc000_003e;
+    #[cfg(target_arch = "aarch64")]
+    const AUDIT_ARCH: u32 = 0xc000_00b7;
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    compile_error!("sidecar seccomp filter supports x86_64 and aarch64 Linux only");
+
+    fn stmt(code: u16, k: u32) -> libc::sock_filter {
+        libc::sock_filter {
+            code,
+            jt: 0,
+            jf: 0,
+            k,
+        }
+    }
+    fn jump(code: u16, k: u32, jt: u8, jf: u8) -> libc::sock_filter {
+        libc::sock_filter { code, jt, jf, k }
+    }
+
+    let mut filter = Vec::with_capacity(48);
+    filter.push(stmt(
+        BPF_LD_W_ABS,
+        std::mem::offset_of!(libc::seccomp_data, arch) as u32,
+    ));
+    filter.push(jump(BPF_JEQ_K, AUDIT_ARCH, 1, 0));
+    filter.push(stmt(BPF_RET_K, SECCOMP_RET_KILL_PROCESS));
+    filter.push(stmt(
+        BPF_LD_W_ABS,
+        std::mem::offset_of!(libc::seccomp_data, nr) as u32,
+    ));
+    let denied = [
+        libc::SYS_socket,
+        libc::SYS_socketpair,
+        libc::SYS_connect,
+        libc::SYS_bind,
+        libc::SYS_listen,
+        libc::SYS_accept,
+        libc::SYS_accept4,
+        libc::SYS_sendto,
+        libc::SYS_sendmsg,
+        libc::SYS_recvfrom,
+        libc::SYS_recvmsg,
+        libc::SYS_sendmmsg,
+        libc::SYS_recvmmsg,
+        libc::SYS_getsockname,
+        libc::SYS_getpeername,
+        libc::SYS_setsockopt,
+        libc::SYS_getsockopt,
+        libc::SYS_shutdown,
+    ];
+    for syscall in denied {
+        filter.push(jump(BPF_JEQ_K, syscall as u32, 0, 1));
+        filter.push(stmt(BPF_RET_K, SECCOMP_RET_ERRNO | libc::EPERM as u32));
+    }
+    filter.push(stmt(BPF_RET_K, SECCOMP_RET_ALLOW));
+    filter
+}
+
+#[cfg(target_os = "linux")]
+fn apply_sidecar_filter(filter: &[libc::sock_filter]) -> std::io::Result<()> {
+    let program = libc::sock_fprog {
+        len: filter.len() as u16,
+        filter: filter.as_ptr() as *mut libc::sock_filter,
+    };
+    // SAFETY: the filter is a valid BPF program and remains alive for the
+    // duration of the prctl call. Both calls are async-signal-safe.
+    unsafe {
+        if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if libc::prctl(
+            libc::PR_SET_SECCOMP,
+            libc::SECCOMP_MODE_FILTER,
+            &program as *const libc::sock_fprog,
+        ) != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
 async fn run_sidecar_script(
     script: &CompiledScript,
     result: &PortResult,
 ) -> Result<(Vec<PluginFinding>, Option<Assessment>), String> {
+    sidecar_isolation()?;
     let payload = script_input(result)?;
 
     let mut command = Command::new(&script.command[0]);
@@ -1306,11 +2064,31 @@ async fn run_sidecar_script(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
-        .env("RAYSCAN_SCRIPT_API", "1")
-        .env("RAYSCAN_SCRIPT_NAME", &script.name)
-        .env("RAYSCAN_SCRIPT_PLUGIN", &script.plugin)
-        .env("RAYSCAN_TARGET", result.host.to_string())
-        .env("RAYSCAN_PORT", result.port.to_string());
+        .env_clear()
+        .env("PORTENSOR_SCRIPT_API", "1")
+        .env("PORTENSOR_SCRIPT_NAME", &script.name)
+        .env("PORTENSOR_SCRIPT_PLUGIN", &script.plugin)
+        .env("PORTENSOR_SCRIPT_CAPABILITY", "metadata")
+        .env("PORTENSOR_TARGET", result.host.to_string())
+        .env("PORTENSOR_PORT", result.port.to_string())
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("PYTHONNOUSERSITE", "1");
+    if let Some(path) = std::env::var_os("PATH") {
+        command.env("PATH", path);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt as _;
+        let filter = sidecar_filter();
+        // SAFETY: the closure only installs a fixed seccomp filter, which is
+        // async-signal-safe. It never allocates or inspects shared state.
+        unsafe {
+            command
+                .as_std_mut()
+                .pre_exec(move || apply_sidecar_filter(&filter));
+        }
+    }
 
     let mut child = command
         .spawn()
@@ -1625,9 +2403,87 @@ services = ["HTTPS", "https"]
         assert_eq!(summary.description.as_deref(), Some("Detect old TLS"));
         assert_eq!(summary.category, Category::Vulnerability);
         assert_eq!(summary.danger, Danger::Safe);
+        assert_eq!(summary.capabilities, [Capability::Metadata]);
         assert_eq!(summary.timeout_ms, DEFAULT_TIMEOUT_MS);
         assert_eq!(summary.services, ["https"]);
         assert_eq!(summary.ports, [443, 8443]);
+    }
+
+    #[test]
+    fn validates_capability_declarations() {
+        let mut registry = Registry::default();
+        let error = registry
+            .parse(
+                r#"
+name = "unit"
+[[script]]
+name = "active-sidecar"
+capabilities = ["target-tcp"]
+command = ["sh", "check.sh"]
+"#,
+                Path::new("."),
+            )
+            .expect_err("active sidecars must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("active capabilities require wasm")
+        );
+
+        let mut registry = Registry::default();
+        let error = registry
+            .parse(
+                r#"
+name = "unit"
+[[script]]
+name = "both-capabilities"
+capabilities = ["metadata", "target-tcp"]
+command = ["sh", "check.sh"]
+"#,
+                Path::new("."),
+            )
+            .expect_err("multiple capabilities must be rejected");
+        assert!(error.to_string().contains("exactly one capability"));
+
+        let mut registry = Registry::default();
+        let error = registry
+            .parse(
+                r#"
+name = "unit"
+[[script]]
+name = "unknown"
+capabilities = ["network-any"]
+command = ["sh", "check.sh"]
+"#,
+                Path::new("."),
+            )
+            .expect_err("unknown capabilities must be rejected");
+        assert!(error.to_string().contains("unknown variant"));
+
+        let dir = std::env::temp_dir().join(format!(
+            "portensor-script-capability-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(&dir, "active.wat", &wasm_echo_wat("{}"));
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "active"
+[[script]]
+name = "connect"
+capabilities = ["target-tcp"]
+wasm = "active.wat"
+"#,
+                &dir,
+            )
+            .expect("active wasm capability parses");
+        assert_eq!(
+            registry.summaries()[0].capabilities,
+            [Capability::TargetTcp]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1790,11 +2646,11 @@ timeout_ms = 100000
     #[tokio::test]
     async fn apply_honors_service_filters_and_danger_gating() {
         let dir =
-            std::env::temp_dir().join(format!("rayscan-script-filter-{}", std::process::id()));
+            std::env::temp_dir().join(format!("portensor-script-filter-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         std::fs::write(
             dir.join("emit.sh"),
-            "#!/bin/sh\ncat >/dev/null\ncase \"$RAYSCAN_SCRIPT_NAME\" in\n  http-only) svc='{\"name\":\"http\",\"product\":\"Lab HTTP\",\"version\":\"9.9\"}' ;;\n  redis-only) svc='{\"name\":\"redis\"}' ;;\n  *) svc='{\"name\":\"intrusive-svc\"}' ;;\nesac\nprintf '%s\\n' \"{\\\"findings\\\":[{\\\"title\\\":\\\"Always emits\\\",\\\"severity\\\":\\\"low\\\"}],\\\"service\\\":$svc}\"\n",
+            "#!/bin/sh\ncat >/dev/null\ncase \"$PORTENSOR_SCRIPT_NAME\" in\n  http-only) svc='{\"name\":\"http\",\"product\":\"Lab HTTP\",\"version\":\"9.9\"}' ;;\n  redis-only) svc='{\"name\":\"redis\"}' ;;\n  *) svc='{\"name\":\"intrusive-svc\"}' ;;\nesac\nprintf '%s\\n' \"{\\\"findings\\\":[{\\\"title\\\":\\\"Always emits\\\",\\\"severity\\\":\\\"low\\\"}],\\\"service\\\":$svc}\"\n",
         )
         .expect("write script");
         let registry = {
@@ -1851,7 +2707,8 @@ danger = "intrusive"
     #[cfg(unix)]
     #[tokio::test]
     async fn executes_sidecar_and_parses_findings() {
-        let dir = std::env::temp_dir().join(format!("rayscan-script-unit-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("portensor-script-unit-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         std::fs::write(
             dir.join("emit.sh"),
@@ -1885,12 +2742,73 @@ command = ["sh", "emit.sh"]
             ..Default::default()
         });
 
-        let (findings, assessment) = run_script(script, &result).await.expect("run sidecar");
+        let (findings, assessment) = run_script(script, &result, None)
+            .await
+            .expect("run sidecar");
         assert!(assessment.is_none());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].title, "Test finding");
         assert_eq!(findings[0].severity, FindingSeverity::High);
         assert_eq!(findings[0].cve, ["CVE-2024-1234"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn sidecar_network_is_denied() {
+        if std::process::Command::new("python3")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_err()
+        {
+            eprintln!("python3 is unavailable; skipping sidecar sandbox test");
+            return;
+        }
+        let dir =
+            std::env::temp_dir().join(format!("portensor-script-sandbox-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(
+            dir.join("net.py"),
+            r#"import json, socket
+try:
+    socket.socket()
+except OSError as error:
+    print(json.dumps({'findings': [{'title': 'denied: ' + str(error), 'severity': 'info'}]}))
+else:
+    print(json.dumps({'findings': []}))
+"#,
+        )
+        .expect("write network probe");
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "sandbox"
+[[script]]
+name = "network"
+command = ["python3", "net.py"]
+"#,
+                &dir,
+            )
+            .expect("parse manifest");
+        let script = &registry.scripts[0];
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            80,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let (findings, _) = run_script(script, &result, None)
+            .await
+            .expect("sandboxed sidecar should run");
+        assert_eq!(findings.len(), 1);
+        assert!(
+            findings[0].title.starts_with("denied:"),
+            "network syscall was not denied: {}",
+            findings[0].title
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1923,7 +2841,8 @@ command = ["sh", "emit.sh"]
 
     #[tokio::test]
     async fn wasm_script_runs_and_identifies_service() {
-        let dir = std::env::temp_dir().join(format!("rayscan-script-wasm-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("portensor-script-wasm-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let output = r#"{"findings":[{"title":"Wasm finding","severity":"medium","confidence":0.8,"cve":["cve-2025-9999"]}],"service":{"name":"wasmhttp","product":"Wasm Engine","version":"3.1","confidence":0.9}}"#;
         write_wasm_script(&dir, "check.wat", &wasm_echo_wat(output));
@@ -1969,7 +2888,7 @@ wasm = "check.wat"
     #[test]
     fn wasm_manifest_validation() {
         let dir =
-            std::env::temp_dir().join(format!("rayscan-script-wasm-bad-{}", std::process::id()));
+            std::env::temp_dir().join(format!("portensor-script-wasm-bad-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         write_wasm_script(&dir, "ok.wat", &wasm_echo_wat("{}"));
 
@@ -2032,8 +2951,10 @@ wasm = "ok.wat"
 
     #[tokio::test]
     async fn wasm_receives_the_input_payload() {
-        let dir =
-            std::env::temp_dir().join(format!("rayscan-script-wasm-input-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "portensor-script-wasm-input-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let output = r#"{"findings":[{"title":"Input seen","severity":"info"}]}"#;
         let escaped = output.replace('\\', "\\\\").replace('"', "\\\"");
@@ -2084,7 +3005,7 @@ wasm = "check.wat"
             PortState::Open,
             Duration::from_millis(1),
         );
-        let (findings, _) = run_script(script, &result)
+        let (findings, _) = run_script(script, &result, None)
             .await
             .expect("module must observe its input payload");
         assert_eq!(findings.len(), 1);
@@ -2092,10 +3013,392 @@ wasm = "check.wat"
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn wasm_active_wat(port: u16, connected: &str, denied: &str) -> String {
+        let connected_len = connected.len();
+        let denied_len = denied.len();
+        let connected = connected.replace('\\', "\\\\").replace('"', "\\\"");
+        let denied = denied.replace('\\', "\\\\").replace('"', "\\\"");
+        let denied_ptr = 512usize;
+        format!(
+            r#"(module
+  (import "portensor.script.v1" "tcp_connect"
+    (func $connect (param i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "{connected}")
+  (data (i32.const {denied_ptr}) "{denied}")
+  (global $bump (mut i32) (i32.const 4096))
+  (func (export "alloc") (param $len i32) (result i32)
+    (local $ptr i32)
+    (local.set $ptr (global.get $bump))
+    (global.set $bump (i32.add (global.get $bump) (local.get $len)))
+    (local.get $ptr))
+  (func (export "run") (param $in i32) (param $len i32) (result i64)
+    (if (i32.eqz (call $connect (i32.const {port}) (i32.const 1000)))
+      (then (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const 0)) (i64.const 32))
+        (i64.extend_i32_u (i32.const {connected_len})))))
+      (else (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const {denied_ptr})) (i64.const 32))
+        (i64.extend_i32_u (i32.const {denied_len}))))))
+    (i64.const 0))
+)"#,
+            connected_len = connected_len,
+            denied_len = denied_len
+        )
+    }
+
+    fn wasm_active_rate_wat(port: u16, allowed: &str, denied: &str) -> String {
+        let allowed_len = allowed.len();
+        let denied_len = denied.len();
+        let allowed = allowed.replace('\\', "\\\\").replace('"', "\\\"");
+        let denied = denied.replace('\\', "\\\\").replace('"', "\\\"");
+        format!(
+            r#"(module
+  (import "portensor.script.v1" "tcp_connect"
+    (func $connect (param i32 i32) (result i32)))
+  (import "portensor.script.v1" "tcp_close"
+    (func $close (param i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "{allowed}")
+  (data (i32.const 512) "{denied}")
+  (func $loop (param $remaining i32) (result i32)
+    (local $code i32)
+    (if (i32.eqz (local.get $remaining)) (then (return (i32.const 0))))
+    (local.set $code (call $connect (i32.const {port}) (i32.const 1000)))
+    (if (i32.ne (local.get $code) (i32.const 0)) (then (return (local.get $code))))
+    (drop (call $close (i32.const 0)))
+    (call $loop (i32.sub (local.get $remaining) (i32.const 1))))
+  (func (export "alloc") (param i32) (result i32) (i32.const 1024))
+  (func (export "run") (param i32) (param i32) (result i64)
+    (if (i32.eqz (call $loop (i32.const 6)))
+      (then (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const 0)) (i64.const 32))
+        (i64.extend_i32_u (i32.const {allowed_len})))))
+      (else (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const 512)) (i64.const 32))
+        (i64.extend_i32_u (i32.const {denied_len}))))))
+    (i64.const 0))
+)"#,
+            allowed_len = allowed_len,
+            denied_len = denied_len
+        )
+    }
+
+    fn wasm_active_bytes_wat(port: u16, allowed: &str, denied: &str) -> String {
+        let allowed_len = allowed.len();
+        let denied_len = denied.len();
+        let allowed = allowed.replace('\\', "\\\\").replace('"', "\\\"");
+        let denied = denied.replace('\\', "\\\\").replace('"', "\\\"");
+        format!(
+            r#"(module
+  (import "portensor.script.v1" "tcp_connect"
+    (func $connect (param i32 i32) (result i32)))
+  (import "portensor.script.v1" "tcp_read"
+    (func $read (param i32 i32 i32 i32) (result i32)))
+  (import "portensor.script.v1" "tcp_write"
+    (func $write (param i32 i32 i32) (result i32)))
+  (import "portensor.script.v1" "tcp_close"
+    (func $close (param i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "{allowed}")
+  (data (i32.const 512) "{denied}")
+  (func (export "alloc") (param i32) (result i32) (i32.const 1024))
+  (func (export "run") (param i32) (param i32) (result i64)
+    (local $write i32)
+    (local $read i32)
+    (if (i32.ne (call $connect (i32.const {port}) (i32.const 1000)) (i32.const 0))
+      (then (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const 512)) (i64.const 32))
+        (i64.extend_i32_u (i32.const {denied_len}))))))
+    (local.set $write (call $write (i32.const 0) (i32.const 0) (i32.const 1048577)))
+    (local.set $read (call $read (i32.const 0) (i32.const 0) (i32.const 1048577) (i32.const 1000)))
+    (drop (call $close (i32.const 0)))
+    (if (i32.and
+          (i32.eq (local.get $write) (i32.const -7))
+          (i32.eq (local.get $read) (i32.const -7)))
+      (then (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const 0)) (i64.const 32))
+        (i64.extend_i32_u (i32.const {allowed_len})))))
+      (else (return (i64.or
+        (i64.shl (i64.extend_i32_u (i32.const 512)) (i64.const 32))
+        (i64.extend_i32_u (i32.const {denied_len}))))))
+    (i64.const 0))
+)"#,
+            allowed_len = allowed_len,
+            denied_len = denied_len
+        )
+    }
+
+    #[tokio::test]
+    async fn active_wasm_connects_only_to_the_scanned_port() {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind active-script listener");
+        let port = listener.local_addr().expect("listener address").port();
+        let accept = std::thread::spawn(move || listener.accept().map(|_| ()));
+        let dir =
+            std::env::temp_dir().join(format!("portensor-script-active-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(
+            &dir,
+            "active.wat",
+            &wasm_active_wat(
+                port,
+                r#"{"findings":[{"title":"connected","severity":"info"}]}"#,
+                r#"{"findings":[{"title":"denied","severity":"info"}]}"#,
+            ),
+        );
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "active"
+[[script]]
+name = "connect"
+capabilities = ["target-tcp"]
+wasm = "active.wat"
+timeout_ms = 3000
+"#,
+                &dir,
+            )
+            .expect("parse active manifest");
+        let script = &registry.scripts[0];
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            port,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let (findings, _) = run_script(script, &result, None)
+            .await
+            .expect("active wasm script runs");
+        assert_eq!(findings[0].title, "connected");
+        accept
+            .join()
+            .expect("accept thread")
+            .expect("host completed the target connection");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn active_wasm_rejects_a_different_port() {
+        let dir = std::env::temp_dir().join(format!(
+            "portensor-script-active-port-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(
+            &dir,
+            "active.wat",
+            &wasm_active_wat(
+                9,
+                r#"{"findings":[{"title":"connected","severity":"info"}]}"#,
+                r#"{"findings":[{"title":"denied","severity":"info"}]}"#,
+            ),
+        );
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "active"
+[[script]]
+name = "connect"
+capabilities = ["target-tcp"]
+wasm = "active.wat"
+"#,
+                &dir,
+            )
+            .expect("parse active manifest");
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            80,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let (findings, _) = run_script(&registry.scripts[0], &result, None)
+            .await
+            .expect("active wasm script returns a finding");
+        assert_eq!(findings[0].title, "denied");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn active_wasm_rechecks_scope_before_connecting() {
+        let dir = std::env::temp_dir().join(format!(
+            "portensor-script-active-scope-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(
+            &dir,
+            "active.wat",
+            &wasm_active_wat(
+                9,
+                r#"{"findings":[{"title":"connected","severity":"info"}]}"#,
+                r#"{"findings":[{"title":"denied","severity":"info"}]}"#,
+            ),
+        );
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "active"
+[[script]]
+name = "connect"
+capabilities = ["target-tcp"]
+wasm = "active.wat"
+"#,
+                &dir,
+            )
+            .expect("parse active manifest");
+        let scope = crate::scope::ScopeGuard::from_config(crate::scope::ScopeConfig {
+            program: Some("unit".to_string()),
+            allow: vec!["10.0.0.0/8".to_string()],
+            deny: vec![],
+        })
+        .expect("scope");
+        let context = ScriptExecutionContext::new(Some(&scope), false);
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            9,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let (findings, _) = run_script(&registry.scripts[0], &result, Some(&context))
+            .await
+            .expect("active wasm script returns a finding");
+        assert_eq!(findings[0].title, "denied");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn sdk_templates_execute() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("sdk");
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            80,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        for (directory, title) in [
+            ("python-metadata", "Python metadata script executed"),
+            ("wasm-metadata", "WASM metadata script executed"),
+        ] {
+            let dir = base.join(directory);
+            let manifest =
+                std::fs::read_to_string(dir.join("pack.toml")).expect("read SDK manifest");
+            let mut registry = Registry::default();
+            registry.parse(&manifest, &dir).expect("parse SDK manifest");
+            if directory == "python-metadata"
+                && !std::process::Command::new("python3")
+                    .arg("--version")
+                    .output()
+                    .is_ok_and(|output| output.status.success())
+            {
+                continue;
+            }
+            let (findings, _) = run_script(&registry.scripts[0], &result, None)
+                .await
+                .expect("SDK template executes");
+            assert_eq!(findings[0].title, title);
+        }
+    }
+
+    #[tokio::test]
+    async fn active_wasm_rate_limits_reconnects() {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind active-rate listener");
+        let port = listener.local_addr().expect("listener address").port();
+        let dir = std::env::temp_dir().join(format!(
+            "portensor-script-active-rate-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(
+            &dir,
+            "active.wat",
+            &wasm_active_rate_wat(
+                port,
+                r#"{"findings":[{"title":"all-allowed","severity":"info"}]}"#,
+                r#"{"findings":[{"title":"rate-limited","severity":"info"}]}"#,
+            ),
+        );
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "active"
+[[script]]
+name = "rate"
+capabilities = ["target-tcp"]
+wasm = "active.wat"
+"#,
+                &dir,
+            )
+            .expect("parse active manifest");
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            port,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let (findings, _) = run_script(&registry.scripts[0], &result, None)
+            .await
+            .expect("active wasm script runs");
+        assert_eq!(findings[0].title, "rate-limited");
+        drop(listener);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn active_wasm_enforces_byte_limits() {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind active-byte listener");
+        let port = listener.local_addr().expect("listener address").port();
+        let dir = std::env::temp_dir().join(format!(
+            "portensor-script-active-bytes-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        write_wasm_script(
+            &dir,
+            "active.wat",
+            &wasm_active_bytes_wat(
+                port,
+                r#"{"findings":[{"title":"byte-limited","severity":"info"}]}"#,
+                r#"{"findings":[{"title":"byte-limit-missing","severity":"info"}]}"#,
+            ),
+        );
+        let mut registry = Registry::default();
+        registry
+            .parse(
+                r#"
+name = "active"
+[[script]]
+name = "bytes"
+capabilities = ["target-tcp"]
+wasm = "active.wat"
+"#,
+                &dir,
+            )
+            .expect("parse active manifest");
+        let result = PortResult::new(
+            "127.0.0.1".parse().expect("ip"),
+            port,
+            PortState::Open,
+            Duration::from_millis(1),
+        );
+        let (findings, _) = run_script(&registry.scripts[0], &result, None)
+            .await
+            .expect("active wasm script runs");
+        assert_eq!(findings[0].title, "byte-limited");
+        drop(listener);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn wasm_rejects_oversized_output() {
         let dir =
-            std::env::temp_dir().join(format!("rayscan-script-wasm-big-{}", std::process::id()));
+            std::env::temp_dir().join(format!("portensor-script-wasm-big-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         // run() claims a 200 KB output at address 0 without writing anything.
         write_wasm_script(
@@ -2137,7 +3440,7 @@ wasm = "big.wat"
     #[tokio::test]
     async fn wasm_timeout_bounds_a_runaway_module() {
         let dir =
-            std::env::temp_dir().join(format!("rayscan-script-wasm-loop-{}", std::process::id()));
+            std::env::temp_dir().join(format!("portensor-script-wasm-loop-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         write_wasm_script(
             &dir,
@@ -2170,7 +3473,7 @@ timeout_ms = 100
             PortState::Open,
             Duration::from_millis(1),
         );
-        let outcome = run_script(script, &result).await;
+        let outcome = run_script(script, &result, None).await;
         let error = outcome.expect_err("runaway module must fail");
         assert!(
             error.contains("timed out") || error.contains("fuel"),
@@ -2181,7 +3484,7 @@ timeout_ms = 100
 
     #[test]
     fn library_dir_prefers_the_explicit_path() {
-        let explicit = std::path::Path::new("/tmp/rayscan-library-explicit");
+        let explicit = std::path::Path::new("/tmp/portensor-library-explicit");
         assert_eq!(
             library_dir(Some(explicit)).expect("explicit library"),
             explicit
@@ -2191,7 +3494,7 @@ timeout_ms = 100
     #[test]
     fn install_and_uninstall_round_trip() {
         let base =
-            std::env::temp_dir().join(format!("rayscan-script-library-{}", std::process::id()));
+            std::env::temp_dir().join(format!("portensor-script-library-{}", std::process::id()));
         let source = base.join("src").join("lab-pack");
         std::fs::create_dir_all(&source).expect("create source pack");
         std::fs::write(
@@ -2235,8 +3538,10 @@ timeout_ms = 100
 
     #[test]
     fn install_rejects_broken_packs_before_copying() {
-        let base =
-            std::env::temp_dir().join(format!("rayscan-script-library-bad-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!(
+            "portensor-script-library-bad-{}",
+            std::process::id()
+        ));
         let source = base.join("src").join("broken-pack");
         std::fs::create_dir_all(&source).expect("create source pack");
         std::fs::write(source.join("pack.toml"), "name = \"broken\"\n").expect("write manifest");

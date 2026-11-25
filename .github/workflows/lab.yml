@@ -9,10 +9,10 @@ permissions:
 jobs:
   namespace-lab:
     name: namespace lab
-    runs-on: [self-hosted, linux, rayscan-lab]
+    runs-on: [self-hosted, linux, portensor-lab]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build release
         run: cargo build --release --locked
       - name: Verify ground truth in the isolated namespace

@@ -5,7 +5,7 @@
 **Port Range:** `1 - 10,000` (10,000 ports)  
 **Execution Time:** `55.28 seconds` (`--rate 170`)  
 **Timestamp:** `2026-11-07 10:35:48 UTC`  
-**Artifact JSON:** [`metasploitable2-v0.2.0-comprehensive.json`](file:///E:/VulnQuest_Pro/rayscan/reports/metasploitable2-v0.2.0-comprehensive.json)
+**Artifact JSON:** [`metasploitable2-v0.2.0-comprehensive.json`](file:///E:/VulnQuest_Pro/portensor/reports/metasploitable2-v0.2.0-comprehensive.json)
 
 ---
 

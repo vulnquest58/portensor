@@ -91,7 +91,7 @@ impl Profile {
                 probe_timeout_ms: 300,
                 rate: 1_000,
                 workers: 0,
-                retries: 2,
+                retries: 4,
             },
             Self::Careful => ProfileDefaults {
                 timeout_seconds: 5.0,
@@ -136,6 +136,7 @@ pub struct FileConfig {
     pub connect_only: Option<bool>,
     pub service_detection: Option<bool>,
     pub udp_probe: Option<bool>,
+    pub sni: Option<String>,
     pub format: Option<OutputFormat>,
     pub show: Option<Vec<StateFilter>>,
     pub theme: Option<Theme>,
@@ -151,7 +152,7 @@ pub fn load(path: Option<&Path>) -> Result<FileConfig, AppError> {
     let path = match path {
         Some(path) => Some(path.to_path_buf()),
         None => {
-            let default = PathBuf::from("rayscan.toml");
+            let default = PathBuf::from("portensor.toml");
             default.is_file().then_some(default)
         }
     };
@@ -187,6 +188,7 @@ randomize = true
 connect_only = false
 service_detection = true
 udp_probe = true
+sni = "sts.example.test"
 format = "jsonl"
 show = ["open", "closed"]
 theme = "hacker"
@@ -202,6 +204,7 @@ source_port_range = "40000-40100"
         assert_eq!(config.os_probes, Some(4));
         assert_eq!(config.service_detection, Some(true));
         assert_eq!(config.udp_probe, Some(true));
+        assert_eq!(config.sni.as_deref(), Some("sts.example.test"));
         assert_eq!(config.format, Some(OutputFormat::Jsonl));
         assert_eq!(config.show.unwrap().len(), 2);
         assert_eq!(config.theme, Some(Theme::Hacker));

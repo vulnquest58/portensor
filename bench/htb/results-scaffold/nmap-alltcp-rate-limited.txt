@@ -1,0 +1,6 @@
+# Nmap 7.80 scan initiated Sun Nov 22 19:50:26 2026 as: nmap -Pn -p- --min-rate 2000 --max-retries 1 --max-rtt-timeout 400ms --initial-rtt-timeout 100ms --host-timeout 240s -oN bench/htb/results-scaffold/nmap-alltcp.txt -oX bench/htb/results-scaffold/nmap-alltcp.xml 10.129.215.153
+Nmap scan report for 10.129.215.153
+Host is up.
+All 65535 scanned ports on 10.129.215.153 are filtered
+
+# Nmap done at Sun Nov 22 19:51:34 2026 -- 1 IP address (1 host up) scanned in 67.57 seconds

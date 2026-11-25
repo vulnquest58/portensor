@@ -1,0 +1,203 @@
+{
+  "target": "10.129.215.153",
+  "machine": "Scaffold",
+  "scope": "bench/htb/lab-scope-scaffold.toml",
+  "authorization": "user-provided authorized HTB lab session; network discovery and fingerprinting only",
+  "tools": {
+    "rayscan": "0.7.0",
+    "nmap": "7.80"
+  },
+  "confirmed_open_tcp": [
+    53,
+    80,
+    88,
+    135,
+    139,
+    389,
+    443,
+    445,
+    464,
+    593,
+    636,
+    3268,
+    3269,
+    5040,
+    5985,
+    9389,
+    9800,
+    9801,
+    47001,
+    49664,
+    49665,
+    49666,
+    49667,
+    52951,
+    56384,
+    56405,
+    56408,
+    61051,
+    61055,
+    64642
+  ],
+  "scans": {
+    "rayscan_full_connect": {
+      "open": 30,
+      "closed": 56443,
+      "filtered": 9062,
+      "independent_full_reference": false,
+      "completeness": "not independently established after three nmap full-port attempts; all discovered ports were confirmed by targeted nmap",
+      "elapsed_ms": 31705.656,
+      "wall_seconds": 33.78,
+      "peak_rss_kib": 20084,
+      "defense": "rate_limiting",
+      "retry_ports": 25
+    },
+    "rayscan_focused_connect": {
+      "open": 30,
+      "closed": 0,
+      "filtered": 0,
+      "silent": 0,
+      "elapsed_ms": 1719.099,
+      "defense": "rate_limiting",
+      "note": "All 30 full-scan ports revalidated at a low probe rate."
+    },
+    "rayscan_service_scan": {
+      "service_verified": 15,
+      "silent": 15,
+      "note": "Silent ports remained open in focused connect-only validation; service mode did not identify a banner."
+    },
+    "nmap_all_tcp": {
+      "attempt_1": "Timed out after 300 seconds at --min-rate 1000 with no report.",
+      "attempt_2_open": 0,
+      "attempt_2_filtered": 65535,
+      "attempt_2_elapsed_seconds": 67.57,
+      "attempt_3": "Slow --max-rate 250 scan hit the 600-second host timeout without reporting ports.",
+      "attempt_3_elapsed_seconds": 600.37,
+      "valid": false,
+      "reason": "Target rate-limiting produced an all-filtered false negative and a timed-out slow pass; evidence retained as nmap-alltcp-rate-limited.* and nmap-alltcp-slow-timed-out.*."
+    },
+    "nmap_targeted_services": {
+      "open": 30,
+      "elapsed_seconds": 38.78,
+      "agreement": 1.0,
+      "independent_discovery": false
+    }
+  },
+  "domain": {
+    "dns_domain": "scaffold.htb",
+    "hostname": "dc.scaffold.htb",
+    "netbios_name": "DC",
+    "role": "Domain Controller",
+    "site": "Default-First-Site-Name",
+    "domain_functionality": 7,
+    "forest_functionality": 7,
+    "domain_controller_functionality": 7,
+    "global_catalog_ready": true,
+    "ldap_rootdse_anonymous": true,
+    "naming_context": "DC=scaffold,DC=htb"
+  },
+  "services": {
+    "53": {
+      "service": "dns",
+      "soa": "dc.scaffold.htb hostmaster.scaffold.htb 315 900 600 86400 3600",
+      "name_server": "dc.scaffold.htb"
+    },
+    "80": {
+      "service": "http",
+      "product": "Microsoft-IIS/10.0",
+      "status": "401 Unauthorized",
+      "host_header": "portal.scaffold.htb did not change the response"
+    },
+    "88": "Kerberos",
+    "135": "Microsoft Windows RPC",
+    "139": "Microsoft Windows netbios-ssn",
+    "389": {
+      "service": "ldap",
+      "product": "Microsoft Active Directory LDAP",
+      "rootdse": "anonymous"
+    },
+    "443": {
+      "service": "https",
+      "product": "Microsoft-IIS/10.0",
+      "tls": "TLSv1.3 TLS13_AES_256_GCM_SHA384",
+      "certificate_subject": "CN=portal.scaffold.htb",
+      "certificate_san": ["portal.scaffold.htb", "DC01"],
+      "self_signed": true,
+      "host_header": "portal.scaffold.htb returned 401 with Negotiate and NTLM challenges"
+    },
+    "445": {
+      "service": "microsoft-ds",
+      "smb_version": "SMB 3.0.2",
+      "smb_security_mode": "2.02",
+      "signing": "enabled and required"
+    },
+    "464": "kpasswd5",
+    "593": "Microsoft Windows RPC over HTTP 1.0",
+    "636": {
+      "service": "ldaps",
+      "tls": "TLSv1.2 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "issuer": "DC=htb, DC=scaffold, CN=scaffold-DC-CA",
+      "certificate_san": ["dc.scaffold.htb", "scaffold.htb", "SCAFFOLD"]
+    },
+    "3268": "Global Catalog LDAP",
+    "3269": {
+      "service": "global catalog LDAPS",
+      "certificate_san": ["dc.scaffold.htb", "scaffold.htb", "SCAFFOLD"]
+    },
+    "5040": {
+      "state": "open",
+      "identity": "not determined"
+    },
+    "5985": {
+      "service": "winrm",
+      "product": "Microsoft WinRM",
+      "http_status": "404"
+    },
+    "9389": "Active Directory Web Services",
+    "9800": {
+      "service": "Microsoft-HTTPAPI/2.0",
+      "http_status": "503 Service Unavailable"
+    },
+    "9801": {
+      "service": "Microsoft-HTTPAPI/2.0",
+      "http_status": "503 Service Unavailable"
+    },
+    "47001": {
+      "service": "Microsoft-HTTPAPI/2.0",
+      "http_status": "404 Not Found"
+    },
+    "49664-49667": "Dynamic Microsoft Windows RPC",
+    "52951,56384,56405,56408,61051,61055,64642": "Open TCP; identity not determined"
+  },
+  "os_fingerprint": {
+    "family": "windows",
+    "role": "domaincontroller",
+    "detail": "Windows (microsoft-iis service evidence)",
+    "confidence": 0.9332624,
+    "initial_ttl": 128,
+    "hops": 2,
+    "samples": 3,
+    "agreement": 1.0,
+    "ports": [80, 88, 139],
+    "exact_edition": "not established"
+  },
+  "http_application": {
+    "authentication_challenge_observed": ["Negotiate", "NTLM"],
+    "authentication_attempted": false,
+    "content_access": "none",
+    "exploitation_attempted": false,
+    "note": "The portal and IP endpoints returned 401; no credentials were supplied."
+  },
+  "scope_guard": {
+    "denied_target": "10.129.215.154",
+    "exit_code": 2,
+    "probed": false
+  },
+  "limitations": [
+    "The target rate-limited high-concurrency scans; full nmap discovery produced an invalid all-filtered result.",
+    "UDP was not tested.",
+    "Port 5040 and several high dynamic ports remain unidentified.",
+    "The portal requires Windows authentication; no credentials or authentication attempts were used.",
+    "No exploitation, credential access, directory enumeration, or vulnerability exploitation was attempted."
+  ]
+}

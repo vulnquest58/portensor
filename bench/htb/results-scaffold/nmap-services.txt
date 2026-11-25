@@ -1,0 +1,43 @@
+# Nmap 7.80 scan initiated Sun Nov 22 19:54:25 2026 as: nmap -Pn -sV --version-light --max-rate 100 --max-retries 2 --host-timeout 240s -p 53,80,88,135,139,389,443,445,464,593,636,3268,3269,5040,5985,9389,9800,9801,47001,49664,49665,49666,49667,52951,56384,56405,56408,61051,61055,64642 -oN bench/htb/results-scaffold/nmap-services.txt -oX bench/htb/results-scaffold/nmap-services.xml 10.129.215.153
+Nmap scan report for 10.129.215.153
+Host is up (0.20s latency).
+
+PORT      STATE SERVICE       VERSION
+53/tcp    open  domain?
+80/tcp    open  http          Microsoft IIS httpd 10.0
+88/tcp    open  kerberos-sec  Microsoft Windows Kerberos (server time: 2026-11-23 01:54:32Z)
+135/tcp   open  msrpc         Microsoft Windows RPC
+139/tcp   open  netbios-ssn   Microsoft Windows netbios-ssn
+389/tcp   open  ldap          Microsoft Windows Active Directory LDAP (Domain: scaffold.htb0., Site: Default-First-Site-Name)
+443/tcp   open  ssl/http      Microsoft IIS httpd 10.0
+445/tcp   open  microsoft-ds?
+464/tcp   open  kpasswd5?
+593/tcp   open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
+636/tcp   open  ssl/ldap
+3268/tcp  open  ldap          Microsoft Windows Active Directory LDAP (Domain: scaffold.htb0., Site: Default-First-Site-Name)
+3269/tcp  open  ssl/ldap      Microsoft Windows Active Directory LDAP (Domain: scaffold.htb0., Site: Default-First-Site-Name)
+5040/tcp  open  unknown
+5985/tcp  open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+9389/tcp  open  adws?
+9800/tcp  open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+9801/tcp  open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+47001/tcp open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+49664/tcp open  unknown
+49665/tcp open  unknown
+49666/tcp open  unknown
+49667/tcp open  unknown
+52951/tcp open  unknown
+56384/tcp open  unknown
+56405/tcp open  unknown
+56408/tcp open  unknown
+61051/tcp open  unknown
+61055/tcp open  unknown
+64642/tcp open  unknown
+1 service unrecognized despite returning data. If you know the service/version, please submit the following fingerprint at https://nmap.org/cgi-bin/submit.cgi?new-service :
+SF-Port53-TCP:V=7.80%I=2%D=11/22%Time=6B033A6D%P=x86_64-pc-linux-gnu%r(DNS
+SF:VersionBindReqTCP,20,"\0\x1e\0\x06\x81\x04\0\x01\0\0\0\0\0\0\x07version
+SF:\x04bind\0\0\x10\0\x03");
+Service Info: Host: DC; OS: Windows; CPE: cpe:/o:microsoft:windows
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+# Nmap done at Sun Nov 22 19:55:04 2026 -- 1 IP address (1 host up) scanned in 38.78 seconds

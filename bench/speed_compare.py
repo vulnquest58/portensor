@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare rayscan against nmap on loopback for the Phase 8 speed track.
+"""Compare portensor against nmap on loopback for the Phase 8 speed track.
 
 Records wall-clock time for the same port range.  nmap's TCP connect scan
 (-sT) is the fair comparison for the unprivileged engine; the raw SYN engine is
@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BINARY = ROOT / "target" / "release" / "rayscan"
+DEFAULT_BINARY = ROOT / "target" / "release" / "portensor"
 
 
 def timed(cmd: list[str]) -> tuple[float, int, str]:
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json-out", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    rayscan_cmd = [
+    portensor_cmd = [
         str(args.binary),
         "scan",
         "--target",
@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     ]
 
     results: dict[str, object] = {"target": args.target, "ports": args.ports}
-    for name, cmd in (("rayscan", rayscan_cmd), ("nmap", nmap_cmd)):
+    for name, cmd in (("portensor", portensor_cmd), ("nmap", nmap_cmd)):
         times = []
         code = 0
         err = ""
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps(results, indent=2) + "\n")
         print(f"wrote {args.json_out}")
-    return 0 if results["rayscan"]["exit"] == 0 else 1  # type: ignore[index]
+    return 0 if results["portensor"]["exit"] == 0 else 1  # type: ignore[index]
 
 
 if __name__ == "__main__":

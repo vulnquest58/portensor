@@ -1,0 +1,140 @@
+{
+  "target": "10.129.214.126",
+  "targets": 1,
+  "ports": 4,
+  "jobs": 4,
+  "workers": 4,
+  "open": [
+    {
+      "host": "10.129.214.126",
+      "port": 22,
+      "state": "open",
+      "latency_ms": 254.04,
+      "banner": "SSH-2.0-OpenSSH_10.0p2 Debian-7+deb13u4",
+      "service": {
+        "name": "ssh",
+        "product": "OpenSSH",
+        "version": "10.0p2",
+        "confidence": 0.98
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:ssh/OpenSSH(40%) stack:standard(15%) latency:254.0ms(20%)",
+      "findings": [
+        {
+          "id": "ssh-version-disclosure",
+          "title": "SSH service discloses its version",
+          "severity": "low",
+          "confidence": 0.94,
+          "description": "The service disclosed its product or version in a passive response. This information helps attackers select matching exploits and should be minimized where practical.",
+          "evidence": "product=OpenSSH version=10.0p2 port=22",
+          "plugin": "official-baseline/ssh-version-disclosure"
+        }
+      ]
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 87.135,
+      "banner": "HTTP/1.1 302 Moved Temporarily",
+      "service": {
+        "name": "http",
+        "product": "nginx",
+        "confidence": 0.85
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/nginx(40%) stack:standard(15%) latency:87.1ms(20%)",
+      "findings": [
+        {
+          "id": "cleartext-http",
+          "title": "HTTP service transmits data in cleartext",
+          "severity": "medium",
+          "confidence": 0.95,
+          "description": "HTTP traffic is transmitted without TLS. Credentials, session data, and application content can be observed or modified by an on-path attacker.",
+          "evidence": "service=http port=80",
+          "plugin": "official-baseline/cleartext-http"
+        }
+      ]
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 443,
+      "state": "open",
+      "latency_ms": 254.034,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:254.0ms(20%)"
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 3000,
+      "state": "open",
+      "latency_ms": 169.926,
+      "banner": "HTTP/1.1 301 Moved Permanently",
+      "service": {
+        "name": "https",
+        "product": "nginx",
+        "confidence": 0.85
+      },
+      "detail": "tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:https/nginx(40%) stack:standard(15%) latency:169.9ms(20%)",
+      "findings": [
+        {
+          "id": "tls-hostname-mismatch",
+          "title": "TLS certificate does not match the requested hostname",
+          "severity": "medium",
+          "confidence": 0.98,
+          "description": "The certificate presented by the endpoint does not match the requested hostname. Strict clients will reject the connection or the endpoint may be served by the wrong virtual host.",
+          "evidence": "subject=CN=chat.airways.htb hostname_matches=false",
+          "plugin": "official-baseline/tls-hostname-mismatch"
+        }
+      ],
+      "tls": {
+        "version": "TLSv1.3",
+        "cipher": "TLS13_AES_256_GCM_SHA384",
+        "alpn": "http/1.1",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          "CN=chat.airways.htb"
+        ],
+        "subject": "CN=chat.airways.htb",
+        "issuer": "DC=htb, DC=airways, CN=AIRWAYS-DC01-CA",
+        "san": [
+          "chat.airways.htb"
+        ],
+        "serial": "3d:00:00:00:08:02:62:08:d4:f1:6a:2d:74:00:01:00:00:00:08",
+        "not_before": 1792508577,
+        "not_after": 1855580577,
+        "days_remaining": 698,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": false,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    }
+  ],
+  "defense": {
+    "10.129.214.126": {
+      "host": "10.129.214.126",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 4 open port(s) (with 3 identified services) responded with standard TCP semantics"
+      ]
+    }
+  },
+  "summary": {
+    "open": 4,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 1037.794
+}

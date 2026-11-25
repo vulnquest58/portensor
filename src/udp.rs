@@ -35,11 +35,11 @@ const NETBIOS_QUERY: &[u8] = &[
 
 /// SIP OPTIONS probe for VoIP / PBX discovery (port 5060).
 const SIP_OPTIONS_PROBE: &[u8] = b"OPTIONS sip:nm@127.0.0.1 SIP/2.0\r\n\
-Via: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bK-rayscan\r\n\
+Via: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bK-portensor\r\n\
 Max-Forwards: 70\r\n\
 To: <sip:nm@127.0.0.1>\r\n\
-From: <sip:rayscan@127.0.0.1>;tag=rayscan\r\n\
-Call-ID: rayscan-probe@127.0.0.1\r\n\
+From: <sip:portensor@127.0.0.1>;tag=portensor\r\n\
+Call-ID: portensor-probe@127.0.0.1\r\n\
 CSeq: 1 OPTIONS\r\n\
 Content-Length: 0\r\n\r\n";
 

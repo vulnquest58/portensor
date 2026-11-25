@@ -24,7 +24,7 @@
 //! rejects absolute paths, parent traversal, links, and device nodes, and the
 //! regular local library validation runs after extraction, so a registry can
 //! never drop files outside the pack directory or install a pack that would
-//! not pass `rayscan scripts list`.
+//! not pass `portensor scripts list`.
 
 use std::fs;
 use std::io::{Cursor, Read, Write};
@@ -33,16 +33,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use flate2::read::GzDecoder;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tar::Archive;
 
-use crate::cli::ScriptsSearchArgs;
+use crate::cli::{ScriptsSearchArgs, ScriptsUpdateArgs};
 use crate::error::AppError;
 use crate::script::{self, Registry};
 
 /// Environment fallback for `--registry` on `scripts search` and `install`.
-pub const REGISTRY_ENV: &str = "RAYSCAN_SCRIPT_REGISTRY";
+pub const REGISTRY_ENV: &str = "PORTENSOR_SCRIPT_REGISTRY";
 
 const INDEX_SCHEMA: u32 = 1;
 const MAX_INDEX_BYTES: u64 = 1024 * 1024;
@@ -58,6 +58,33 @@ const MAX_DESCRIPTION_CHARS: usize = 500;
 const MAX_TAGS: usize = 8;
 const MAX_TAG_CHARS: usize = 32;
 const MAX_LISTED_NAMES: usize = 12;
+const LOCK_SCHEMA: u32 = 1;
+const MAX_LOCK_BYTES: u64 = 512 * 1024;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct LockEntry {
+    pub name: String,
+    pub version: String,
+    pub source: String,
+    pub sha256: String,
+    pub path: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct LockFile {
+    schema: u32,
+    #[serde(default)]
+    packs: Vec<LockEntry>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct UpdateReport {
+    pub name: String,
+    pub from_version: String,
+    pub to_version: String,
+    pub changed: bool,
+}
 
 #[derive(Debug, Deserialize)]
 struct IndexFile {
@@ -490,7 +517,7 @@ impl TempWorkspace {
             .unwrap_or(0);
         let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "rayscan-pack-{}-{counter}-{nonce}",
+            "portensor-pack-{}-{counter}-{nonce}",
             std::process::id()
         ));
         fs::create_dir_all(&path).map_err(|error| {
@@ -710,6 +737,169 @@ fn validate_downloaded_pack(root: &Path, name: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+fn lock_path(library: &Path) -> PathBuf {
+    library.join("packs.lock")
+}
+
+fn validate_lock_entry(entry: &LockEntry) -> Result<(), AppError> {
+    if !script::valid_identifier(&entry.name) || entry.path != entry.name {
+        return Err(AppError::usage(format!(
+            "script lockfile entry '{}' has an invalid name or path",
+            entry.name
+        )));
+    }
+    if entry.version.is_empty()
+        || entry.version.chars().count() > MAX_VERSION_CHARS
+        || entry.version.chars().any(char::is_control)
+    {
+        return Err(AppError::usage(format!(
+            "script lockfile entry '{}' has an invalid version",
+            entry.name
+        )));
+    }
+    if !matches!(entry.kind.as_str(), "registry" | "url") {
+        return Err(AppError::usage(format!(
+            "script lockfile entry '{}' has an unsupported source kind",
+            entry.name
+        )));
+    }
+    validate_http_url(&entry.source)?;
+    let digest = normalize_sha256(&entry.sha256)?;
+    if digest != entry.sha256 {
+        return Err(AppError::usage(format!(
+            "script lockfile entry '{}' has a non-normalized digest",
+            entry.name
+        )));
+    }
+    Ok(())
+}
+
+fn read_lock_unlocked(library: &Path) -> Result<LockFile, AppError> {
+    let path = lock_path(library);
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LockFile {
+                schema: LOCK_SCHEMA,
+                packs: Vec::new(),
+            });
+        }
+        Err(error) => {
+            return Err(AppError::runtime(format!(
+                "cannot read script lockfile {}: {error}",
+                path.display()
+            )));
+        }
+    };
+    if metadata.len() > MAX_LOCK_BYTES {
+        return Err(AppError::usage(format!(
+            "script lockfile {} exceeds the {MAX_LOCK_BYTES}-byte limit",
+            path.display()
+        )));
+    }
+    let text = fs::read_to_string(&path).map_err(|error| {
+        AppError::runtime(format!(
+            "cannot read script lockfile {}: {error}",
+            path.display()
+        ))
+    })?;
+    let lock: LockFile = serde_json::from_str(&text).map_err(|error| {
+        AppError::usage(format!(
+            "invalid script lockfile {}: {error}",
+            path.display()
+        ))
+    })?;
+    if lock.schema != LOCK_SCHEMA {
+        return Err(AppError::usage(format!(
+            "script lockfile uses unsupported schema {} (expected {LOCK_SCHEMA})",
+            lock.schema
+        )));
+    }
+    for entry in &lock.packs {
+        validate_lock_entry(entry)?;
+    }
+    Ok(lock)
+}
+
+fn write_lock_unlocked(library: &Path, lock: &LockFile) -> Result<(), AppError> {
+    fs::create_dir_all(library).map_err(|error| {
+        AppError::usage(format!(
+            "cannot create script library {}: {error}",
+            library.display()
+        ))
+    })?;
+    let bytes = serde_json::to_vec_pretty(lock)
+        .map_err(|error| AppError::runtime(format!("cannot encode script lockfile: {error}")))?;
+    if bytes.len() as u64 > MAX_LOCK_BYTES {
+        return Err(AppError::usage(format!(
+            "script lockfile exceeds the {MAX_LOCK_BYTES}-byte limit"
+        )));
+    }
+    let path = lock_path(library);
+    let temporary = library.join("packs.lock.tmp");
+    let mut file = fs::File::create(&temporary).map_err(|error| {
+        AppError::runtime(format!(
+            "cannot write script lockfile {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    file.write_all(&bytes)
+        .and_then(|_| file.sync_all())
+        .map_err(|error| {
+            AppError::runtime(format!(
+                "cannot flush script lockfile {}: {error}",
+                temporary.display()
+            ))
+        })?;
+    #[cfg(windows)]
+    {
+        if path.exists() {
+            let _ = fs::remove_file(&path);
+        }
+    }
+    fs::rename(&temporary, &path).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        AppError::runtime(format!(
+            "cannot replace script lockfile {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
+pub(crate) fn upsert_lock_entry_unlocked(library: &Path, entry: LockEntry) -> Result<(), AppError> {
+    validate_lock_entry(&entry)?;
+    let mut lock = read_lock_unlocked(library)?;
+    lock.schema = LOCK_SCHEMA;
+    if let Some(existing) = lock
+        .packs
+        .iter_mut()
+        .find(|existing| existing.name == entry.name)
+    {
+        *existing = entry;
+    } else {
+        lock.packs.push(entry);
+    }
+    lock.packs.sort_by(|left, right| left.name.cmp(&right.name));
+    write_lock_unlocked(library, &lock)
+}
+
+pub(crate) fn remove_lock_entry_unlocked(library: &Path, name: &str) -> Result<(), AppError> {
+    let mut lock = read_lock_unlocked(library)?;
+    let before = lock.packs.len();
+    lock.packs.retain(|entry| entry.name != name);
+    if lock.packs.len() == before {
+        return Ok(());
+    }
+    write_lock_unlocked(library, &lock)
+}
+
+/// Remove a pack from the lockfile when its local installation is removed.
+pub fn remove_lock_entry(library: &Path, name: &str) -> Result<(), AppError> {
+    let _lock = script::LibraryLock::acquire(library)?;
+    remove_lock_entry_unlocked(library, name)
+}
+
 /// Install the highest-versioned `name` from `registry_url`.
 pub fn install_named(
     registry_url: &str,
@@ -723,7 +913,18 @@ pub fn install_named(
     verify_sha256(&bytes, &entry.sha256)?;
     let (_workspace, root) = unpack_archive(&bytes, Some(&entry.name))?;
     validate_downloaded_pack(&root, &entry.name)?;
-    script::install_pack(&root, library, force)
+    let lock_entry = LockEntry {
+        name: entry.name.clone(),
+        version: entry.version.clone(),
+        source: registry_url.to_string(),
+        sha256: entry.sha256.clone(),
+        path: entry.name.clone(),
+        kind: "registry".to_string(),
+    };
+    let _lock = script::LibraryLock::acquire(library)?;
+    let installed = script::install_pack_locked(&root, library, force)?;
+    upsert_lock_entry_unlocked(library, lock_entry)?;
+    Ok(installed)
 }
 
 /// Install a directly linked archive after verifying the caller-supplied
@@ -744,7 +945,118 @@ pub fn install_url(
         .ok_or_else(|| AppError::usage("script pack directory has no usable name"))?
         .to_string();
     validate_downloaded_pack(&root, &name)?;
-    script::install_pack(&root, library, force)
+    let lock_entry = LockEntry {
+        name: name.clone(),
+        version: "url".to_string(),
+        source: url.to_string(),
+        sha256: expected.clone(),
+        path: name.clone(),
+        kind: "url".to_string(),
+    };
+    let _lock = script::LibraryLock::acquire(library)?;
+    let installed = script::install_pack_locked(&root, library, force)?;
+    upsert_lock_entry_unlocked(library, lock_entry)?;
+    Ok(installed)
+}
+
+pub fn update_packs(
+    library: &Path,
+    registry_override: Option<&str>,
+    only_name: Option<&str>,
+) -> Result<Vec<UpdateReport>, AppError> {
+    let _lock = script::LibraryLock::acquire(library)?;
+    script::recover_library_unlocked(library)?;
+    let mut lock = read_lock_unlocked(library)?;
+    if lock.packs.is_empty() {
+        return Err(AppError::usage(format!(
+            "no registry-installed packs are recorded in {}; install a pack with --registry first",
+            lock_path(library).display()
+        )));
+    }
+    if let Some(name) = only_name
+        && !lock.packs.iter().any(|entry| entry.name == name)
+    {
+        return Err(AppError::usage(format!(
+            "script pack '{name}' is not recorded in {}",
+            lock_path(library).display()
+        )));
+    }
+
+    let selected: Vec<usize> = lock
+        .packs
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| only_name.is_none_or(|name| entry.name == name))
+        .map(|(index, _)| index)
+        .collect();
+    let mut reports = Vec::new();
+    for position in selected {
+        let entry = lock.packs[position].clone();
+        if entry.kind != "registry" {
+            if only_name.is_some() {
+                return Err(AppError::usage(format!(
+                    "script pack '{}' was installed from a direct URL and cannot be updated automatically; reinstall it with --sha256",
+                    entry.name
+                )));
+            }
+            continue;
+        }
+        let registry = registry_override.unwrap_or(&entry.source);
+        let index = fetch_index(registry)?;
+        let target = index.find(&entry.name)?;
+        if target.version == entry.version && target.sha256 == entry.sha256 {
+            reports.push(UpdateReport {
+                name: entry.name.clone(),
+                from_version: entry.version.clone(),
+                to_version: entry.version.clone(),
+                changed: false,
+            });
+            continue;
+        }
+        let bytes = download(&target.resolved_url)?;
+        verify_sha256(&bytes, &target.sha256)?;
+        let (_workspace, root) = unpack_archive(&bytes, Some(&target.name))?;
+        validate_downloaded_pack(&root, &target.name)?;
+        script::install_pack_locked(&root, library, true)?;
+        reports.push(UpdateReport {
+            name: entry.name.clone(),
+            from_version: entry.version.clone(),
+            to_version: target.version.clone(),
+            changed: true,
+        });
+        if let Some(stored) = lock.packs.get_mut(position) {
+            stored.version = target.version.clone();
+            stored.source = registry.to_string();
+            stored.sha256 = target.sha256.clone();
+            stored.path = target.name.clone();
+        }
+        write_lock_unlocked(library, &lock)?;
+    }
+    Ok(reports)
+}
+
+pub fn update_cli(args: ScriptsUpdateArgs, library: &Path) -> Result<(), AppError> {
+    let reports = update_packs(library, args.registry.as_deref(), args.name.as_deref())?;
+    if args.json {
+        let payload = serde_json::to_string_pretty(&reports)
+            .map_err(|error| AppError::runtime(format!("cannot encode update JSON: {error}")))?;
+        println!("{payload}");
+        return Ok(());
+    }
+    if reports.is_empty() {
+        println!("no updateable registry packs found");
+    }
+    for report in reports {
+        if report.changed {
+            println!(
+                "updated {} {} -> {}",
+                report.name, report.from_version, report.to_version
+            );
+        } else {
+            println!("up to date {} {}", report.name, report.to_version);
+        }
+    }
+    Ok(())
 }
 
 pub fn search_cli(args: ScriptsSearchArgs) -> Result<(), AppError> {
@@ -1078,7 +1390,7 @@ mod tests {
         let index = index_json("demo-pack", "/pack.tar.gz", &digest).into_bytes();
         let server = RegistryServer::start(index, archive);
         let base = std::env::temp_dir().join(format!(
-            "rayscan-market-e2e-{}-{}",
+            "portensor-market-e2e-{}-{}",
             std::process::id(),
             server.port
         ));
@@ -1117,7 +1429,7 @@ mod tests {
         let index = index_json("direct-pack", "/pack.tar.gz", &digest).into_bytes();
         let server = RegistryServer::start(index, archive);
         let base = std::env::temp_dir().join(format!(
-            "rayscan-market-url-{}-{}",
+            "portensor-market-url-{}-{}",
             std::process::id(),
             server.port
         ));
@@ -1142,13 +1454,86 @@ mod tests {
     }
 
     #[test]
+    fn registry_install_records_a_lock_entry_and_update_replaces_it_atomically() {
+        let archive = build_archive("demo-pack");
+        let digest = sha256_hex(&archive);
+        let index = index_json("demo-pack", "/pack.tar.gz", &digest).into_bytes();
+        let first = RegistryServer::start(index, archive);
+        let base = std::env::temp_dir().join(format!(
+            "portensor-market-update-{}-{}",
+            std::process::id(),
+            first.port
+        ));
+        let library = base.join("library");
+        install_named(&first.url("/index.json"), "demo-pack", &library, false)
+            .expect("install from registry");
+        let lock = read_lock_unlocked(&library).expect("lockfile");
+        assert_eq!(lock.packs.len(), 1);
+        assert_eq!(lock.packs[0].kind, "registry");
+        assert_eq!(lock.packs[0].version, "1.0.0");
+        assert_eq!(lock.packs[0].sha256, digest);
+        assert!(lock.packs[0].source.contains("127.0.0.1"));
+        let original = fs::read_to_string(library.join("demo-pack/pack.toml")).expect("manifest");
+        drop(first);
+        let offline = update_packs(&library, None, None).expect_err("offline update fails");
+        assert!(
+            offline.to_string().contains("script registry") || offline.to_string().contains("HTTP"),
+            "{offline}"
+        );
+        assert_eq!(
+            fs::read_to_string(library.join("demo-pack/pack.toml")).expect("manifest"),
+            original
+        );
+
+        let archive = build_archive("demo-pack");
+        let digest = sha256_hex(&archive);
+        let index = index_json("demo-pack", "/pack.tar.gz", &digest)
+            .replace("1.0.0", "2.0.0")
+            .into_bytes();
+        let second = RegistryServer::start(index, archive);
+        let reports = update_packs(&library, Some(&second.url("/index.json")), None)
+            .expect("update from registry");
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].changed);
+        assert_eq!(reports[0].from_version, "1.0.0");
+        assert_eq!(reports[0].to_version, "2.0.0");
+        let lock = read_lock_unlocked(&library).expect("lockfile");
+        assert_eq!(lock.packs[0].version, "2.0.0");
+        assert_eq!(lock.packs[0].sha256, digest);
+        assert!(library.join("demo-pack/pack.toml").is_file());
+        let reports = update_packs(&library, Some(&second.url("/index.json")), None)
+            .expect("second update is a no-op");
+        assert!(!reports[0].changed);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn recovery_restores_a_backup_and_discards_staging() {
+        let base =
+            std::env::temp_dir().join(format!("portensor-market-recover-{}", std::process::id()));
+        let library = base.join("library");
+        fs::create_dir_all(library.join(".backup-demo-pack")).expect("backup");
+        fs::write(
+            library.join(".backup-demo-pack/pack.toml"),
+            "name = \"demo-pack\"",
+        )
+        .expect("manifest");
+        fs::create_dir_all(library.join(".staging-demo-pack")).expect("staging");
+        script::recover_library(&library).expect("recover");
+        assert!(library.join("demo-pack/pack.toml").is_file());
+        assert!(!library.join(".backup-demo-pack").exists());
+        assert!(!library.join(".staging-demo-pack").exists());
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn remote_install_rejects_a_bad_digest() {
         let archive = build_archive("demo-pack");
         let bad = "00".repeat(32);
         let index = index_json("demo-pack", "/pack.tar.gz", &bad).into_bytes();
         let server = RegistryServer::start(index, archive);
         let base = std::env::temp_dir().join(format!(
-            "rayscan-market-bad-{}-{}",
+            "portensor-market-bad-{}-{}",
             std::process::id(),
             server.port
         ));

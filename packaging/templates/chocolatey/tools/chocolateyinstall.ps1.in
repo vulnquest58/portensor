@@ -1,0 +1,20 @@
+$ErrorActionPreference = 'Stop'
+
+$toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$packageArgs = @{
+  packageName   = 'portensor'
+  fileType      = 'zip'
+  url           = '@@RELEASE_BASE_URL@@/@@WINDOWS_ARCHIVE@@'
+  checksum      = '@@WINDOWS_SHA256@@'
+  checksumType  = 'sha256'
+  unzipLocation = $toolsDir
+}
+
+Install-ChocolateyZipPackage @packageArgs
+
+$exePath = Join-Path $toolsDir 'bin\portensor.exe'
+if (-not (Test-Path $exePath)) {
+  throw "portensor.exe was not found in the package payload"
+}
+
+Install-BinFile -Name 'portensor' -Path $exePath

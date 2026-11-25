@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BINARY = ROOT / "target" / "release" / "rayscan"
+DEFAULT_BINARY = ROOT / "target" / "release" / "portensor"
 DEFAULT_TRUTH = ROOT / "lab" / "ground_truth.json"
 DEFAULT_PORTS = "80,443,3306,8080,8081,9000,9003"
 

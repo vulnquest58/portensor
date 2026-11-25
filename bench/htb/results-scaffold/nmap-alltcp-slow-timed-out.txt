@@ -1,0 +1,6 @@
+# Nmap 7.80 scan initiated Sun Nov 22 21:04:15 2026 as: nmap -Pn -p- --max-rate 250 --max-retries 1 --max-rtt-timeout 1s --initial-rtt-timeout 200ms --host-timeout 600s -oN bench/htb/results-scaffold/nmap-alltcp-slow.txt -oX bench/htb/results-scaffold/nmap-alltcp-slow.xml 10.129.215.153
+Warning: 10.129.215.153 giving up on port because retransmission cap hit (1).
+Nmap scan report for 10.129.215.153
+Host is up (0.25s latency).
+Skipping host 10.129.215.153 due to host timeout
+# Nmap done at Sun Nov 22 21:14:15 2026 -- 1 IP address (1 host up) scanned in 600.37 seconds

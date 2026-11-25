@@ -1,11 +1,12 @@
 name = "official-baseline"
-description = "Read-only baseline checks for certificate hygiene, SMB hardening, unauthenticated Redis, and exposed Docker APIs"
+description = "Read-only baseline checks for certificate hygiene, cleartext protocols, exposed services, version disclosure, SMB hardening, unauthenticated Redis, and exposed Docker APIs"
 
 [[script]]
 name = "tls-certificate"
 description = "Reports expired, soon-to-expire, self-signed, and SHA-1/MD5-signed TLS certificates"
 category = "compliance"
 danger = "safe"
+capabilities = ["metadata"]
 command = ["python3", "checks.py", "tls-certificate"]
 services = [
   "https",
@@ -48,10 +49,171 @@ services = [
 timeout_ms = 3000
 
 [[script]]
+name = "tls-weak-protocol"
+description = "Reports SSLv3, TLS 1.0, and TLS 1.1 endpoints"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "tls-weak-protocol"]
+services = ["https", "tls", "imaps", "pop3s", "smtps", "ldaps", "ftps", "winrm-https", "mqtts", "sip-tls", "starttls"]
+timeout_ms = 3000
+
+[[script]]
+name = "tls-weak-cipher"
+description = "Reports RC4, 3DES, DES, NULL, EXPORT, MD5, and anonymous TLS cipher suites"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "tls-weak-cipher"]
+services = ["https", "tls", "imaps", "pop3s", "smtps", "ldaps", "ftps", "winrm-https", "mqtts", "sip-tls", "starttls"]
+timeout_ms = 3000
+
+[[script]]
+name = "tls-hostname-mismatch"
+description = "Reports certificates that do not match the requested hostname"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "tls-hostname-mismatch"]
+services = ["https", "tls", "imaps", "pop3s", "smtps", "ldaps", "ftps", "winrm-https", "mqtts", "sip-tls", "starttls"]
+timeout_ms = 3000
+
+[[script]]
+name = "cleartext-ftp"
+description = "Reports FTP services reachable without TLS"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "cleartext-ftp"]
+services = ["ftp"]
+timeout_ms = 3000
+
+[[script]]
+name = "cleartext-telnet"
+description = "Reports Telnet services that transmit data without encryption"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "cleartext-telnet"]
+services = ["telnet"]
+timeout_ms = 3000
+
+[[script]]
+name = "cleartext-http"
+description = "Reports HTTP services reachable without TLS"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "cleartext-http"]
+services = ["http"]
+timeout_ms = 3000
+
+[[script]]
+name = "cleartext-smtp"
+description = "Reports SMTP services reachable without TLS"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "cleartext-smtp"]
+services = ["smtp"]
+timeout_ms = 3000
+
+[[script]]
+name = "cleartext-pop3"
+description = "Reports POP3 services reachable without TLS"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "cleartext-pop3"]
+services = ["pop3"]
+timeout_ms = 3000
+
+[[script]]
+name = "cleartext-imap"
+description = "Reports IMAP services reachable without TLS"
+category = "compliance"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "cleartext-imap"]
+services = ["imap"]
+timeout_ms = 3000
+
+[[script]]
+name = "ssh-version-disclosure"
+description = "Reports SSH software versions disclosed in the protocol banner"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "ssh-version-disclosure"]
+services = ["ssh"]
+timeout_ms = 3000
+
+[[script]]
+name = "http-version-disclosure"
+description = "Reports HTTP product or version disclosure"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "http-version-disclosure"]
+services = ["http"]
+timeout_ms = 3000
+
+[[script]]
+name = "mysql-version-disclosure"
+description = "Reports MySQL server version disclosure"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "mysql-version-disclosure"]
+services = ["mysql"]
+timeout_ms = 3000
+
+[[script]]
+name = "postgresql-version-disclosure"
+description = "Reports PostgreSQL server version disclosure"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "postgresql-version-disclosure"]
+services = ["postgresql"]
+timeout_ms = 3000
+
+[[script]]
+name = "redis-version-disclosure"
+description = "Reports Redis server version disclosure"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "redis-version-disclosure"]
+services = ["redis"]
+timeout_ms = 3000
+
+[[script]]
+name = "mongodb-version-disclosure"
+description = "Reports MongoDB server version disclosure"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "mongodb-version-disclosure"]
+services = ["mongodb"]
+timeout_ms = 3000
+
+[[script]]
+name = "memcached-version-disclosure"
+description = "Reports Memcached server version disclosure"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "memcached-version-disclosure"]
+services = ["memcached"]
+timeout_ms = 3000
+
+[[script]]
 name = "smb-hardening"
 description = "Reports SMB signing not required and servers that accept SMBv1 negotiation"
 category = "vulnerability"
 danger = "safe"
+capabilities = ["metadata"]
 command = ["python3", "checks.py", "smb-hardening"]
 services = ["smb", "microsoft-ds", "netbios-ssn"]
 timeout_ms = 3000
@@ -61,6 +223,7 @@ name = "redis-unauthenticated"
 description = "Reports Redis servers that answered INFO without authentication"
 category = "vulnerability"
 danger = "safe"
+capabilities = ["metadata"]
 command = ["python3", "checks.py", "redis-unauthenticated"]
 services = ["redis"]
 timeout_ms = 3000
@@ -70,6 +233,47 @@ name = "docker-unauthenticated"
 description = "Reports Docker Engine API endpoints that answered an unauthenticated version or ping request"
 category = "vulnerability"
 danger = "safe"
+capabilities = ["metadata"]
 command = ["python3", "checks.py", "docker-unauthenticated"]
 services = ["docker", "docker-tls"]
+timeout_ms = 3000
+
+[[script]]
+name = "vnc-exposed"
+description = "Reports VNC services reachable from the scanned network"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "vnc-exposed"]
+services = ["vnc"]
+timeout_ms = 3000
+
+[[script]]
+name = "rdp-exposed"
+description = "Reports RDP services reachable from the scanned network"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "rdp-exposed"]
+services = ["rdp"]
+timeout_ms = 3000
+
+[[script]]
+name = "mongodb-exposed"
+description = "Reports MongoDB services reachable from the scanned network"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "mongodb-exposed"]
+services = ["mongodb"]
+timeout_ms = 3000
+
+[[script]]
+name = "elasticsearch-exposed"
+description = "Reports Elasticsearch services reachable over HTTP"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+command = ["python3", "checks.py", "elasticsearch-exposed"]
+services = ["http", "elasticsearch"]
 timeout_ms = 3000

@@ -6,7 +6,7 @@ from bench import soak
 
 class CommandTests(unittest.TestCase):
     def test_verified_command_has_workers_and_ports(self) -> None:
-        command = soak.scan_command(Path("/tmp/rayscan"), [80, 443], 64, 32, False)
+        command = soak.scan_command(Path("/tmp/portensor"), [80, 443], 64, 32, False)
         self.assertIn("--workers", command)
         self.assertEqual(command[command.index("--workers") + 1], "64")
         self.assertEqual(command[command.index("--ports") + 1], "80,443")
@@ -14,7 +14,7 @@ class CommandTests(unittest.TestCase):
         self.assertNotIn("--discover-only", command)
 
     def test_discover_mode_omits_zero_host_cap(self) -> None:
-        command = soak.scan_command(Path("/tmp/rayscan"), [80], 8, 0, True)
+        command = soak.scan_command(Path("/tmp/portensor"), [80], 8, 0, True)
         self.assertNotIn("--host-concurrency", command)
         self.assertIn("--discover-only", command)
 

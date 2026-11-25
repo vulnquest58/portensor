@@ -60,10 +60,10 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(summary["max"], 3.0)
 
     def test_exact_summary_and_verdict(self) -> None:
-        spec = validate.ToolSpec("rayscan", ["rayscan"], bench.parse_rayscan, True)
+        spec = validate.ToolSpec("portensor", ["portensor"], bench.parse_portensor, True)
         observations = [
-            validate.Observation(0, make_run("rayscan", elapsed=1.0)),
-            validate.Observation(1, make_run("rayscan", elapsed=1.2)),
+            validate.Observation(0, make_run("portensor", elapsed=1.0)),
+            validate.Observation(1, make_run("portensor", elapsed=1.2)),
         ]
         summary = validate.summarize_tool(spec, observations, None)
         self.assertTrue(summary["exact"])
@@ -74,9 +74,9 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(reasons, [])
 
     def test_false_positive_fails_verdict(self) -> None:
-        spec = validate.ToolSpec("rayscan", ["rayscan"], bench.parse_rayscan, True)
+        spec = validate.ToolSpec("portensor", ["portensor"], bench.parse_portensor, True)
         observations = [
-            validate.Observation(0, make_run("rayscan", false_positives=2))
+            validate.Observation(0, make_run("portensor", false_positives=2))
         ]
         summary = validate.summarize_tool(spec, observations, None)
         self.assertFalse(summary["exact"])
@@ -85,8 +85,8 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("accuracy mismatch in at least one run", reasons)
 
     def test_missing_measurements_fail_verdict(self) -> None:
-        spec = validate.ToolSpec("rayscan", ["rayscan"], bench.parse_rayscan, True)
-        run = make_run("rayscan")
+        spec = validate.ToolSpec("portensor", ["portensor"], bench.parse_portensor, True)
+        run = make_run("portensor")
         run.cpu_seconds = None
         run.peak_rss_kb = None
         summary = validate.summarize_tool(
@@ -125,25 +125,25 @@ class NetworkConditionTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def test_rayscan_command_is_quiet_and_unlimited(self) -> None:
+    def test_portensor_command_is_quiet_and_unlimited(self) -> None:
         specs = validate.build_tools(
-            ["rayscan"], Path("/tmp/rayscan"), [20001, 20002]
+            ["portensor"], Path("/tmp/portensor"), [20001, 20002]
         )
         command = specs[0].command
-        self.assertEqual(command[0], "/tmp/rayscan")
+        self.assertEqual(command[0], "/tmp/portensor")
         self.assertIn("--json", command)
         self.assertIn("--quiet", command)
         self.assertIn("0", command)
 
     def test_nmap_uses_connect_scan(self) -> None:
-        specs = validate.build_tools(["nmap"], Path("/tmp/rayscan"), [20001])
+        specs = validate.build_tools(["nmap"], Path("/tmp/portensor"), [20001])
         self.assertIn("-sT", specs[0].command)
         self.assertIn("20001", specs[0].command)
 
     def test_handshake_mode_uses_discovery_and_speed_ports(self) -> None:
         specs = validate.build_tools(
-            ["rayscan-connect"],
-            Path("/tmp/rayscan"),
+            ["portensor-connect"],
+            Path("/tmp/portensor"),
             [20001, 20002, 20003],
             speed_ports=[20001, 20003],
         )
@@ -154,14 +154,14 @@ class CommandTests(unittest.TestCase):
 
     def test_required_unknown_tool_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            validate.build_tools(["unknown"], Path("/tmp/rayscan"), [20001])
+            validate.build_tools(["unknown"], Path("/tmp/portensor"), [20001])
 
 
 class ReportTests(unittest.TestCase):
     def test_markdown_contains_verdict_and_tools(self) -> None:
-        spec = validate.ToolSpec("rayscan", ["rayscan"], bench.parse_rayscan, True)
+        spec = validate.ToolSpec("portensor", ["portensor"], bench.parse_portensor, True)
         summary = validate.summarize_tool(
-            spec, [validate.Observation(0, make_run("rayscan"))], None
+            spec, [validate.Observation(0, make_run("portensor"))], None
         )
         report = {
             "generated_at": "2026-01-01T00:00:00+00:00",
@@ -171,7 +171,7 @@ class ReportTests(unittest.TestCase):
                 "cpu_count": 2,
                 "memory_kb": 2048,
                 "python": "3.12",
-                "versions": {"rayscan": "rayscan 0.7.0"},
+                "versions": {"portensor": "portensor 0.7.0"},
             },
             "scenario": {
                 "target": validate.HOST,
@@ -186,8 +186,8 @@ class ReportTests(unittest.TestCase):
             "reasons": [],
         }
         markdown = validate.format_markdown(report)
-        self.assertIn("rayscan benchmark validation", markdown)
-        self.assertIn("| rayscan | accuracy |", markdown)
+        self.assertIn("portensor benchmark validation", markdown)
+        self.assertIn("| portensor | accuracy |", markdown)
         self.assertIn("| yes |", markdown)
         self.assertIn("**PASS**", markdown)
 

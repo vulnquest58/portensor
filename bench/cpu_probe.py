@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-BINARY = Path("/mnt/e/VulnQuest_Pro/rayscan/target/release/rayscan")
+BINARY = Path("/mnt/e/VulnQuest_Pro/portensor/target/release/portensor")
 
 
 def run(workers: int) -> None:

@@ -1,4 +1,4 @@
-# Rayscan benchmark contract
+# Portensor benchmark contract
 
 The benchmark harness consumes the scanner through this contract. Keep it stable
 unless the harness and its tests are changed in the same commit.
@@ -6,7 +6,7 @@ unless the harness and its tests are changed in the same commit.
 ## Command
 
 ```text
-rayscan scan --target <host-or-cidr> --ports <list> --json
+portensor scan --target <host-or-cidr> --ports <list> --json
 ```
 
 - `--target` is one IPv4 or IPv6 address, CIDR, range, or file of targets.
@@ -61,9 +61,10 @@ partitioned and merged into one result. Raw SYN-ACKs are candidates: by default
 each candidate is connect-verified before it appears in `open`. For raw
 diagnostics, `--syn --connect-only` reports the layer-3/4 result directly.
 `--retries N` controls both raw retransmission and connect-verification retries.
-Connect scans cap timeout retries at `min(N, 3)` and recheck an ambiguous
-verification result up to `min(N, 2)` times while retaining the strongest
-evidence seen.
+Connect scans cap timeout retries at `min(N, 3)`. An ambiguous verification
+result is retried concurrently with up to eight reconnects (two per retry,
+capped at eight) while retaining the strongest evidence seen; `N = 0` disables
+post-handshake recovery.
 
 The exact SYN lab gate is `bench/syn_gate.py` (`make syn-gate`). It scores the
 same `open` list against `lab/ground_truth.json` and requires an exact set, so a
@@ -94,15 +95,15 @@ performance phase, where the benchmark hardware must be fixed and documented.
 
 `bench/validate.py` is the standardized unprivileged comparison. It creates a
 loopback scenario with banner services, silent tarpits, and closed ports, then
-runs interleaved warmup and measured rounds. Verified rayscan and nmap are
+runs interleaved warmup and measured rounds. Verified portensor and nmap are
 scored over all ports to expose handshake-only false positives. A
-handshake-only rayscan mode and nmap are scored over the non-tarpit subset so
+handshake-only portensor mode and nmap are scored over the non-tarpit subset so
 their wall time, CPU, and peak RSS are compared with matched discovery
 semantics.
 
 The suite writes `bench/results/validation.json` and
 `bench/results/validation.md`, and exits non-zero when verified or
-handshake-equivalent rayscan accuracy is not exact or when the configured wall,
+handshake-equivalent portensor accuracy is not exact or when the configured wall,
 CPU, or RSS ceilings are exceeded. By default loopback runs inject no packet
 loss; `--netem-loss PERCENT` re-executes the same suite inside an unprivileged
 network namespace with `tc netem` for loss profiles. The privileged

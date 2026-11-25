@@ -16,7 +16,7 @@ echo "local port range: $(cat /proc/sys/net/ipv4/ip_local_port_range)"
 echo "somaxconn: $(cat /proc/sys/net/core/somaxconn)"
 echo "== file limits =="
 ulimit -n
-echo "== rayscan release =="
-if [ -x /tmp/rayscan-target/release/rayscan ]; then
-  /tmp/rayscan-target/release/rayscan --version
+echo "== portensor release =="
+if [ -x /tmp/portensor-target/release/portensor ]; then
+  /tmp/portensor-target/release/portensor --version
 fi

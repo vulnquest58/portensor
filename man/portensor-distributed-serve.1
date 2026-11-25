@@ -1,0 +1,55 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-distributed-serve 1  "serve "
+.SH NAME
+portensor\-distributed\-serve \- Serve a coordinator that assigns shard jobs to polling workers or push agents
+.SH SYNOPSIS
+\fBserve\fR [\fB\-\-listen\fR] [\fB\-\-token\fR] [\fB\-\-tls\-cert\fR] [\fB\-\-tls\-key\fR] [\fB\-\-ca\-cert\fR] [\fB\-\-insecure\-tls\fR] [\fB\-\-shards\fR] [\fB\-\-out\fR] [\fB\-\-state\fR] [\fB\-\-lease\-secs\fR] [\fB\-\-max\-attempts\fR] [\fB\-\-job\-timeout\-secs\fR] [\fB\-\-agents\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISCAN_ARGS\fR>
+.SH DESCRIPTION
+Serve a coordinator that assigns shard jobs to polling workers or push agents
+.SH OPTIONS
+.TP
+\fB\-\-listen\fR \fI<ADDR>\fR [default: 127.0.0.1:9090]
+Coordinator listen address. Set \-\-tls\-cert and \-\-tls\-key to serve HTTPS
+.TP
+\fB\-\-token\fR \fI<TOKEN>\fR
+Bearer token (or PORTENSOR_DISTRIBUTED_TOKEN), at least 16 characters
+.TP
+\fB\-\-tls\-cert\fR \fI<FILE>\fR
+PEM certificate chain for the coordinator\*(Aqs HTTPS listener
+.TP
+\fB\-\-tls\-key\fR \fI<FILE>\fR
+PEM private key for the coordinator\*(Aqs HTTPS listener
+.TP
+\fB\-\-ca\-cert\fR \fI<FILE>\fR
+PEM CA bundle used to verify push\-agent HTTPS certificates
+.TP
+\fB\-\-insecure\-tls\fR
+Accept any push\-agent HTTPS certificate. Use only for testing
+.TP
+\fB\-\-shards\fR \fI<N>\fR [default: 8]
+Number of deterministic target shards/jobs
+.TP
+\fB\-\-out\fR \fI<FILE>\fR [default: portensor\-distributed.json]
+Write the merged report to FILE
+.TP
+\fB\-\-state\fR \fI<FILE>\fR
+Durable coordinator state file. Defaults to OUT.state.json
+.TP
+\fB\-\-lease\-secs\fR \fI<SECS>\fR [default: 300]
+Seconds a worker may hold a job without a heartbeat before it is requeued
+.TP
+\fB\-\-max\-attempts\fR \fI<N>\fR [default: 3]
+Attempts per shard before it is marked failed
+.TP
+\fB\-\-job\-timeout\-secs\fR \fI<SECS>\fR [default: 3600]
+Per\-job execution timeout in seconds
+.TP
+\fB\-\-agents\fR \fI<URL,URL>\fR
+Agent base URLs for push mode. Omit for polling\-worker mode
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+<\fISCAN_ARGS\fR>
+Scan command and arguments, prefixed with `scan`

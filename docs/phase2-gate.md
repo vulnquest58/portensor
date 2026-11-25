@@ -23,7 +23,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.69s
 cargo test --all-targets --all-features
-   Compiling rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/rayscan)
+   Compiling rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/portensor)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 21.01s
 
 running 40 tests

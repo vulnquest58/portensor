@@ -16,7 +16,7 @@ RUN mkdir -p src/bin && \
     echo 'fn main() {}' > src/bin/gen_man.rs && \
     rustup target add x86_64-unknown-linux-musl && \
     cargo build --release --locked --target x86_64-unknown-linux-musl 2>&1 || true && \
-    rm -f target/x86_64-unknown-linux-musl/release/deps/rayscan* \
+    rm -f target/x86_64-unknown-linux-musl/release/deps/portensor* \
            target/x86_64-unknown-linux-musl/release/deps/gen_man*
 
 # Now copy the full source and build the real binary.
@@ -26,13 +26,13 @@ RUN cargo build --release --locked --target x86_64-unknown-linux-musl
 # ── Stage 2: Minimal scratch image ───────────────────────────────────────────
 FROM scratch
 
-LABEL org.opencontainers.image.title="rayscan"
+LABEL org.opencontainers.image.title="portensor"
 LABEL org.opencontainers.image.description="Accuracy-first TCP/UDP port scanner"
 LABEL org.opencontainers.image.licenses="MIT"
 
 COPY --from=builder \
-    /build/target/x86_64-unknown-linux-musl/release/rayscan \
-    /rayscan
+    /build/target/x86_64-unknown-linux-musl/release/portensor \
+    /portensor
 
-ENTRYPOINT ["/rayscan"]
+ENTRYPOINT ["/portensor"]
 

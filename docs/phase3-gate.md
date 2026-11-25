@@ -11,10 +11,10 @@
 ```
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
-    Checking rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/rayscan)
+    Checking rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/portensor)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.69s
 cargo test --all-targets --all-features
-   Compiling rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/rayscan)
+   Compiling rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/portensor)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 16s
      Running unittests src/lib.rs (target/debug/deps/rayscan-f32c770170ab5c80)
 
@@ -131,7 +131,7 @@ Ran 13 tests in 0.140s
 
 OK
 cargo build --release --locked
-   Compiling rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/rayscan)
+   Compiling rayscan v0.1.0 (/mnt/e/VulnQuest_Pro/portensor)
     Finished `release` profile [optimized] target(s) in 1m 17s
 ```
 
@@ -290,7 +290,7 @@ PASS raw SYN accuracy gate: 3/3 exact
 
 ```
 rayscan Phase 3 accuracy suite
-binary : /mnt/e/VulnQuest_Pro/rayscan/target/release/rayscan
+binary : /mnt/e/VulnQuest_Pro/portensor/target/release/rayscan
 target : 10.77.0.2  ports: 1-65535
 expected open: [80, 443, 3306, 8080, 8081]
 forbidden (FP): [9000, 9003]

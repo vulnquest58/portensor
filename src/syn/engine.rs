@@ -1255,7 +1255,7 @@ fn syn_scan_v4(
     let rx_port_groups = plan.port_groups.clone();
     let rx_groups = plan.groups;
     let rx_handle = std::thread::Builder::new()
-        .name("rayscan-rx".to_string())
+        .name("portensor-rx".to_string())
         .spawn(move || {
             if let Some(first_core) =
                 core_affinity::get_core_ids().and_then(|ids| ids.into_iter().next())
@@ -1300,7 +1300,7 @@ fn syn_scan_v4(
         let shard_progress = progress.clone();
         let shard_cookie = cookie_key;
         let handle = std::thread::Builder::new()
-            .name(format!("rayscan-tx{worker_id}"))
+            .name(format!("portensor-tx{worker_id}"))
             .spawn(move || {
                 run_shard(ShardJob {
                     worker_id,

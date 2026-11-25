@@ -1,0 +1,46 @@
+{
+  "target": "10.129.215.81",
+  "targets": 1,
+  "ports": 3,
+  "jobs": 3,
+  "workers": 3,
+  "open": [
+    {
+      "host": "10.129.215.81",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 100.865,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:100.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.81",
+      "port": 5040,
+      "state": "open",
+      "latency_ms": 277.634,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:277.6ms(20%)"
+    }
+  ],
+  "defense": {
+    "10.129.215.81": {
+      "host": "10.129.215.81",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 2 open port(s) (with 0 identified services) responded with standard TCP semantics"
+      ]
+    }
+  },
+  "summary": {
+    "open": 2,
+    "closed": 1,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 281.036
+}

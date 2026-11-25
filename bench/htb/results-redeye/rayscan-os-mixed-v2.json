@@ -1,0 +1,184 @@
+{
+  "target": "10.129.214.126",
+  "targets": 1,
+  "ports": 3,
+  "jobs": 3,
+  "workers": 3,
+  "open": [
+    {
+      "host": "10.129.214.126",
+      "port": 22,
+      "state": "open",
+      "latency_ms": 189.442,
+      "banner": "SSH-2.0-OpenSSH_10.0p2 Debian-7+deb13u4",
+      "service": {
+        "name": "ssh",
+        "product": "OpenSSH",
+        "version": "10.0p2",
+        "confidence": 0.98
+      },
+      "confidence": 1.0,
+      "evidence": "handshake:ok(20%) banner:ssh/OpenSSH(40%) stack:linux(20%) latency:189.4ms(20%)",
+      "findings": [
+        {
+          "id": "ssh-version-disclosure",
+          "title": "SSH service discloses its version",
+          "severity": "low",
+          "confidence": 0.94,
+          "description": "The service disclosed its product or version in a passive response. This information helps attackers select matching exploits and should be minimized where practical.",
+          "evidence": "product=OpenSSH version=10.0p2 port=22",
+          "plugin": "official-baseline/ssh-version-disclosure"
+        }
+      ]
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 278.861,
+      "banner": "HTTP/1.1 302 Moved Temporarily",
+      "service": {
+        "name": "http",
+        "product": "nginx",
+        "confidence": 0.85
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/nginx(40%) stack:linux(15%) latency:278.9ms(20%)",
+      "findings": [
+        {
+          "id": "cleartext-http",
+          "title": "HTTP service transmits data in cleartext",
+          "severity": "medium",
+          "confidence": 0.95,
+          "description": "HTTP traffic is transmitted without TLS. Credentials, session data, and application content can be observed or modified by an on-path attacker.",
+          "evidence": "service=http port=80",
+          "plugin": "official-baseline/cleartext-http"
+        }
+      ]
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 443,
+      "state": "open",
+      "latency_ms": 95.387,
+      "banner": "TLS TLSv1.3 / TLS13_AES_256_GCM_SHA384",
+      "service": {
+        "name": "https",
+        "product": "Microsoft-HTTPAPI",
+        "version": "2.0",
+        "confidence": 0.98
+      },
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104)),tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+      "confidence": 1.0,
+      "evidence": "handshake:ok(20%) banner:https/Microsoft-HTTPAPI(40%) stack:windows(20%) latency:95.4ms(20%)",
+      "findings": [
+        {
+          "id": "tls-certificate-self-signed",
+          "title": "TLS certificate is self-signed",
+          "severity": "low",
+          "confidence": 0.97,
+          "description": "The certificate subject matches its issuer. Clients cannot build a public trust path without explicitly trusting this certificate.",
+          "evidence": "subject=CN=sts.airways.htb issuer=CN=sts.airways.htb",
+          "plugin": "official-baseline/tls-certificate"
+        }
+      ],
+      "tls": {
+        "version": "TLSv1.3",
+        "cipher": "TLS13_AES_256_GCM_SHA384",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          "CN=sts.airways.htb"
+        ],
+        "subject": "CN=sts.airways.htb",
+        "issuer": "CN=sts.airways.htb",
+        "san": [
+          "sts.airways.htb",
+          "airways.htb"
+        ],
+        "serial": "5c:23:43:40:e7:fa:82:b2:4b:53:47:7c:22:89:11:0c",
+        "not_before": 1792429184,
+        "not_after": 2076426584,
+        "days_remaining": 3254,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": true,
+        "hostname_matches": true,
+        "chain_len": 1,
+        "sni": "sts.airways.htb"
+      }
+    }
+  ],
+  "os_fingerprints": {
+    "10.129.214.126": {
+      "family": "mixed",
+      "detail": "mixed OS: linux (22, 80), windows (443)",
+      "confidence": 0.96000004,
+      "samples": 3,
+      "ports": [
+        22,
+        80,
+        443
+      ],
+      "endpoints": [
+        {
+          "port": 22,
+          "family": "linux",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Linux (debian service evidence)",
+          "confidence": 0.95,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains debian",
+          "service": "ssh"
+        },
+        {
+          "port": 80,
+          "family": "linux",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Linux (nginx edge service evidence)",
+          "confidence": 0.72,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains nginx",
+          "service": "http"
+        },
+        {
+          "port": 443,
+          "family": "windows",
+          "stack_family": "windows",
+          "stack_confidence": 0.9148936,
+          "detail": "Windows (microsoft-httpapi service evidence)",
+          "confidence": 0.97,
+          "initial_ttl": 128,
+          "hops": 2,
+          "evidence": "TTL=126, Window=65535, MSS=1346, WScale=8, SACK=yes, DF=yes, Options=mss,nop,wscale,nop,nop,sack; service: service fingerprint contains microsoft-httpapi",
+          "service": "https"
+        }
+      ]
+    }
+  },
+  "defense": {
+    "10.129.214.126": {
+      "host": "10.129.214.126",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 3 open port(s) (with 3 identified services) responded with standard TCP semantics (conforming to mixed OS: linux (22, 80), windows (443) stack)"
+      ]
+    }
+  },
+  "summary": {
+    "open": 3,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 1137.144
+}

@@ -20,6 +20,7 @@ pub mod marketplace;
 pub mod merge;
 pub mod model;
 pub mod output;
+pub mod plan;
 pub mod plugin;
 pub mod ports;
 pub mod rate;
@@ -77,6 +78,9 @@ pub async fn run(cli: Cli) -> Result<(), AppError> {
         },
         Command::Scripts(args) => script::run_cli(args, scripts_dir.as_deref()),
         Command::Interactive => interactive::run(theme).await,
+        Command::Smart(args) => {
+            plan::run_smart(args, theme, db_dir.as_deref(), scripts_dir.as_deref()).await
+        }
     }
 }
 
@@ -89,7 +93,9 @@ fn load_scripts(
 ) -> Result<Option<script::Registry>, AppError> {
     let mut paths = resolved.scripts.clone();
     if resolved.scripts_library {
-        paths.push(script::library_dir(scripts_dir)?);
+        let library = script::library_dir(scripts_dir)?;
+        script::recover_library(&library)?;
+        paths.push(library);
     }
     if paths.is_empty() {
         return Ok(None);
@@ -99,6 +105,61 @@ fn load_scripts(
         registry.add_path(path)?;
     }
     Ok(Some(registry))
+}
+
+fn apply_os_service_evidence(report: &mut crate::model::ScanReport) {
+    let mut open_ports_by_host: HashMap<IpAddr, Vec<u16>> = HashMap::new();
+    for result in &report.results {
+        if result.state == crate::model::PortState::Open {
+            open_ports_by_host
+                .entry(result.host)
+                .or_default()
+                .push(result.port);
+        }
+    }
+
+    let mut service_by_endpoint: HashMap<(IpAddr, u16), String> = HashMap::new();
+    let mut hint_by_endpoint: HashMap<(IpAddr, u16), fingerprint::ServiceOsHint> = HashMap::new();
+    for result in &report.results {
+        if let Some(service) = &result.service {
+            let key = (result.host, result.port);
+            service_by_endpoint.insert(key, service.name.clone());
+            if let Some(hint) = fingerprint::classify_service_hint(
+                &service.name,
+                service.product.as_deref(),
+                result.banner.as_deref(),
+                result.detail.as_deref(),
+            ) {
+                hint_by_endpoint.insert(key, hint);
+            }
+        }
+    }
+
+    for (host, guess) in report.os_fingerprints.iter_mut() {
+        for endpoint in &mut guess.endpoints {
+            let key = (*host, endpoint.port);
+            if let Some(service) = service_by_endpoint.get(&key) {
+                endpoint.service = Some(service.clone());
+            }
+            if let Some(hint) = hint_by_endpoint.get(&key) {
+                if endpoint.family != hint.family {
+                    endpoint.stack_family = endpoint.family.clone();
+                    endpoint.stack_confidence = endpoint.confidence;
+                }
+                endpoint.family = hint.family.clone();
+                endpoint.confidence = hint.confidence;
+                endpoint.detail = hint.detail.clone();
+                endpoint.evidence = Some(match endpoint.evidence.take() {
+                    Some(stack) => format!("{stack}; service: {}", hint.evidence),
+                    None => format!("service: {}", hint.evidence),
+                });
+            }
+        }
+        fingerprint::refresh_os_summary(guess);
+        if let Some(ports) = open_ports_by_host.get(host) {
+            guess.role = fingerprint::infer_role(&guess.family, ports);
+        }
+    }
 }
 
 pub(crate) async fn run_scan(
@@ -181,7 +242,7 @@ pub(crate) async fn run_scan(
         all_ports = kept;
     }
 
-    if let Some(ref scope_path) = resolved.scope {
+    let scope_guard = if let Some(ref scope_path) = resolved.scope {
         let guard = scope::ScopeGuard::load_from_file(scope_path)?;
         let scope_specs = targets::expand_target_specs(&args.target, &args.target_file)?;
         guard.validate(&scope_specs, &targets, resolved.force_out_of_scope)?;
@@ -192,7 +253,10 @@ pub(crate) async fn run_scan(
                 guard.program
             );
         }
-    }
+        Some(guard)
+    } else {
+        None
+    };
     if let Some((index, count)) = resolved.shard {
         let before = targets.len();
         targets = shard::select(targets, index, count);
@@ -203,9 +267,19 @@ pub(crate) async fn run_scan(
             );
         }
     }
-    // An empty shard is a valid distributed work unit: emit an empty report so
-    // the coordinator can merge it instead of treating the shard as failed.
-    if resolved.shard.is_some() && targets.is_empty() {
+    if let Some((index, count)) = resolved.work_part {
+        let before = targets.len();
+        targets = shard::select(targets, index, count);
+        if !args.quiet {
+            eprintln!(
+                "work unit {index}/{count}: assigned {} of {before} target(s)",
+                targets.len()
+            );
+        }
+    }
+    // An empty shard or work unit is valid: emit an empty report so the
+    // coordinator can merge it instead of treating the unit as failed.
+    if (resolved.shard.is_some() || resolved.work_part.is_some()) && targets.is_empty() {
         let report = crate::model::ScanReport {
             targets: 0,
             ports: all_ports.len(),
@@ -362,6 +436,7 @@ pub(crate) async fn run_scan(
             resolved.tls_mode,
             resolved.timeout.min(std::time::Duration::from_secs(5)),
             args.quiet,
+            resolved.sni.as_deref(),
         )
         .await;
         if resolved.service_detection {
@@ -383,10 +458,12 @@ pub(crate) async fn run_scan(
             .await;
         if let Some(scripts) = &scripts {
             scripts
-                .apply(
+                .apply_with_scope(
                     &mut report.results,
                     resolved.allow_intrusive,
                     progress_quiet,
+                    scope_guard.as_ref(),
+                    resolved.force_out_of_scope,
                 )
                 .await;
             script::retain_findings(&mut report.results, resolved.min_severity);
@@ -408,7 +485,7 @@ pub(crate) async fn run_scan(
                     Some(diff_res)
                 }
                 Err(e) => {
-                    eprintln!("[rayscan] warning: failed to load baseline diff file: {e}");
+                    eprintln!("[portensor] warning: failed to load baseline diff file: {e}");
                     None
                 }
             }
@@ -499,7 +576,7 @@ pub(crate) async fn run_scan(
     let shutdown_signal = Arc::clone(&shutdown);
     tokio::spawn(async move {
         shutdown::wait_for_shutdown().await;
-        eprintln!("\n[rayscan] interrupted — saving partial results…");
+        eprintln!("\n[portensor] interrupted — saving partial results…");
         shutdown_signal.store(true, Ordering::Relaxed);
     });
 
@@ -971,7 +1048,7 @@ pub(crate) async fn run_scan(
                             .map(|summary| format!(" | {summary}"))
                             .unwrap_or_default();
                         eprintln!(
-                            "[os] {} → {} ({}) confidence={:.0}%{}{}",
+                            "[os] {} raw stack {} ({}) confidence={:.0}%{}{}",
                             host,
                             guess.detail,
                             guess.family,
@@ -985,22 +1062,6 @@ pub(crate) async fn run_scan(
             }
         }
         report.os_fingerprints = os_map;
-
-        // Refine OS role for Windows hosts based on observed open services.
-        let mut open_ports_by_host: HashMap<IpAddr, Vec<u16>> = HashMap::new();
-        for result in &report.results {
-            if result.state == crate::model::PortState::Open {
-                open_ports_by_host
-                    .entry(result.host)
-                    .or_default()
-                    .push(result.port);
-            }
-        }
-        for (host, guess) in report.os_fingerprints.iter_mut() {
-            if let Some(ports) = open_ports_by_host.get(host) {
-                guess.role = fingerprint::infer_role(&guess.family, ports);
-            }
-        }
     }
 
     // ── Phase 6: Merge prior results (from --resume) with new scan ──────────
@@ -1048,6 +1109,7 @@ pub(crate) async fn run_scan(
         resolved.tls_mode,
         resolved.timeout.min(std::time::Duration::from_secs(5)),
         progress_quiet,
+        resolved.sni.as_deref(),
     )
     .await;
     if resolved.service_detection {
@@ -1109,18 +1171,18 @@ pub(crate) async fn run_scan(
         match resume::save_state(save_path, &state) {
             Ok(()) => {
                 if !args.quiet {
-                    eprintln!("[rayscan] scan state saved to {}", save_path.display());
+                    eprintln!("[portensor] scan state saved to {}", save_path.display());
                 }
             }
             Err(e) => {
-                eprintln!("[rayscan] warning: could not save state: {e}");
+                eprintln!("[portensor] warning: could not save state: {e}");
             }
         }
     }
 
     // If scan was partial, print a warning on stderr.
     if report.partial && !args.quiet {
-        eprintln!("[rayscan] partial results — scan was interrupted before completion");
+        eprintln!("[portensor] partial results — scan was interrupted before completion");
     }
 
     if !resolved.ack_mode {
@@ -1129,14 +1191,17 @@ pub(crate) async fn run_scan(
             .await;
         if let Some(scripts) = &scripts {
             scripts
-                .apply(
+                .apply_with_scope(
                     &mut report.results,
                     resolved.allow_intrusive,
                     progress_quiet,
+                    scope_guard.as_ref(),
+                    resolved.force_out_of_scope,
                 )
                 .await;
             script::retain_findings(&mut report.results, resolved.min_severity);
         }
+        apply_os_service_evidence(&mut report);
         accuracy::score_report(&mut report);
     }
     if resolved.advisories {
@@ -1156,7 +1221,7 @@ pub(crate) async fn run_scan(
                 Some(diff_res)
             }
             Err(e) => {
-                eprintln!("[rayscan] warning: failed to load baseline diff file: {e}");
+                eprintln!("[portensor] warning: failed to load baseline diff file: {e}");
                 None
             }
         }

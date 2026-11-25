@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-scripts-update 1  "update "
+.SH NAME
+portensor\-scripts\-update \- Update registry\-installed packs using the digest\-pinned lockfile
+.SH SYNOPSIS
+\fBupdate\fR [\fB\-\-registry\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fINAME\fR]
+.SH DESCRIPTION
+Update registry\-installed packs using the digest\-pinned lockfile
+.SH OPTIONS
+.TP
+\fB\-\-registry\fR \fI<URL>\fR
+Use this registry index instead of the source recorded at install time
+.TP
+\fB\-\-json\fR
+Emit machine\-readable JSON
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fINAME\fR]
+Only update this installed pack

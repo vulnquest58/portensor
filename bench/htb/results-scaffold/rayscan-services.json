@@ -1,0 +1,228 @@
+{
+  "target": "10.129.215.153",
+  "targets": 1,
+  "ports": 30,
+  "jobs": 30,
+  "workers": 16,
+  "open": [
+    {
+      "host": "10.129.215.153",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 249.884,
+      "banner": "HTTP/1.1 401 Unauthorized",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-IIS",
+        "version": "10.0",
+        "confidence": 0.98
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-IIS(40%) stack:standard(15%) latency:249.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 248.935,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:248.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 227.351,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:227.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 389,
+      "state": "open",
+      "latency_ms": 189.86,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:189.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 443,
+      "state": "open",
+      "latency_ms": 172.313,
+      "banner": "TLS TLSv1.3 / TLS13_AES_256_GCM_SHA384",
+      "service": {
+        "name": "https"
+      },
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104)),tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:https(35%) stack:standard(15%) latency:172.3ms(20%)",
+      "tls": {
+        "version": "TLSv1.3",
+        "cipher": "TLS13_AES_256_GCM_SHA384",
+        "alpn": "h2",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          "CN=portal.scaffold.htb"
+        ],
+        "subject": "CN=portal.scaffold.htb",
+        "issuer": "CN=portal.scaffold.htb",
+        "san": [
+          "portal.scaffold.htb",
+          "DC01"
+        ],
+        "serial": "51:47:04:74:03:f5:de:bb:42:d7:73:8c:d1:4e:b1:50",
+        "not_before": 1779539516,
+        "not_after": 1874234516,
+        "days_remaining": 912,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": true,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 191.205,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:191.2ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 464,
+      "state": "open",
+      "latency_ms": 207.902,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:207.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 593,
+      "state": "open",
+      "latency_ms": 83.423,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:83.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 3268,
+      "state": "open",
+      "latency_ms": 216.194,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:216.2ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 173.709,
+      "banner": "HTTP/1.1 404 Not Found",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-HTTPAPI",
+        "version": "2.0",
+        "confidence": 0.98
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-HTTPAPI(40%) stack:standard(15%) latency:173.7ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9389,
+      "state": "open",
+      "latency_ms": 196.427,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:196.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9800,
+      "state": "open",
+      "latency_ms": 232.172,
+      "banner": "HTTP/1.1 503 Service Unavailable",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-HTTPAPI",
+        "version": "2.0",
+        "confidence": 0.98
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-HTTPAPI(40%) stack:standard(15%) latency:232.2ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9801,
+      "state": "open",
+      "latency_ms": 233.552,
+      "banner": "HTTP/1.1 503 Service Unavailable",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-HTTPAPI",
+        "version": "2.0",
+        "confidence": 0.98
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-HTTPAPI(40%) stack:standard(15%) latency:233.6ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 47001,
+      "state": "open",
+      "latency_ms": 282.794,
+      "banner": "HTTP/1.1 404 Not Found",
+      "service": {
+        "name": "http",
+        "product": "Microsoft-HTTPAPI",
+        "version": "2.0",
+        "confidence": 0.98
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:http/Microsoft-HTTPAPI(40%) stack:standard(15%) latency:282.8ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 52951,
+      "state": "open",
+      "latency_ms": 116.053,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:116.1ms(20%)"
+    }
+  ],
+  "defense": {
+    "10.129.215.153": {
+      "host": "10.129.215.153",
+      "defense_type": "rate_limiting",
+      "confidence": 0.8,
+      "summary": "Target network enforces probe rate-limiting or token-bucket traffic policing.",
+      "indicators": [
+        "6 port(s) required probe retries or backoff, suggesting packet loss or rate-limiting thresholds"
+      ],
+      "recommended_action": "Use `--rate 50` or `--profile careful` to stay below packet drop thresholds."
+    }
+  },
+  "summary": {
+    "open": 15,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 15,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 1964.478
+}

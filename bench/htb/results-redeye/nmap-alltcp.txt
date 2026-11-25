@@ -1,0 +1,11 @@
+# Nmap 7.80 scan initiated Sat Nov 21 12:56:44 2026 as: nmap -Pn -p- --min-rate 1000 --max-retries 2 -oN bench/htb/results-redeye/nmap-alltcp.txt -oX bench/htb/results-redeye/nmap-alltcp.xml 10.129.214.126
+Nmap scan report for 10.129.214.126
+Host is up (0.10s latency).
+Not shown: 65531 filtered ports
+PORT     STATE SERVICE
+22/tcp   open  ssh
+80/tcp   open  http
+443/tcp  open  https
+3000/tcp open  ppp
+
+# Nmap done at Sat Nov 21 12:58:56 2026 -- 1 IP address (1 host up) scanned in 131.54 seconds

@@ -108,7 +108,7 @@ Two changes fixed it:
   (`best_evidence_prefers_stronger_states`,
   `verification_keeps_stronger_evidence_when_a_retry_fails`).
 - **Timeout floor.** Verification now uses
-  `max(--connect-timeout-ms, 1500ms)`, the same `MIN_CONNECT_TIMEOUT` floor as
+  `max(--connect-timeout-ms, 1100ms)`, the same `MIN_CONNECT_TIMEOUT` floor as
   the connect-scan path. A ceiling shorter than the kernel's first SYN
   retransmit (~1s) cannot distinguish a lossy SYN from a filtered port.
 

@@ -1,0 +1,473 @@
+{
+  "schema": 1,
+  "phase": "P4",
+  "as_of": "2026-11-21",
+  "overall_status": "not_closed",
+  "approved": false,
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "checklist": "docs/p4-closure-checklist.md",
+  "requirements": [
+    {
+      "id": "P4-1",
+      "title": "Release signing and key custody",
+      "status": "external-pending",
+      "blocking": true,
+      "acceptance_criteria": [
+        "Production signing identity selected and documented",
+        "Private key generated and held in approved custody",
+        "Owner, access control, backup, rotation, revocation, and emergency replacement documented",
+        "Public fingerprint and verification commands published",
+        "Signed artifact verified from a separate clean host"
+      ],
+      "evidence": [
+        {
+          "path": "docs/decisions/0005-release-signing-and-provenance.md",
+          "kind": "policy",
+          "status": "accepted"
+        },
+        {
+          "path": "docs/security/production-signing-policy.md",
+          "kind": "policy",
+          "status": "draft-pending-approval"
+        },
+        {
+          "path": "docs/security/key-custody-procedure.md",
+          "kind": "procedure",
+          "status": "draft-pending-approval"
+        },
+        {
+          "path": "docs/security/release-signature-verification.md",
+          "kind": "verification-procedure",
+          "status": "draft-pending-approval"
+        },
+        {
+          "path": "docs/security/p4-1-evidence-register.md",
+          "kind": "evidence-register",
+          "status": "local-evidence-and-external-placeholders"
+        },
+        {
+          "path": "docs/security/p4-1-evidence-submission.md",
+          "kind": "submission-procedure",
+          "status": "procedure-ready-no-submission-received"
+        },
+        {
+          "path": "docs/security/p4-1-clean-host-verification.md",
+          "kind": "verification-procedure",
+          "status": "procedure-ready-not-executed"
+        },
+        {
+          "path": "docs/security/p4-1-acceptance-report.md",
+          "kind": "acceptance-report",
+          "status": "not-accepted-external-pending"
+        },
+        {
+          "path": "docs/release-process.md",
+          "kind": "process",
+          "status": "present"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "kind": "workflow",
+          "status": "present"
+        },
+        {
+          "path": "scripts/p4-local-check.sh",
+          "kind": "local-check",
+          "status": "passing"
+        },
+        {
+          "path": "bench/p4/p4-local-check.txt",
+          "kind": "local-evidence",
+          "status": "ephemeral-key-only"
+        }
+      ],
+      "remaining_evidence": [
+        "Production key ceremony record",
+        "Public key and production fingerprint",
+        "Approved custody, rotation, revocation, and emergency-replacement evidence",
+        "Clean-host signature verification transcript",
+        "Independent reviewer acceptance and project-owner/security-lead approval"
+      ]
+    },
+    {
+      "id": "P4-2",
+      "title": "Package registry ownership",
+      "status": "blocked",
+      "blocking": true,
+      "acceptance_criteria": [
+        "Official accounts and namespaces confirmed for Homebrew, Scoop, Chocolatey, AUR, GHCR, and Docker Compose",
+        "2FA, recovery, and least-privilege publishing access verified",
+        "Maintainer responsibilities documented",
+        "Clean-environment install tests pass for every approved channel"
+      ],
+      "evidence": [
+        {
+          "path": "docs/p4-release-readiness.md",
+          "kind": "ownership-checklist",
+          "status": "pending"
+        },
+        {
+          "path": "docs/distribution/registry-ownership.md",
+          "kind": "ownership-evidence-requirements",
+          "status": "pending-external"
+        },
+        {
+          "path": "docs/distribution/package-maintenance-policy.md",
+          "kind": "maintenance-policy",
+          "status": "draft-pending-approval"
+        },
+        {
+          "path": "docs/distribution/clean-install-verification.md",
+          "kind": "verification-procedure",
+          "status": "procedure-ready-not-executed"
+        },
+        {
+          "path": "docs/distribution/p4-2-external-evidence-intake.md",
+          "kind": "external-evidence-packet",
+          "status": "blank-template-validator-ready"
+        },
+        {
+          "path": "docs/distribution/p4-2-external-evidence.template.json",
+          "kind": "machine-readable-evidence-packet",
+          "status": "blank-template"
+        },
+        {
+          "path": "scripts/p4_external_evidence_check.py",
+          "kind": "acceptance-check",
+          "status": "local-validator-ready"
+        },
+        {
+          "path": "bench/tests/test_p4_external_evidence.py",
+          "kind": "regression-tests",
+          "status": "passing-local"
+        },
+        {
+          "path": "packaging/README.md",
+          "kind": "packaging-guide",
+          "status": "local-templates-ready"
+        },
+        {
+          "path": "scripts/generate_package_metadata.py",
+          "kind": "packaging-generator",
+          "status": "passing-local-tests"
+        },
+        {
+          "path": "bench/tests/test_p4_packaging.py",
+          "kind": "regression-tests",
+          "status": "passing-local"
+        },
+        {
+          "path": "bench/p4/p4-package-check.txt",
+          "kind": "local-evidence",
+          "status": "local-static-validation-only"
+        },
+        {
+          "path": "bench/p4/p4-package-chocolatey.txt",
+          "kind": "local-evidence",
+          "status": "chocolatey-pack-only"
+        },
+        {
+          "path": "bench/p4/p4-package-archive.txt",
+          "kind": "local-evidence",
+          "status": "archive-extraction-only"
+        },
+        {
+          "path": "Makefile",
+          "kind": "packaging-input",
+          "status": "present"
+        },
+        {
+          "path": "Dockerfile",
+          "kind": "packaging-input",
+          "status": "present"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "kind": "workflow",
+          "status": "present"
+        }
+      ],
+      "remaining_evidence": [
+        "Owner confirmations for each channel",
+        "Account-control and 2FA evidence",
+        "Approved publishing token plan (not the secrets)",
+        "Clean-environment install results from each approved channel",
+        "Channel-specific package review and publication approval",
+        "Published container image digest for the Compose check"
+      ]
+    },
+    {
+      "id": "P4-3",
+      "title": "Clean CI runner attestation",
+      "status": "external-pending",
+      "blocking": true,
+      "acceptance_criteria": [
+        "CI runner images and resolved versions documented",
+        "Release build runs from a clean checkout with declared toolchains and --locked",
+        "No undeclared local dependencies are used",
+        "Artifact hashes are reproducible",
+        "Build and verification logs are retained",
+        "Runner isolation is documented"
+      ],
+      "evidence": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "workflow",
+          "status": "present"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "kind": "workflow",
+          "status": "present"
+        },
+        {
+          "path": "docs/release-runners.md",
+          "kind": "reproducibility-doc",
+          "status": "present"
+        },
+        {
+          "path": "rust-toolchain.toml",
+          "kind": "toolchain-pin",
+          "status": "present"
+        },
+        {
+          "path": ".github/actionlint.yaml",
+          "kind": "workflow-lint-config",
+          "status": "present"
+        }
+      ],
+      "remaining_evidence": [
+        "Clean-run workflow URL and logs",
+        "Resolved ubuntu-24.04 and windows-2022 ImageVersion values",
+        "Artifact hashes from the clean run",
+        "Separate-host verification transcript",
+        "Runner isolation and reproducibility notes"
+      ],
+      "notes": "Not started. No clean-run workflow evidence exists; local workflow controls are not a substitute."
+    },
+    {
+      "id": "P4-4",
+      "title": "SBOM and build provenance",
+      "status": "external-pending",
+      "blocking": true,
+      "acceptance_criteria": [
+        "SBOM generated for all release artifacts",
+        "SBOM included in release checksums",
+        "Build-provenance and SBOM attestations created",
+        "Provenance signer identity documented",
+        "SBOM and attestations verified from published material"
+      ],
+      "evidence": [
+        {
+          "path": "bench/p4/rayscan-0.7.0.cdx.json",
+          "kind": "sbom",
+          "status": "local-cyclonedx-1.5-280-components"
+        },
+        {
+          "path": "docs/sbom.md",
+          "kind": "sbom-procedure",
+          "status": "present"
+        },
+        {
+          "path": "scripts/p4-local-check.sh",
+          "kind": "local-check",
+          "status": "checksum-manifest-archives-plus-sbom"
+        },
+        {
+          "path": "bench/p4/p4-local-check.txt",
+          "kind": "local-evidence",
+          "status": "ephemeral-key-only"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "kind": "workflow",
+          "status": "present"
+        },
+        {
+          "path": "docs/decisions/0005-release-signing-and-provenance.md",
+          "kind": "policy",
+          "status": "accepted"
+        }
+      ],
+      "remaining_evidence": [
+        "GitHub OIDC build-provenance attestation URL",
+        "GitHub OIDC SBOM attestation URL",
+        "Independent verification transcript from published material"
+      ]
+    },
+    {
+      "id": "P4-5",
+      "title": "OT/ICS external security assessment",
+      "status": "blocked",
+      "blocking": true,
+      "acceptance_criteria": [
+        "Independent OT/ICS assessor confirmed",
+        "Assessment scope and rules of engagement approved",
+        "Legal authorization obtained",
+        "Budget and schedule confirmed",
+        "Assessment plan and acceptance criteria documented",
+        "Final report has no unresolved critical or high findings",
+        "Remediation owner assigned"
+      ],
+      "evidence": [],
+      "remaining_evidence": [
+        "Partner agreement",
+        "Signed scope and legal authorization",
+        "Budget approval",
+        "Assessment plan and acceptance criteria",
+        "Final report and remediation closure or approved exceptions"
+      ]
+    },
+    {
+      "id": "P4-6",
+      "title": "v1.0 security and documentation assets",
+      "status": "local-ready",
+      "blocking": true,
+      "acceptance_criteria": [
+        "Comprehensive private vulnerability reporting and responsible disclosure policy",
+        "Required ADRs accepted",
+        "Security model and limitations documented",
+        "Compatibility, deprecation, platform support, and release policies documented",
+        "Documentation and security review completed"
+      ],
+      "evidence": [
+        {
+          "path": "SECURITY.md",
+          "kind": "security-policy",
+          "status": "present"
+        },
+        {
+          "path": "docs/decisions/0001-script-capability-model.md",
+          "kind": "adr",
+          "status": "accepted"
+        },
+        {
+          "path": "docs/decisions/0002-durable-coordinator.md",
+          "kind": "adr",
+          "status": "accepted"
+        },
+        {
+          "path": "docs/decisions/0003-explicit-tls-sni.md",
+          "kind": "adr",
+          "status": "accepted"
+        },
+        {
+          "path": "docs/decisions/0004-endpoint-aware-os.md",
+          "kind": "adr",
+          "status": "accepted"
+        },
+        {
+          "path": "docs/decisions/0005-release-signing-and-provenance.md",
+          "kind": "adr",
+          "status": "accepted-production-identity-pending"
+        },
+        {
+          "path": "docs/compatibility-policy.md",
+          "kind": "compatibility-policy",
+          "status": "present"
+        },
+        {
+          "path": "docs/release-process.md",
+          "kind": "release-policy",
+          "status": "present"
+        },
+        {
+          "path": "docs/security/script-threat-model.md",
+          "kind": "threat-model",
+          "status": "present"
+        },
+        {
+          "path": "docs/architecture.md",
+          "kind": "architecture",
+          "status": "present"
+        }
+      ],
+      "remaining_evidence": [
+        "Documentation and security review sign-off",
+        "Resolution of any review findings"
+      ]
+    }
+  ],
+  "supporting_validation": [
+    {
+      "item": "Authorized live validation",
+      "status": "local-ready",
+      "evidence": [
+        "bench/htb/README.md",
+        "bench/htb/redeye.md",
+        "bench/htb/unclaimed.md",
+        "bench/htb/results-unclaimed/unclaimed-summary.json",
+        "bench/htb/results-unclaimed/SHA256SUMS",
+        "bench/htb/scaffold.md",
+        "bench/htb/results-scaffold/scaffold-summary.json",
+        "bench/htb/results-scaffold/SHA256SUMS"
+      ],
+      "notes": "Garfield 22/22 two-pass ports; RedEye v2 exact 4/4 match with explicit SNI and endpoint-aware mixed OS; Unclaimed 13/13 confirmed TCP ports via two-pass recovery; Scaffold 30/30 discovered TCP ports confirmed on a Windows domain controller with anonymous LDAP rootDSE, SMB signing, certificates, and scope-denial exit 2. High-rate nmap produced an invalid all-filtered result and a slower pass timed out under rate limiting, so independent full-port completeness was not established. No exploitation performed."
+    },
+    {
+      "item": "Windows Npcap raw runtime",
+      "status": "external-pending",
+      "evidence": [],
+      "notes": "Must be verified or explicitly waived before v1.0; raw Windows features and limitations must be called out."
+    },
+    {
+      "item": "Local P4 tooling",
+      "status": "local-ready",
+      "evidence": [
+        "bench/p4/p4-local-check.txt",
+        "bench/p4/rayscan-0.7.0.cdx.json",
+        "docs/p4-evidence-audit.md"
+      ],
+      "notes": "Ephemeral keys only; not production key custody evidence. SBOM included in the local checksum manifest. The local evidence audit reports 0 errors and 0 warnings."
+    },
+    {
+      "item": "Local P4 package metadata",
+      "status": "local-static-only",
+      "evidence": [
+        "bench/p4/p4-package-check.txt",
+        "bench/p4/p4-package-chocolatey.txt",
+        "bench/p4/p4-package-archive.txt",
+        "packaging/README.md"
+      ],
+      "notes": "Metadata rendered from checksum-verified local archives; static syntax, Chocolatey pack, and archive extraction pass. No registry ownership, publication, or clean-environment install is claimed."
+    },
+    {
+      "item": "P4-2 external evidence intake packet",
+      "status": "blank-template-validator-ready",
+      "evidence": [
+        "docs/distribution/p4-2-external-evidence-intake.md",
+        "docs/distribution/p4-2-external-evidence.template.json",
+        "scripts/p4_external_evidence_check.py",
+        "bench/tests/test_p4_external_evidence.py"
+      ],
+      "notes": "Blank owner intake and approval packet with a machine-readable template and acceptance validator. The template is intentionally incomplete; no ownership, 2FA, token, clean-install, or container digest evidence has been recorded."
+    },
+    {
+      "item": "External evidence coordination",
+      "status": "external-pending",
+      "evidence": [
+        "docs/p4-external-evidence-owners.md",
+        "docs/p4-external-blockers.md",
+        "docs/p4-signoff-readiness.md"
+      ],
+      "notes": "Coordination records only; no external evidence has been obtained and all external requirement statuses remain unchanged."
+    }
+  ],
+  "final_closure_criteria": [
+    "All six requirements are closed in the checklist and this file",
+    "All evidence links resolve and external records are reviewable",
+    "Local P4 checks, release preflight, tests, workflow lint, and dependency audit pass",
+    "No unresolved critical or high-severity release blocker remains, or exceptions are approved with owner and expiry",
+    "Windows Npcap raw runtime is verified or explicitly waived",
+    "A named reviewer approves P4",
+    "No commit, tag, publication, or release occurs before approval"
+  ],
+  "approvals": {
+    "p4_reviewer": null,
+    "security_reviewer": null,
+    "release_owner": null,
+    "decision": "pending",
+    "date": null
+  }
+}

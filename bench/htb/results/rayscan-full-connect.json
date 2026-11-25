@@ -1,0 +1,191 @@
+{
+  "target": "10.129.244.207",
+  "targets": 1,
+  "ports": 65535,
+  "jobs": 65535,
+  "workers": 512,
+  "open": [
+    {
+      "host": "10.129.244.207",
+      "port": 53,
+      "state": "open",
+      "latency_ms": 173.392,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:173.4ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 158.85,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:158.9ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 135,
+      "state": "open",
+      "latency_ms": 173.567,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:173.6ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 173.809,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:173.8ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 389,
+      "state": "open",
+      "latency_ms": 216.752,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:216.8ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 88.434,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:88.4ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 464,
+      "state": "open",
+      "latency_ms": 127.697,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:127.7ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 636,
+      "state": "open",
+      "latency_ms": 169.299,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:169.3ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 2179,
+      "state": "open",
+      "latency_ms": 109.309,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:109.3ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 3269,
+      "state": "open",
+      "latency_ms": 167.51,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:167.5ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 3389,
+      "state": "open",
+      "latency_ms": 173.996,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:174.0ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 96.19,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:96.2ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 9389,
+      "state": "open",
+      "latency_ms": 99.811,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:99.8ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 49668,
+      "state": "open",
+      "latency_ms": 94.857,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:94.9ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 49676,
+      "state": "open",
+      "latency_ms": 161.731,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:161.7ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 49677,
+      "state": "open",
+      "latency_ms": 235.995,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:236.0ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 49679,
+      "state": "open",
+      "latency_ms": 294.187,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:294.2ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 49680,
+      "state": "open",
+      "latency_ms": 234.293,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:234.3ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 49906,
+      "state": "open",
+      "latency_ms": 88.918,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:88.9ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 58166,
+      "state": "open",
+      "latency_ms": 87.846,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:87.8ms(20%)"
+    }
+  ],
+  "defense": {
+    "10.129.244.207": {
+      "host": "10.129.244.207",
+      "defense_type": "rate_limiting",
+      "confidence": 0.8,
+      "summary": "Target network enforces probe rate-limiting or token-bucket traffic policing.",
+      "indicators": [
+        "17 port(s) required probe retries or backoff, suggesting packet loss or rate-limiting thresholds"
+      ],
+      "recommended_action": "Use `--rate 50` or `--profile careful` to stay below packet drop thresholds."
+    }
+  },
+  "summary": {
+    "open": 20,
+    "closed": 0,
+    "filtered": 65515,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 141058.587
+}

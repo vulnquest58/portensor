@@ -1,7 +1,7 @@
-# rayscan
+# Portensor
 
-[![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](https://github.com/vulnquest58/rayscan)
-[![Version](https://img.shields.io/badge/version-v0.7.0-blue.svg)](Cargo.toml)
+[![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](https://github.com/vulnquest58/portensor)
+[![Version](https://img.shields.io/badge/version-v0.7.1-blue.svg)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.99.1%20pinned-orange.svg)](rust-toolchain.toml)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20Static%20musl-informational.svg)](#cross-platform-binaries)
 [![Author](https://img.shields.io/badge/author-vulnquest58-blueviolet.svg)](https://github.com/vulnquest58)
@@ -10,18 +10,18 @@
 An accuracy-first TCP/UDP port scanner with passive OS fingerprinting, written in Rust.  
 Maintained by **vulnquest58** ([@vulnquest58](https://github.com/vulnquest58)).
 
-**Status: Production Ready (v0.7.0).** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `rayscan` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
+**Status: Production Ready (v0.7.1).** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `portensor` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
 
 Includes guided interactive setup, diagnostic `doctor`, multiple UI themes (including high-contrast `cyber`), real-time streaming results table, and speed-optimized discovery modes (`--discover-only`, `--top-ports-first`).
 
 ---
 
-## What Makes Rayscan Different
+## What Makes Portensor Different
 
-Most port scanners fall into one of two extremes: raw packet blasters that drown operators in false positives (masscan, rustscan), or classic deep probes that crawl when scanning large subnets (nmap). `rayscan` introduces three architectural differentiators:
+Most port scanners fall into one of two extremes: raw packet blasters that drown operators in false positives (masscan, rustscan), or classic deep probes that crawl when scanning large subnets (nmap). `portensor` introduces three architectural differentiators:
 
 ### 1. Empirical Accuracy Scoring (0–100%)
-Instead of reducing open ports to an opaque binary `open` state, `rayscan` computes an empirical **Accuracy Score** derived from 4 foundational pillars:
+Instead of reducing open ports to an opaque binary `open` state, `portensor` computes an empirical **Accuracy Score** derived from 4 foundational pillars:
 - **TCP Handshake (20%)**: Validated 3-way handshake completion.
 - **Application Protocol Verification (40%)**: Bounded banner capture and protocol validation (with dedicated recognition for client-first binary listeners like RPC, PostgreSQL, X11).
 - **Stack & OS Conformance (20%)**: Passive TCP/IP fingerprint alignment (TTL, Window, MSS, SACK, TS).
@@ -29,7 +29,7 @@ Instead of reducing open ports to an opaque binary `open` state, `rayscan` compu
 Every finding includes an inspectable evidence string (e.g. `handshake:ok(20%) banner:OpenSSH/8.9(40%) stack:linux(20%) latency:2.1ms(19%)`).
 
 ### 2. Defense Awareness & Middlebox Classification
-`rayscan` acts as a network intelligence classifier. When scanning modern infrastructure, it detects and categorizes middleboxes, firewalls, and deception defenses:
+`portensor` acts as a network intelligence classifier. When scanning modern infrastructure, it detects and categorizes middleboxes, firewalls, and deception defenses:
 - `[CLEAN] Direct Host`
 - `[NOTICE] Rate-Limiting Active`
 - `[WARNING] TCP Tarpit Active`
@@ -53,9 +53,9 @@ In our controlled benchmark lab simulating an enterprise perimeter with tarpits 
 | **masscan** | 0.42s | 16 / 16 | **984** | **1.6%** | 100% |
 | **rustscan** | 3.12s | 16 / 16 | **128** | **11.1%** | 100% |
 | **nmap** (`-sS -T4`) | 48.6s | 16 / 16 | 0 | 100% | 100% |
-| **rayscan** (v0.6.0) | **0.86s** | **16 / 16** | **0** | **100%** | **100%** |
+| **portensor** (v0.6.0) | **0.86s** | **16 / 16** | **0** | **100%** | **100%** |
 
-*The rayscan row records the v0.6.0 controlled-lab measurement; matched-mode
+*The portensor row records the v0.6.0 controlled-lab measurement; matched-mode
 v0.7.0 validation is recorded in
 [Benchmark Validation](docs/benchmark-validation.md). For full engineering
 details and lab reproduction, see
@@ -65,13 +65,13 @@ details and lab reproduction, see
 
 ## Cross-Platform Binaries
 
-`rayscan` is available as pre-compiled standalone native binaries with zero external runtime dependencies:
+`portensor` is available as pre-compiled standalone native binaries with zero external runtime dependencies:
 
 | Binary | Target Platform | Description |
 |---|---|---|
-| `rayscan-linux` | Linux (x86_64 glibc) | Dynamic release binary for standard Linux distributions |
-| `rayscan-static-musl` | Linux (x86_64 musl) | Fully static standalone binary, runs anywhere (including Alpine / scratch) |
-| `rayscan.exe` | Windows (x86_64) | Native Windows executable (connect/UDP engine plus Npcap-backed IPv4 raw SYN/ACK) |
+| `portensor-linux` | Linux (x86_64 glibc) | Dynamic release binary for standard Linux distributions |
+| `portensor-static-musl` | Linux (x86_64 musl) | Fully static standalone binary, runs anywhere (including Alpine / scratch) |
+| `portensor.exe` | Windows (x86_64) | Native Windows executable (connect/UDP engine plus Npcap-backed IPv4 raw SYN/ACK) |
 
 Raw IPv4 SYN and ACK discovery works on Linux/WSL2 with `CAP_NET_RAW` and on
 Windows with [Npcap](https://npcap.com/) installed and the scanner run as
@@ -85,46 +85,46 @@ UDP probes.
 | Area | Current capability |
 | :--- | :--- |
 | Toolchain | `rust-toolchain.toml`, pinned Rust 1.99.1, `rustfmt`, `clippy` |
-| CLI | `rayscan scan`, `rayscan diff`, `rayscan merge`, `rayscan distributed plan/serve/worker/agent`, `rayscan doctor`, `rayscan db update/status`, `rayscan probes list`, `rayscan scripts list/search/install`, guided `rayscan interactive`, global `--theme` |
+| CLI | `portensor scan`, `portensor smart`, `portensor diff`, `portensor merge`, `portensor distributed plan/serve/worker/agent`, `portensor doctor`, `portensor db update/status`, `portensor probes list`, `portensor scripts list/search/install/update`, guided `portensor interactive`, global `--theme` |
 | Discovery | Async TCP connect scanner plus raw SYN on Linux (IPv4/IPv6) and Windows with Npcap (IPv4) (`--syn`); raw TCP ACK firewall mapping (`--ack`, RST = `unfiltered`, timeout = `filtered`) on both raw backends; optional ICMP/TCP ping sweep (`--ping-sweep`) with ARP liveness probing on IPv4 (Linux raw `AF_PACKET`, Windows `SendARP`) |
 | Accuracy | 4-pillar empirical accuracy scoring (`0-100%`), `--explain`, `--min-confidence` |
 | Defense awareness | Middlebox, TCP tarpit, SYN proxy, and rate-limiting detection (`--defense`) |
-| Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `rayscan db update`); vendor-aware CPE identity, version suffix/prerelease normalization, and confidence-gated findings |
-| Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `rayscan diff`); accepts rayscan JSON, state files, and Nmap XML |
-| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 60 embedded probes (13 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`rayscan probes list`) |
-| Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`rayscan scripts list`), a read-only official baseline pack (`packs/official-baseline`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
+| Advisory correlation | Offline CVE matching against detected product/version/banner using a bundled curated database and an auto-updating local NVD mirror (`--advisories`, `portensor db update`); vendor-aware CPE identity, version suffix/prerelease normalization, and confidence-gated findings |
+| Change detection | Advisory-aware baseline differential auditing (`--diff`, `--compare-to`, `portensor diff`); accepts portensor JSON, state files, and Nmap XML |
+| Service detection | TCP banner grab + signature matching (SSH, HTTP, FTP, MySQL, Redis, SMB, MongoDB, memcached, …), HTTP admin-panel fingerprinting, version extraction, per-service confidence (`0.70`–`0.99`), protocol-native probes, deep SMB2/SMB1 negotiation, and multi-step declarative TOML probe packs (`--plugins`) with 60 embedded probes (13 TLS-aware) covering databases, containers/orchestration, industrial control, remote access, appliances, and message brokers (`portensor probes list`) |
+| Plugin engine (Q2) | Cross-language script plugins over one JSON in/out contract (`--scripts`): sandboxed in-process WASM modules (wasmtime, no WASI, fuel/timeout bounded) or sidecar processes, manifest categories and `danger = "intrusive"` gating (`--allow-intrusive`), optional script-declared service identification that feeds scoring and advisories, `--min-severity` finding filtering, validated findings attached per port and surfaced in JSON/JSONL, table, Markdown, SARIF, and `--explain` (`portensor scripts list`), a read-only official baseline pack (`packs/official-baseline`), plus a digest-verified remote pack marketplace (`scripts search/install --registry`) |
 | TLS inspection | Certificate, version, cipher, negotiated ALPN, key/signature algorithms, certificate chain, SAN, expiry, self-signed and hostname checks on direct/STARTTLS ports and on TLS plus unidentified services found on non-standard ports; direct sessions also fingerprint the HTTPS application (`--tls`, `--no-tls`) |
 | UDP detection | DNS, rpcbind, SNMP, NTP, NetBIOS (137), SIP (5060), SSDP M-SEARCH (1900), mDNS service-type enumeration (5353), and BACnet/IP Who-Is (47808) via `--udp` flag, including IPv6 (`src/udp.rs`) |
-| OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` on Linux raw sockets (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8) and reports consensus family, port agreement, sample count, and hop count; Windows host roles refined to Domain Controller / Member Server / Workstation from open service ports |
+| OS fingerprinting | Active TCP/IP stack analysis over IPv4 and IPv6 (TTL, Window, MSS, WScale, SACK, TS) via `--os` on Linux raw sockets (`src/fingerprint.rs`); samples up to `--os-probes N` open ports per host (default 3, max 8), records an independent family/confidence/evidence result for every sampled endpoint, and summarizes single-OS hosts or reports `mixed` when strong endpoint evidence conflicts (for example a Linux TLS edge in front of Windows ADFS); per-endpoint results appear in JSON, tables, Markdown, HTML, and Nmap XML; Windows host roles are refined to Domain Controller / Member Server / Workstation from open service ports |
 | Port presets | Curated engagement port sets via `--preset dc|ad`, `win|ws`, `web|http`, `linux|lx`, `ot|ics|scada`, `full|all`, and `q|top` (nmap top-1000 fidelity) with `--preset` conflict rules |
 | Connect timeout | Independent per-connect timeout ceiling via `--connect-timeout-ms` that overrides the `--timeout` seconds default |
 | Rate auto | Adaptive target politeness for connect scans: backs off on timeout, ICMP-unreachable, and tarpit/handshake-silent bursts (`--rate-auto`); raw SYN AIMD also reacts to ICMP errors and high-density SYN-open anomalies |
 | Per-host concurrency | Optional cap on simultaneous connect attempts per target host (`--host-concurrency N`, 0 = unlimited); also applied to SYN-open verification |
-| Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `rayscan merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes plus optional HTTPS (`--tls-cert`/`--tls-key`, `--ca-cert`) (`rayscan distributed`) |
+| Distributed scans | Stable FNV-1a target sharding (`--shard-index`/`--shard-count`), `portensor merge` for JSON/JSONL reports, and a token-authenticated coordinator with local-plan, polling-worker, and push-agent modes plus optional HTTPS (`--tls-cert`/`--tls-key`, `--ca-cert`) (`portensor distributed`) |
 | Evasion | Random delay jitter, configurable TTL/hop limit, custom SYN source-port range, IPv4 SYN decoys, and IP fragmentation (`--jitter-ms`, `--ttl`, `--source-port-range`, `--decoys`, `--fragment-size`) |
 | Resumable scans | Smart `--resume FILE` with pre-scan gap analysis audit + `--save-state FILE` (`src/resume.rs`) |
 | Signal handling | Graceful Ctrl-C/SIGTERM: workers stop, partial results printed, state saved |
-| Diagnostics | Opt-in structured JSON stderr logs (`--log-level`, `RAYSCAN_LOG`) for scan retries, distributed job lifecycle, and delivery failures; secrets and payloads are omitted |
+| Diagnostics | Opt-in structured JSON stderr logs (`--log-level`, `PORTENSOR_LOG`) for scan retries, distributed job lifecycle, and delivery failures; secrets and payloads are omitted |
 | Output formats | `table`, `json`, `jsonl`, `csv`, `host-port`, `nmap-xml`, `greppable`, `sarif`, `markdown`; dark/light/hacker/minimal themes |
 | Supply chain | `cargo audit`/`cargo deny`, fuzz targets, checksums, optional GPG/cosign signing (`make deny`, `make fuzz`, `make sign`) |
-| Packaging | Static musl binary (`make musl`), Dockerfile (scratch), man page (`make man`) |
+| Packaging | Static musl binary (`make musl`), Dockerfile (scratch), man page (`make man`), local Homebrew/Scoop/Chocolatey/AUR/Compose metadata (`make package-check`) |
 | Safety | Global token-bucket rate limit, file-descriptor-aware workers, target caps |
 | Lab | WSL2/Linux network namespace with open/closed/DROP/tarpit/rate-limited/SYN-proxy targets |
-| Benchmarks | Dependency-free lab harness plus matched-mode localhost validation for rayscan, nmap, masscan, and rustscan |
+| Benchmarks | Dependency-free lab harness plus matched-mode localhost validation for portensor, nmap, masscan, and rustscan |
 | Docs | Architecture, benchmark contract, Phase 0-6 gates, Phase 8-9 gates, live validation |
 
 ## Live Validation — Metasploitable 2
 
-Validated end-to-end across Windows 11 (`rayscan.exe`) and Linux WSL2 (`rayscan-static-musl` and `rayscan-linux`) against a Metasploitable 2 target at `192.168.100.37`. 
+Validated end-to-end across Windows 11 (`portensor.exe`) and Linux WSL2 (`portensor-static-musl` and `portensor-linux`) against a Metasploitable 2 target at `192.168.100.37`.
 
 All 19 vulnerable services were discovered with zero false positives. See the full 10-scenario test report in [Comprehensive Live Test Suite](docs/live-metasploitable-full-suite.md).
 
 ```bash
 # Linux / WSL2 Raw SYN + OS + Service Discovery:
-sudo rayscan scan --syn --os --target 192.168.100.37 --top-ports 100
+sudo portensor scan --syn --os --target 192.168.100.37 --top-ports 100
 
 # Windows Native Fast Top-Ports Discovery:
-.\rayscan.exe scan --target 192.168.100.37 --top-ports 100
+.\portensor.exe scan --target 192.168.100.37 --top-ports 100
 ```
 
 **18/18 open ports in 1.77 s**, zero false positives:
@@ -166,6 +166,15 @@ VM; use `--probe-timeout-ms 2500` (or a longer timeout) for this target.
 Full commands and raw results are in
 [docs/live-test-metasploitable.md](docs/live-test-metasploitable.md).
 
+### Authorized HTB validation
+
+Scope-guarded lab runs are documented in
+[bench/htb/README.md](bench/htb/README.md) (Garfield: 22/22 AD ports via
+two-pass discovery) and [bench/htb/redeye.md](bench/htb/redeye.md) (RedEye v2:
+4/4 exact match, explicit SNI, and endpoint-aware mixed Linux-edge/Windows-ADFS
+OS reporting). These are authorized, user-provided targets; no exploitation was
+performed.
+
 ### IPv4 vs. IPv6 Comparative Live Validation (Phase 9)
 
 In Phase 9 (v0.3.0), comprehensive dual-stack validations were conducted comparing local lab targets and external educational systems across IPv4 and IPv6:
@@ -177,8 +186,8 @@ In Phase 9 (v0.3.0), comprehensive dual-stack validations were conducted compari
 | **scanme.nmap.org** | IPv4 | `45.33.32.156` | **Port 22/SSH** (`OpenSSH 6.6.1p1`) | 1.51s | 95% confidence, 215ms WAN latency verification |
 | **scanme.nmap.org** | IPv6 | `2600:3c01::f03c:91ff:fe18:bb2f` | **0 open** (All 5 ports filtered) | 1.50s | Cleanly detected missing WAN IPv6 routing with 0% false positives |
 
-#### Differential Network Drift Analysis (`rayscan diff`)
-Comparing the IPv4 baseline against the IPv6 scan using `rayscan diff`:
+#### Differential Network Drift Analysis (`portensor diff`)
+Comparing the IPv4 baseline against the IPv6 scan using `portensor diff`:
 ```text
 Network State Differential Analysis (vs reports/metasploitable2-phase9-live.json):
 ────────────────────────────────────────────────────────────────────────────────
@@ -204,8 +213,8 @@ explicitly permitted, documented with raw outputs and per-run wall clocks in
 
 | Range | Permission basis | Measured traffic |
 | :--- | :--- | :--- |
-| `127.0.0.0/24` loopback sweep | Own machine | 3 × rayscan full-range sweeps + 1 × nmap `-sT` reference |
-| `172.22.64.1` (WSL2 NAT gateway, Windows host) | Own machine | Full cross-tool matrix: rayscan ×12, masscan ×4, rustscan ×3, nmap `-sS` ×1 |
+| `127.0.0.0/24` loopback sweep | Own machine | 3 × portensor full-range sweeps + 1 × nmap `-sT` reference |
+| `172.22.64.1` (WSL2 NAT gateway, Windows host) | Own machine | Full cross-tool matrix: portensor ×12, masscan ×4, rustscan ×3, nmap `-sS` ×1 |
 | `45.33.32.156` (scanme.nmap.org) | Nmap's published permission banner ("authorized to scan this machine with Nmap or other port scanners") | Held to ≤3,000 pps, one full-range pass per tool |
 
 ### Results — own-machine NAT gateway (`172.22.64.1`, 65535 ports)
@@ -215,9 +224,9 @@ The Windows host answers SYN-ACK on exactly 6 of 65,535 ports
 
 | Tool / mode | Wall (s) | 6-port accuracy |
 | :--- | :--- | :--- |
-| rayscan `--syn --connect-only`, unlimited | 1.58–1.61 | 6/6 ×3 |
-| rayscan `--syn --connect-only`, 10k pps | 7.17–7.19 | 6/6 ×3 |
-| rayscan `--syn` verified, unlimited | 2.58–2.93 | 2/6 (deliberately conservative: banner-less Windows services demoted) |
+| portensor `--syn --connect-only`, unlimited | 1.58–1.61 | 6/6 ×3 |
+| portensor `--syn --connect-only`, 10k pps | 7.17–7.19 | 6/6 ×3 |
+| portensor `--syn` verified, unlimited | 2.58–2.93 | 2/6 (deliberately conservative: banner-less Windows services demoted) |
 | masscan 100k pps | 5.44 | 6/6 |
 | masscan 10k pps | 42.7–120+ (non-deterministic exit artifact) | 6/6 |
 | rustscan TCP connect | 18.6–19.4 | 6/6 ×3 |
@@ -231,17 +240,17 @@ the ideal `ports/rate` curve).
 
 | Tool | Wall (s) | Result |
 | :--- | :--- | :--- |
-| rayscan `--syn --connect-only` /24 sweep | 35.3–40.5 ×3 | finds the real `127.0.0.53:53` (systemd-resolved) listener ×3 |
+| portensor `--syn --connect-only` /24 sweep | 35.3–40.5 ×3 | finds the real `127.0.0.53:53` (systemd-resolved) listener ×3 |
 | nmap `-sT -T4` /24 sweep | >300 (timed out) | same listener, much slower |
 
 ### Results — scanme.nmap.org (authorized live target)
 
-Measured sequence, all ≤3,000 pps (masscan/rayscan/nmap `-sS` raw legs and
+Measured sequence, all ≤3,000 pps (masscan/portensor/nmap `-sS` raw legs and
 TCP-connect legs):
 
 1. Pre-test baseline HTTP fetch of `scanme.nmap.org` succeeded (the target was
    reachable).
-2. Every raw-SYN leg (rayscan raw, masscan, nmap `-sS`) returned **zero
+2. Every raw-SYN leg (portensor raw, masscan, nmap `-sS`) returned **zero
    responses from the internet through the WSL2 NAT** — the Hyper-V vSwitch
    does not map raw-crafted SYN/SYN-ACK flows; curl-style TCP connects work
    where raw SYN does not. This is the same environment property that made
@@ -254,7 +263,7 @@ TCP-connect legs):
    empty, and all scanme traffic was stopped at that point.
 4. After the rate-limit cleared (baseline HTTP fetch OK again), a single
    gentle re-verification leg was run: top-1000, ≤1,000 pps, one pass,
-   TCP-connect engine (`--syn --connect-only`). rayscan completed with full
+   TCP-connect engine (`--syn --connect-only`). portensor completed with full
    classification in 3.9 s cold / 1.7 s warm — 22 and 80 open (2/2),
    998 correctly classified `closed`, **0 filtered/misclassified**, and the
    defense layer tagged the target `direct_host` with listener-verified
@@ -304,7 +313,7 @@ cycle results, environment caveats, and repro instructions live in
   environment is the limitation; this is documented rather than papered over.
 - **masscan's capped-mode WSL2 exit artifact** (progress readout never exits)
   makes its 10k-pps wall here a lower-bound artifact; uncapped masscan
-  (5.44 s) remains the fair reference, and rayscan is 3.4× faster at that
+  (5.44 s) remains the fair reference, and portensor is 3.4× faster at that
   effective rate in `--connect-only` mode.
 
 ## Requirements
@@ -316,6 +325,8 @@ cycle results, environment caveats, and repro instructions live in
 - Windows raw scanning requires Npcap plus an elevated terminal; no extra Rust dependency is needed.
 - Optional: `musl-tools` (`sudo apt-get install -y musl-tools`) for `make musl`.
 - Optional comparison tools: `nmap`, `masscan`, `rustscan`.
+- Optional release checks: `actionlint`, `cargo-audit`, and `cargo-deny` for
+  `make release-check`.
 
 On this machine Rust lives in WSL2, not Windows:
 
@@ -339,43 +350,79 @@ Or:
 make ci
 ```
 
+Before creating a release tag, run the full preflight from a clean worktree:
+
+```bash
+make release-check
+```
+
+It validates every GitHub Actions workflow, checks version consistency, SBOM
+coverage, and release checksums, then runs the Rust and Python suites plus audit
+and deny. See [Release process](docs/release-process.md) for the complete
+checklist.
+
 ## Usage
 
 ```bash
 # Scan target directly (defaults to 1-1024 standard ports):
-rayscan scan --target 127.0.0.1
+portensor scan --target 127.0.0.1
 
 # Scan top N most common ports:
-rayscan scan --target 10.77.0.2 --top-ports 100
+portensor scan --target 10.77.0.2 --top-ports 100
 
 # Specify specific ports or ranges:
-rayscan scan --target 10.77.0.2 --ports 80,443,3306,8080,8081 --json
-rayscan scan --target 10.0.0.0/24 --ports 22,80,443 --profile careful
-sudo rayscan scan --syn --target 10.77.0.2 --ports 1-65535 --json
+portensor scan --target 10.77.0.2 --ports 80,443,3306,8080,8081 --json
+portensor scan --target 10.0.0.0/24 --ports 22,80,443 --profile careful
+sudo portensor scan --syn --target 10.77.0.2 --ports 1-65535 --json
 ```
 
 ### Interactive setup and diagnostics
 
 ```bash
 # Guided setup; requires a terminal and offers raw SYN only when available
-rayscan interactive
+portensor interactive
 
 # Check platform, terminal, workers, config, UDP, raw-SYN, and route readiness
-rayscan doctor
-rayscan doctor --json
+portensor doctor
+portensor doctor --json
 
 # Choose a palette for tables, progress, and diagnostics
-rayscan scan --target 127.0.0.1 --theme cyber
+portensor scan --target 127.0.0.1 --theme cyber
 ```
 
 Themes are `dark` (default), `light`, `hacker`, `cyber` (vibrant magenta & cyan high-contrast palette), and `minimal`. `minimal`
 disables color, and `NO_COLOR` or a non-TTY stdout also disables ANSI styling.
 The interactive wizard covers target, port strategy, profile, scan mode, UDP,
 output format, and output file; it never invokes a raw mode it cannot support.
+It prints the shared scan-plan model before starting and can save that model as
+JSON.
+
+### Explainable smart plans
+
+`portensor smart` reuses the normal scan flags and prints a deterministic plan
+before running: profile, mode, targets, ports, estimated probes, required
+privileges, explicit defaults, fallbacks, scope, and risk notes. `--dry-run`
+performs no probes and is the safe way to review or machine-parse a plan:
+
+```bash
+# Review the plan without sending any probe:
+portensor smart -t 10.0.0.0/24 --top-ports 1000 --scope scope.toml --dry-run
+
+# Machine-readable plan:
+portensor smart -t 10.0.0.5 -p 22,80,443 --dry-run --plan-json
+
+# Execute the same plan (printed to stderr), or save the model:
+portensor smart -t 10.0.0.5 -p 22,80,443
+portensor smart -t 10.0.0.5 -p 22,80,443 --dry-run --plan-output plan.json
+```
+
+When raw privileges are available, automatic mode selects raw SYN; when they
+are not, it reports the connect fallback instead of failing. See
+[Pipeline presets](docs/pipelines.md) for chaining formats and report examples.
 
 ### Discovery vs. Verification Modes & Port Prioritization
 
-Rayscan decouples rapid network discovery from in-depth verification:
+Portensor decouples rapid network discovery from in-depth verification:
 
 | Mode | Command Flag | Time (1,024 ports) | Service Banners | OS Evidence | Best For |
 |---|---|---|---|---|---|
@@ -384,14 +431,14 @@ Rayscan decouples rapid network discovery from in-depth verification:
 
 ```bash
 # Ultra-fast discovery mode (disables banner read timeouts):
-rayscan scan --target 192.168.100.37 --discover-only
+portensor scan --target 192.168.100.37 --discover-only
 
 # Top-ports-first prioritization (default in 'fast' and 'balanced' profiles):
 # Scans prevalence-ranked ports (HTTP, SSH, MySQL...) first; first open ports show up < 50ms:
-rayscan scan --target 192.168.100.37
+portensor scan --target 192.168.100.37
 
 # Disable top-ports prioritization to preserve numeric sequence:
-rayscan scan --target 192.168.100.37 --no-top-ports-first
+portensor scan --target 192.168.100.37 --no-top-ports-first
 ```
 
 ### TCP ACK Firewall Mapping (`--ack`)
@@ -406,10 +453,10 @@ disabled automatically, and only `unfiltered` results are shown by default.
 
 ```bash
 # Map unfiltered TCP ports through a firewall (Linux root/CAP_NET_RAW):
-sudo rayscan scan --ack --target 192.168.100.37 --ports 1-1024 --json
+sudo portensor scan --ack --target 192.168.100.37 --ports 1-1024 --json
 
 # ACK probes honor probe shaping shared with SYN scans:
-sudo rayscan scan --ack --target 192.168.100.37 --top-ports 100 \
+sudo portensor scan --ack --target 192.168.100.37 --top-ports 100 \
     --ttl 64 --source-port-range 40000-40100
 ```
 
@@ -417,8 +464,8 @@ On Windows, run the same commands from an elevated PowerShell with Npcap
 installed (IPv4 only):
 
 ```powershell
-.\rayscan.exe scan --syn --target 10.77.0.2 --ports 1-65535 --json
-.\rayscan.exe scan --ack --target 10.77.0.2 --ports 1-1024 --json
+.\portensor.exe scan --syn --target 10.77.0.2 --ports 1-65535 --json
+.\portensor.exe scan --ack --target 10.77.0.2 --ports 1-1024 --json
 ```
 
 ACK mode is available for IPv4 everywhere raw scanning is available and for
@@ -433,12 +480,12 @@ intentional firewall drops do not throttle the sweep.
 
 ### Real-Time Live Results Table & Deduplication
 
-During scans, `rayscan` dynamically streams open and responsive ports to a live table directly above the progress bar without interfering with progress updates. Retried or ambiguous candidates are deduplicated in memory so each port is displayed cleanly once.
+During scans, `portensor` dynamically streams open and responsive ports to a live table directly above the progress bar without interfering with progress updates. Retried or ambiguous candidates are deduplicated in memory so each port is displayed cleanly once.
 To disable the live table stream and display only the final summary table, pass `--no-live`.
 
 ### Unified Accuracy Scoring Engine (`--explain` & `--min-confidence`)
 
-Rather than treating every responsive port as an opaque `open` state, `rayscan` computes an objective **Accuracy Score (0–100%)** grounded in 4 empirical criteria:
+Rather than treating every responsive port as an opaque `open` state, `portensor` computes an objective **Accuracy Score (0–100%)** grounded in 4 empirical criteria:
 
 1. **TCP Handshake (20%)**: Valid 3-way handshake established without truncation.
 2. **Application Banner / Payload (40%)**: Verified protocol handshake (SSH, HTTP, MySQL, Redis, SMB, etc.) or responsive application data.
@@ -447,13 +494,13 @@ Rather than treating every responsive port as an opaque `open` state, `rayscan` 
 
 ```bash
 # Print comprehensive diagnostic evidence breakdown for port 22:
-sudo rayscan scan --syn --os --target 192.168.100.37 -p 22 --explain 22
+sudo portensor scan --syn --os --target 192.168.100.37 -p 22 --explain 22
 
 # Explain all open ports on target:
-sudo rayscan scan --syn --os --target 192.168.100.37 --explain
+sudo portensor scan --syn --os --target 192.168.100.37 --explain
 
 # Filter out low-confidence/ambiguous candidates (require >= 90% confidence):
-rayscan scan --target 192.168.100.37 --min-confidence 90
+portensor scan --target 192.168.100.37 --min-confidence 90
 ```
 
 `--explain` also prints the identification detail tag (`plugin:<pack>/<probe>`
@@ -462,7 +509,7 @@ for probe matches), extracted CPE, and protocol facts collected in
 
 ### Defense Awareness & Middlebox Classifier (`--defense`)
 
-Enterprise and cloud environments frequently mask service availability using middleboxes, firewalls, and deception defenses. Rather than mistaking these behaviors for real open services or silent drops, `rayscan` actively analyzes handshake discrepancies, silent response ratios, and latency patterns to classify host defense posture:
+Enterprise and cloud environments frequently mask service availability using middleboxes, firewalls, and deception defenses. Rather than mistaking these behaviors for real open services or silent drops, `portensor` actively analyzes handshake discrepancies, silent response ratios, and latency patterns to classify host defense posture:
 
 - `[CLEAN] Direct Host`: Genuine end-host behavior without middlebox interference.
 - `[NOTICE] Rate-Limiting Active`: Probe drops detected under burst rates (suggests reducing `--rate` or using `--profile careful`).
@@ -473,15 +520,15 @@ Enterprise and cloud environments frequently mask service availability using mid
 
 ```bash
 # Force display of defense intelligence even for clean direct hosts:
-rayscan scan --target 192.168.100.37 --defense
+portensor scan --target 192.168.100.37 --defense
 
 # Defense intelligence is automatically embedded in all --json reports:
-rayscan scan --target 192.168.100.37 --json
+portensor scan --target 192.168.100.37 --json
 ```
 
-### Offline CVE Advisory Correlation (`--advisories` & `rayscan db`)
+### Offline CVE Advisory Correlation (`--advisories` & `portensor db`)
 
-`rayscan` correlates detected service identity (product, version, and banner context) against two offline sources:
+`portensor` correlates detected service identity (product, version, and banner context) against two offline sources:
 
 1. A small bundled curated database (`data/advisories.json`) with hand-verified version and banner gates.
 2. A local NVD mirror built from the official CVE 2.0 feeds, covering CVEs from 1999 through the current year (401,682 CVEs / 325,837 product mappings as of November 2026).
@@ -499,35 +546,35 @@ Correlation is advisory only: it never sends extra probes, and findings must be 
 
 ```bash
 # One-time full sync (all yearly feeds, 2002-2026) plus the rolling recent feed:
-rayscan db update
+portensor db update
 
 # Faster initial subsets, forced re-downloads, and coverage/status inspection:
-rayscan db update --years 2024-2026
-rayscan db update --years 2024,2025 --force
-rayscan db status
-rayscan db status --json
+portensor db update --years 2024-2026
+portensor db update --years 2024,2025 --force
+portensor db status
+portensor db status --json
 
 # Correlate detected service versions against curated + local NVD data:
-rayscan scan --target 192.168.100.37 --advisories
+portensor scan --target 192.168.100.37 --advisories
 
 # Disable the automatic recent-feed check for isolated or offline scans:
-rayscan scan --target 192.168.100.37 --advisories --no-db-update
+portensor scan --target 192.168.100.37 --advisories --no-db-update
 
 # Download and index the full CISA KEV and EPSS feeds (24-hour cache):
-rayscan db intel
-rayscan db intel --force --json
+portensor db intel
+portensor db intel --force --json
 ```
 
-`rayscan db intel` downloads the complete CISA Known Exploited Vulnerabilities
+`portensor db intel` downloads the complete CISA Known Exploited Vulnerabilities
 catalog and the current EPSS CSV, merges them with the bundled fallback set, and
 writes an atomic gzip index to `<db>/intel/threat_intel.json.gz`. Advisory scans
 overlay that cache automatically. Use `--force` to bypass the 24-hour freshness
 window, for example in a scheduled intelligence refresh. A live refresh on
 2026-11-09 indexed 1,775 KEV CVEs and 402,199 EPSS-scored CVEs.
 
-Once initialized, every scan performs a lightweight check of the NVD `recent` feed and applies new or changed CVEs automatically (a few seconds when nothing changed). A full sync must be run manually once to bootstrap the database; without it, scans use only the bundled curated database and print a hint when `--advisories` is requested. Update failures never fail the scan. Schema 2 stores CPE vendor identities; databases created by older releases are ignored and rebuilt by rerunning `rayscan db update`.
+Once initialized, every scan performs a lightweight check of the NVD `recent` feed and applies new or changed CVEs automatically (a few seconds when nothing changed). A full sync must be run manually once to bootstrap the database; without it, scans use only the bundled curated database and print a hint when `--advisories` is requested. Update failures never fail the scan. Schema 2 stores CPE vendor identities; databases created by older releases are ignored and rebuilt by rerunning `portensor db update`.
 
-The database lives in a user-writable data directory, resolved in this order: `--db-dir <DIR>`, `RAYSCAN_DB_DIR`, then `%APPDATA%\rayscan\db` on Windows or `$XDG_DATA_HOME/rayscan/db` (`~/.local/share/rayscan/db`) elsewhere. A full mirror is roughly 275 MB and grows over time; yearly feeds and 256-way product shards keep lookups fast, and a lock file prevents concurrent updates.
+The database lives in a user-writable data directory, resolved in this order: `--db-dir <DIR>`, `PORTENSOR_DB_DIR`, then `%APPDATA%\portensor\db` on Windows or `$XDG_DATA_HOME/portensor/db` (`~/.local/share/portensor/db`) elsewhere. A full mirror is roughly 275 MB and grows over time; yearly feeds and 256-way product shards keep lookups fast, and a lock file prevents concurrent updates.
 
 ```text
 Vulnerability Advisory Correlation:
@@ -556,24 +603,24 @@ The table renderer adds an `ADVISORIES` column summarizing the highest-ranked ma
 
 In fast-paced penetration tests and bug bounty engagements on platforms like HackerOne or Bugcrowd, CVSS score alone is insufficient for triage: an informational or medium vulnerability with an active weaponized exploit in the wild often poses greater immediate risk than an unexploited critical flaw.
 
-`rayscan` enriches advisory correlation with two operational threat intelligence feeds:
+`portensor` enriches advisory correlation with two operational threat intelligence feeds:
 1. **CISA Known Exploited Vulnerabilities (KEV)**: Actively weaponized vulnerabilities confirmed by CISA to be exploited in the wild. Flagged with a prominent `[KEV]` badge in terminal tables, explain output, markdown, and JSON.
 2. **FIRST.org Exploit Prediction Scoring System (EPSS)**: Probability score ($0.0$ to $1.0$, rendered as $0.0\%$ to $100.0\%$) estimating the likelihood of exploitation activity within 30 days.
 
 ```bash
 # Filter advisory findings to only services with confirmed CISA KEV exploits:
-rayscan scan --target 192.168.100.37 --kev-only
+portensor scan --target 192.168.100.37 --kev-only
 
 # Filter for vulnerabilities with high exploitation probability (EPSS >= 50%):
-rayscan scan --target 192.168.100.37 --min-epss 0.50
+portensor scan --target 192.168.100.37 --min-epss 0.50
 
 # Combine KEV filter with Markdown executive reporting:
-rayscan scan --target 192.168.100.37 --kev-only --format markdown -o report.md
+portensor scan --target 192.168.100.37 --kev-only --format markdown -o report.md
 ```
 
 ### Scope Guard Boundary Protection (`--scope` & `--force-out-of-scope`)
 
-The primary legal and operational hazard in authorized penetration testing and bug bounty engagements is scanning outside the agreed perimeter. `rayscan` includes a dedicated **Scope Guard Engine** (`src/scope.rs`) that enforces target boundaries before any probe packet leaves the host.
+The primary legal and operational hazard in authorized penetration testing and bug bounty engagements is scanning outside the agreed perimeter. `portensor` includes a dedicated **Scope Guard Engine** (`src/scope.rs`) that enforces target boundaries before any probe packet leaves the host.
 
 A scope file (`scope.toml` or line-based target list) defines allowed and denied CIDRs, IP ranges, and wildcard domains:
 
@@ -594,14 +641,14 @@ deny = [
 
 ```bash
 # Safe scan guarded by engagement scope:
-rayscan scan --target api.example.com --scope scope.toml
+portensor scan --target api.example.com --scope scope.toml
 
 # Scanning an out-of-scope target fails immediately with a legal violation error:
-rayscan scan --target out-of-scope.net --scope scope.toml
+portensor scan --target out-of-scope.net --scope scope.toml
 # Error: SCOPE VIOLATION: Target 'out-of-scope.net' is NOT in the authorized scope for program 'HackerOne - Target Engagement'. Scan aborted for legal safety.
 
 # Explicitly override scope enforcement with auditable warnings:
-rayscan scan --target out-of-scope.net --scope scope.toml --force-out-of-scope
+portensor scan --target out-of-scope.net --scope scope.toml --force-out-of-scope
 ```
 
 `--target-file` and `@file` contents are expanded before scope validation, so a
@@ -612,16 +659,16 @@ always win, including when a domain resolves to a denied address.
 
 ### Real-Time Streaming Output for Offensive Pipelines (`--stream`)
 
-When orchestrating toolchains in bug bounty reconnaissance (such as piping rayscan outputs directly into downstream fuzzers, directory bruteforcers, or parameter analyzers like `H1Hunter`, `ParamOracle`, or `Shadow Octopus`), waiting for a full 65,535-port scan to terminate creates unnecessary pipeline latency.
+When orchestrating toolchains in bug bounty reconnaissance (such as piping portensor outputs directly into downstream fuzzers, directory bruteforcers, or parameter analyzers like `H1Hunter`, `ParamOracle`, or `Shadow Octopus`), waiting for a full 65,535-port scan to terminate creates unnecessary pipeline latency.
 
 Passing `--stream` writes verified open port findings line-by-line as unbuffered JSONL directly to `stdout`:
 
 ```bash
 # Stream verified open ports in real-time to jq or Unix pipelines:
-rayscan scan --target 192.168.100.37 -p 1-65535 --stream | jq -c '{port: .port, service: .service.name}'
+portensor scan --target 192.168.100.37 -p 1-65535 --stream | jq -c '{port: .port, service: .service.name}'
 
 # Pipe discovered web endpoints into curl or HTTP fuzzing tools immediately:
-rayscan scan --target 192.168.100.37 --stream | while read -r line; do
+portensor scan --target 192.168.100.37 --stream | while read -r line; do
     PORT=$(echo "$line" | jq -r '.port')
     echo "[+] Pipeline triggered for port $PORT immediately"
 done
@@ -633,22 +680,22 @@ plugin matches, advisory correlation, KEV/EPSS filters, and diff data run after
 the scan and are not backfilled into streamed lines; use the final JSON/report
 output when those fields are required.
 
-### Network State Change Detection & Differential Auditing (`--diff` & `rayscan diff`)
+### Network State Change Detection & Differential Auditing (`--diff` & `portensor diff`)
 
-`rayscan` provides built-in differential change detection to track perimeter drift, newly opened ports, vanished services, version upgrades, and defense posture shifts without requiring external diff scripts. Baselines can be rayscan JSON reports, `--save-state` files, or Nmap XML reports (`nmap -oX`):
+`portensor` provides built-in differential change detection to track perimeter drift, newly opened ports, vanished services, version upgrades, and defense posture shifts without requiring external diff scripts. Baselines can be portensor JSON reports, `--save-state` files, or Nmap XML reports (`nmap -oX`):
 
 ```bash
 # 1. Compare live scan against an existing baseline scan or state file:
-rayscan scan --target 192.168.100.37 --diff /tmp/baseline.json
+portensor scan --target 192.168.100.37 --diff /tmp/baseline.json
 
 # 2. Standalone offline diff between any two saved JSON, state, or Nmap XML reports:
-rayscan diff /tmp/yesterday.json /tmp/today.json
+portensor diff /tmp/yesterday.json /tmp/today.json
 
 # 3. Migrate a Nmap baseline without converting it first:
-rayscan diff /tmp/nmap-baseline.xml /tmp/today.json
+portensor diff /tmp/nmap-baseline.xml /tmp/today.json
 
 # 4. Machine-readable JSON diff output for CI/CD and security monitoring:
-rayscan diff /tmp/yesterday.json /tmp/today.json --json
+portensor diff /tmp/yesterday.json /tmp/today.json --json
 ```
 
 Nmap XML import reads TCP `<port>`, `<state>`, and `<service>` elements
@@ -670,25 +717,25 @@ Diff Summary: 1 new | 1 closed/gone | 1 modified | 1 posture shifted (12 unchang
 
 #### Practical Daily Workflow: Baseline → Scan → Diff
 
-Here is how security teams integrate `rayscan` into automated daily perimeter monitoring:
+Here is how security teams integrate `portensor` into automated daily perimeter monitoring:
 
 ```bash
 # Day 1 (Monday): Establish clean baseline snapshot of target infrastructure:
-sudo rayscan scan --syn --os --target 192.168.100.0/24 --top-ports 100 \
-    --save-baseline /var/log/rayscan/baseline.json --json -o monday.json
+sudo portensor scan --syn --os --target 192.168.100.0/24 --top-ports 100 \
+    --save-baseline /var/log/portensor/baseline.json --json -o monday.json
 
 # Day 2 (Tuesday): Run daily audit, write a change alert, and fail CI on any drift:
-sudo rayscan scan --syn --os --target 192.168.100.0/24 --top-ports 100 \
-    --diff /var/log/rayscan/baseline.json \
-    --alert-file /var/log/rayscan/alert.txt --fail-on-change \
-    --json -o /var/log/rayscan/tuesday.json
+sudo portensor scan --syn --os --target 192.168.100.0/24 --top-ports 100 \
+    --diff /var/log/portensor/baseline.json \
+    --alert-file /var/log/portensor/alert.txt --fail-on-change \
+    --json -o /var/log/portensor/tuesday.json
 
 # Offline Investigation: Perform offline differential comparison between any historical scans:
-rayscan diff /var/log/rayscan/baseline.json /var/log/rayscan/tuesday.json
+portensor diff /var/log/portensor/baseline.json /var/log/portensor/tuesday.json
 
 # CI/CD: the same check in one command, no jq required (exit 0 = no change, 1 = drift):
-rayscan diff /var/log/rayscan/baseline.json /var/log/rayscan/tuesday.json \
-    --alert-file /var/log/rayscan/alert.txt --fail-on-change
+portensor diff /var/log/portensor/baseline.json /var/log/portensor/tuesday.json \
+    --alert-file /var/log/portensor/alert.txt --fail-on-change
 ```
 
 `--alert-file` writes a compact, timestamp-free alert on every run
@@ -697,34 +744,34 @@ so it can be tailed, shipped to a SIEM, or sent as a webhook payload. Update
 the baseline only after accepting the drift: `--save-baseline` writes the JSON
 report of the current run in the same format `--diff` consumes. Existing Nmap
 deployments can seed the same workflow with `nmap -oX`: pass the XML report to
-`--diff` or `rayscan diff` directly; subsequent `--save-baseline` files are
-rayscan JSON.
+`--diff` or `portensor diff` directly; subsequent `--save-baseline` files are
+portensor JSON.
 
 ### Feeding Other Tools (`--format host-port`, `--exclude-ports`)
 
 ```bash
 # Pipe open ports straight into httpx for probing/title/tech detection:
-sudo rayscan scan -t 10.0.0.0/24 -p 1-65535 --syn --connect-only --quiet \
+sudo portensor scan -t 10.0.0.0/24 -p 1-65535 --syn --connect-only --quiet \
     --format host-port | httpx -silent -td -title -tech-detect -json -o web.json
 
-# Full chain: rayscan discovery → httpx live URLs → nuclei templates:
-sudo rayscan scan -t 10.0.0.0/24 -p 1-65535 --syn --connect-only --quiet \
+# Full chain: portensor discovery → httpx live URLs → nuclei templates:
+sudo portensor scan -t 10.0.0.0/24 -p 1-65535 --syn --connect-only --quiet \
     --format host-port | httpx -silent \
     | nuclei -silent -severity critical,high -o findings.txt
 
 # Service-aware filtering with jq before handing off to web tooling:
-sudo rayscan scan -t 10.0.0.0/24 -p 1-65535 --syn --format json --quiet \
+sudo portensor scan -t 10.0.0.0/24 -p 1-65535 --syn --format json --quiet \
     | jq -r '.open[] | select(.service.product == "Jenkins" or .service.name == "http")
              | "\(.host):\(.port)"' | httpx -silent
 
 # Keep noisy corporate ports out of a large engagement scan:
-sudo rayscan scan -t 10.0.0.0/24 -p 1-65535 --exclude-ports 445,3389,5985-5986
+sudo portensor scan -t 10.0.0.0/24 -p 1-65535 --exclude-ports 445,3389,5985-5986
 
 # Machine-consumable JSON lines for custom ingest scripts:
-rayscan scan -t 10.0.0.0/24 --top-ports 1000 --format jsonl --quiet
+portensor scan -t 10.0.0.0/24 --top-ports 1000 --format jsonl --quiet
 
 # Streaming variant: verify so service metadata is attached, stream as JSONL:
-rayscan scan -t 10.0.0.0/24 --top-ports 1000 --stream \
+portensor scan -t 10.0.0.0/24 --top-ports 1000 --stream \
     | jq -c 'select(.service.product) | {host, port, product: .service.product,
               version: .service.version, confidence: .service.confidence}'
 ```
@@ -736,11 +783,11 @@ same list/range syntax as `--ports`.
 
 ### Smart Resume with Gap Analysis Audit
 
-When resuming an interrupted or large-scale scan with `--resume <FILE>`, `rayscan` executes an immediate pre-scan diagnostic audit to inspect remaining scope and verify host anomaly thresholds:
+When resuming an interrupted or large-scale scan with `--resume <FILE>`, `portensor` executes an immediate pre-scan diagnostic audit to inspect remaining scope and verify host anomaly thresholds:
 
 ```bash
 # Resume an interrupted scan with comprehensive gap analysis audit:
-rayscan scan --target 192.168.100.37 --resume /tmp/scan-state.json
+portensor scan --target 192.168.100.37 --resume /tmp/scan-state.json
 ```
 
 ```text
@@ -759,7 +806,7 @@ Targets may be repeated and may be an IP, CIDR, range, hostname, file path, or
 `@file`:
 
 ```bash
-rayscan scan \
+portensor scan \
   --target 10.0.0.0/24 \
   --target 10.0.1.10-10.0.1.20 \
   --exclude 10.0.0.128/25 \
@@ -767,7 +814,7 @@ rayscan scan \
 ```
 
 Port expressions accept lists and ranges: `80,443,8000-8100` or `1:1024`.
-If `--ports` is omitted, `rayscan` automatically defaults to the standard
+If `--ports` is omitted, `portensor` automatically defaults to the standard
 well-known ports `1-1024`. Use `--top-ports N` to probe the top N most frequent
 services. Target expansion is capped at 65,536 addresses. Worker auto-sizing
 targets `cores × 32`, clamped to 64–512 and bounded by `RLIMIT_NOFILE`;
@@ -783,15 +830,15 @@ order still produces the same partition.
 ```bash
 # Four parallel shards, each writing a JSON report:
 for i in 0 1 2 3; do
-  rayscan scan -t 10.0.0.0/16 -p 1-65535 --shard-index "$i" --shard-count 4 \
+  portensor scan -t 10.0.0.0/16 -p 1-65535 --shard-index "$i" --shard-count 4 \
     --json -o "shard-$i.json"
 done
 
 # Merge reports (JSON or JSONL); open results win and evidence is preserved:
-rayscan merge shard-0.json shard-1.json shard-2.json shard-3.json -o merged.json
+portensor merge shard-0.json shard-1.json shard-2.json shard-3.json -o merged.json
 
 # Merge JSONL shards into JSONL:
-rayscan merge --jsonl shard-0.jsonl shard-1.jsonl -o merged.jsonl
+portensor merge --jsonl shard-0.jsonl shard-1.jsonl -o merged.jsonl
 ```
 
 Duplicate `host:port` entries keep the stronger state and confidence, but union
@@ -811,19 +858,19 @@ Three orchestration shapes share the same deterministic shards and merge path:
 
 ```bash
 # 1. Local plan: print (or write) a script that runs every shard and merges.
-rayscan distributed plan --shards 16 --shell bash --output run.sh -- \
+portensor distributed plan --shards 16 --shell bash --output run.sh -- \
   scan -t 10.0.0.0/16 -p 22,80,443 --no-db-update
 
 # 2. Pull mode: coordinator plus any number of polling workers.
-export RAYSCAN_DISTRIBUTED_TOKEN="$(openssl rand -hex 24)"
-rayscan distributed serve --listen 0.0.0.0:9090 --shards 16 \
+export PORTENSOR_DISTRIBUTED_TOKEN="$(openssl rand -hex 24)"
+portensor distributed serve --listen 0.0.0.0:9090 --shards 16 \
   --out merged.json -- scan -t 10.0.0.0/16 -p 22,80,443
 # On each worker host (same binary and target-file paths):
-rayscan distributed worker --coordinator http://10.0.0.5:9090 --max-jobs 0
+portensor distributed worker --coordinator http://10.0.0.5:9090 --max-jobs 0
 
 # 3. Push mode: coordinator dispatches to inbound agents.
-rayscan distributed agent --listen 0.0.0.0:9091 --concurrency 2
-rayscan distributed serve --listen 0.0.0.0:9090 --shards 16 \
+portensor distributed agent --listen 0.0.0.0:9091 --concurrency 2
+portensor distributed serve --listen 0.0.0.0:9090 --shards 16 \
   --agents http://10.0.0.11:9091,http://10.0.0.12:9091 \
   --out merged.json -- scan -t 10.0.0.0/16 -p 22,80,443
 ```
@@ -832,20 +879,34 @@ The coordinator forces `--format json`, owns `--output`/`--shard-*`, and
 rejects job-local side effects (`--resume`, `--save-state`, `--diff`,
 `--stream`, alert flags). Workers heartbeat while scanning; expired leases are
 requeued up to `--max-attempts` (default 3), and finished shards merge with the
-same evidence-preserving rules as `rayscan merge`. The coordinator writes
+same evidence-preserving rules as `portensor merge`. The coordinator writes
 `--out` and exits nonzero if any shard ultimately failed. Empty shards are
 reported as empty merges rather than errors.
+
+Coordinator state is durable by default at `<out>.state.json` (override with
+`--state FILE`). Versioned snapshots, per-shard result objects under
+`<state>.d/`, and an ownership lock survive restarts: expired leases are
+requeued, accepted results are reattached, interrupted merges are repaired, and
+a completed report stays fetchable without re-running shards. State and result
+files are owner-only on Unix. `GET /readyz` and `GET /metrics` expose readiness,
+queue depth, in-flight and completed jobs, failures, leases, splits, and
+restart counters behind the bearer token. Logs carry a `run=<id>` field.
+
+When no pending work remains but a worker is still running a shard after two
+seconds, the coordinator supersedes the parent and splits the remaining work
+into up to eight child jobs. Child jobs inherit the original arguments with
+hidden work-part flags, and the split level is limited to one.
 
 Control-plane requests have a 300-second lifetime and a 128-request in-flight
 cap, so a stalled client cannot pin the coordinator indefinitely. Transient
 transport, 408/425/429, and 5xx failures are retried with backoff; terminal
 401/403/409/422 responses fail fast instead of burning the retry budget.
 Ctrl-C and SIGTERM take the same graceful shutdown path on the coordinator,
-workers, and agents. Use `--log-level info` (or `RAYSCAN_LOG=info`) for
+workers, and agents. Use `--log-level info` (or `PORTENSOR_LOG=info`) for
 structured job and delivery diagnostics on stderr.
 
 Authentication is a shared bearer token (`--token` or
-`RAYSCAN_DISTRIBUTED_TOKEN`, minimum 16 characters). The control plane speaks
+`PORTENSOR_DISTRIBUTED_TOKEN`, minimum 16 characters). The control plane speaks
 HTTP/JSON by default. Enable HTTPS directly on the coordinator and push agents
 with `--tls-cert`/`--tls-key`; workers and push coordinators verify private CAs
 with `--ca-cert` (or opt into `--insecure-tls` only for testing). Without TLS,
@@ -857,16 +918,16 @@ and keep `--target-file` paths available locally.
 
 ```bash
 # HTTPS coordinator plus a polling worker that trusts a private CA.
-rayscan distributed serve --listen 0.0.0.0:9090 \
+portensor distributed serve --listen 0.0.0.0:9090 \
   --tls-cert coordinator.pem --tls-key coordinator.key \
   --out merged.json -- scan -t 10.0.0.0/16 -p 22,80,443
-rayscan distributed worker --coordinator https://10.0.0.5:9090 \
+portensor distributed worker --coordinator https://10.0.0.5:9090 \
   --ca-cert ca.pem
 
 # HTTPS push agent and a coordinator that verifies the agent certificate.
-rayscan distributed agent --listen 0.0.0.0:9091 \
+portensor distributed agent --listen 0.0.0.0:9091 \
   --tls-cert agent.pem --tls-key agent.key
-rayscan distributed serve --listen 0.0.0.0:9090 \
+portensor distributed serve --listen 0.0.0.0:9090 \
   --tls-cert coordinator.pem --tls-key coordinator.key --ca-cert ca.pem \
   --agents https://10.0.0.11:9091 -- scan -t 10.0.0.0/16 -p 22,80,443
 ```
@@ -874,7 +935,7 @@ rayscan distributed serve --listen 0.0.0.0:9090 \
 ### Ping Sweep, ARP, and IPv6 Discovery (ARP & ICMP & NDP)
 
 Reachability can be checked before the port scan. On Linux, IPv4 uses raw ICMP
-echo where permitted and falls back to TCP connects. For IPv6, `rayscan` supports
+echo where permitted and falls back to TCP connects. For IPv6, `portensor` supports
 native raw ICMPv6 echo probes (RFC 4443 Type 128/129) and **Neighbor Discovery
 Protocol (NDP)** multicast probing (`ff02::1` all-nodes) combined with the Linux
 neighbor table (`ip -6 neigh` / `/proc/net/ndisc_cache`) and verified host routes.
@@ -897,14 +958,14 @@ probes never collide on `(id, sequence)`.
 
 ```bash
 # Three echo attempts, 750 ms each, then scan only responsive hosts:
-sudo rayscan scan -t 10.0.0.0/24 -p 22,80,443 --ping-sweep \
+sudo portensor scan -t 10.0.0.0/24 -p 22,80,443 --ping-sweep \
   --ping-count 3 --ping-timeout-ms 750
 
 # Discover active hosts in a /64 with NDP, then scan their services:
-sudo rayscan scan -6 -t fe80::/64 --ndp --ndp-timeout-ms 750 -p 22,80,443
+sudo portensor scan -6 -t fe80::/64 --ndp --ndp-timeout-ms 750 -p 22,80,443
 
 # Native ICMPv6 / TCP ping sweep for an explicit IPv6 target:
-rayscan scan -6 -t fd24:91bb:6122:1600::37 -p 22,80,443 --ping-sweep
+portensor scan -6 -t fd24:91bb:6122:1600::37 -p 22,80,443 --ping-sweep
 ```
 
 NDP does not create a route to the public internet: a network without IPv6
@@ -996,9 +1057,9 @@ Service identification is driven by a declarative probe engine. Six packs
 | `messaging` | MQTT CONNECT/CONNACK (TCP and TLS), Kafka ApiVersions (TCP and TLS), RabbitMQ AMQP Connection.Start (TCP and TLS), NATS INFO |
 
 ```bash
-rayscan probes list
-rayscan probes list --json
-rayscan probes list --plugins ./my-probes/
+portensor probes list
+portensor probes list --json
+portensor probes list --plugins ./my-probes/
 ```
 
 Probes are TOML. The v2 schema supports multi-step sessions over one TCP
@@ -1070,15 +1131,15 @@ probed. See [docs/probe-engine.md](docs/probe-engine.md) for the full schema
 reference and authoring guide.
 
 ```bash
-rayscan scan -t 10.0.0.5 -p 9000 --plugins probes.toml --explain 9000
+portensor scan -t 10.0.0.5 -p 9000 --plugins probes.toml --explain 9000
 ```
 
-### Script Plugins (`--scripts`, `--allow-intrusive`, `rayscan scripts list`)
+### Script Plugins (`--scripts`, `--allow-intrusive`, `portensor scripts list`)
 
 The declarative probe engine never executes code. When a check needs real
 logic — parsing a JSON API, scripting a TLS negotiation, computing risk — it
 runs as a **script plugin**: either a WASM module or a sidecar process,
-described by a TOML manifest. Rayscan speaks the same one-JSON-in/one-JSON-out
+described by a TOML manifest. Portensor speaks the same one-JSON-in/one-JSON-out
 contract with both, so Python, Go, Rust, any shell script, or a compiled
 `wasm32` module can participate without linking to the scanner.
 
@@ -1093,6 +1154,7 @@ name = "container-check"
 description = "Flags unauthenticated Docker engine API endpoints"
 category = "vulnerability"      # discovery | vulnerability | auth | brute | compliance
 danger = "safe"                 # "intrusive" requires --allow-intrusive
+capabilities = ["metadata"]     # exactly one: metadata | target-tcp
 command = ["python3", "check.py"]  # sidecar: runs with the manifest dir as cwd
 # wasm = "check.wasm"           # or: sandboxed in-process WASM module
 services = ["docker"]           # optional service filter; ports = [] also optional
@@ -1101,9 +1163,10 @@ timeout_ms = 5000               # 100-30000
 
 Each run receives the port context as JSON — `target`, `port`, `state`,
 `confidence`, `banner`, `detail`, `evidence`, the full `service` object, and
-`tls` metadata. Sidecar scripts get it on stdin plus `RAYSCAN_SCRIPT_API`,
-`RAYSCAN_TARGET`, and `RAYSCAN_PORT` environment variables; WASM modules
-receive it through their `alloc`/`run` exports (see below). The script answers
+`tls` metadata. Sidecar scripts get it on stdin plus a cleared environment with
+only documented `PORTENSOR_SCRIPT_*`, `PORTENSOR_TARGET`, `PORTENSOR_PORT`, `PATH`, and
+Python isolation variables; WASM modules receive it through their `alloc`/`run`
+exports (see below). The script answers
 with `{"findings": [{"id", "title", "severity", "confidence", "description",
 "evidence", "cve", "references"}]}`. Findings are validated (length caps,
 control-character stripping, CVE/reference shape) and attached to the port as
@@ -1118,8 +1181,17 @@ limit, and the manifest timeout. Modules export `memory`,
 `alloc(len: i32) -> i32`, and `run(input_ptr: i32, input_len: i32) -> i64`,
 where the return value packs the output JSON location as
 `(ptr << 32) | len`. The module is compiled at manifest load, so syntax errors
-fail fast in `rayscan scripts list`. Need a WASI-capable or heavier runtime?
+fail fast in `portensor scripts list`. Need a WASI-capable or heavier runtime?
 Use a sidecar `command` instead.
+
+WASM modules may declare `capabilities = ["target-tcp"]` to opt into the
+versioned active host ABI. The host fixes the destination to the scanned
+target and port, rechecks `--scope` before every connection, allows one open
+connection, caps attempts, connections per second, bytes in each direction,
+and per-operation time, and emits audit events. Sidecars cannot receive
+`target-tcp`; on platforms without a verified network-deny sandbox, sidecar
+execution is refused and WASM is the supported option. See
+[docs/script-sdk.md](docs/script-sdk.md) for the ABI and pack-authoring guide.
 
 Discovery scripts can also identify the port: an optional `service` object
 (`name` required; `product`, `version`, `cpe`, `info`, `confidence` optional)
@@ -1134,32 +1206,39 @@ Markdown `## Script Findings` table, SARIF rules, and `--explain` output.
 Runtime script failures are reported on stderr and never abort a scan.
 
 ```bash
-rayscan scripts list ./scripts --json     # validate manifests before a run
-rayscan scan -t 10.0.0.5 --scripts ./scripts --json
-rayscan scan -t 10.0.0.5 --scripts ./scripts --allow-intrusive
+portensor scripts list ./scripts --json     # validate manifests before a run
+portensor scan -t 10.0.0.5 --scripts ./scripts --json
+portensor scan -t 10.0.0.5 --scripts ./scripts --allow-intrusive
 ```
 
 #### Script library
 
 Packs can be installed once and reused from every scan. The library lives
-under the platform data directory (`%APPDATA%\rayscan\scripts` on Windows,
-`$XDG_DATA_HOME/rayscan/scripts` or `~/.local/share/rayscan/scripts`
+under the platform data directory (`%APPDATA%\portensor\scripts` on Windows,
+`$XDG_DATA_HOME/portensor/scripts` or `~/.local/share/portensor/scripts`
 elsewhere), one subdirectory per pack; override the location with the global
-`--scripts-dir DIR` or `RAYSCAN_SCRIPTS_DIR`.
+`--scripts-dir DIR` or `PORTENSOR_SCRIPTS_DIR`.
 
 ```bash
-rayscan scripts install ./my-pack          # validate + copy into the library
-rayscan scripts list                       # list installed packs (PATH optional)
-rayscan scripts library --json             # print the library location
-rayscan scan -t 10.0.0.5 --scripts-library # run every installed pack
-rayscan scripts uninstall my-pack
+portensor scripts install ./my-pack          # validate + copy into the library
+portensor scripts list                       # list installed packs (PATH optional)
+portensor scripts library --json             # print the library location
+portensor scan -t 10.0.0.5 --scripts-library # run every installed pack
+portensor scripts update                     # update registry-installed packs
+portensor scripts update my-pack --json      # update one pack
+portensor scripts uninstall my-pack
 ```
 
 `install` compiles every manifest first, so a broken pack never lands on disk,
 and re-installing an existing name requires `--force`. `--scripts` stays
 available for ad-hoc paths and is repeatable; every path (plus the library
 when `--scripts-library` is set) contributes packs to one registry and
-duplicate plugin names are rejected.
+duplicate plugin names are rejected. Registry installs are recorded in
+`packs.lock` with name, version, source, digest, path, and kind. `scripts
+update` re-resolves the registry, verifies the new SHA-256 digest, and
+atomically replaces the pack; an interrupted update restores the previous
+version on the next operation. Direct-URL installs are pinned by the digest
+supplied with `--sha256` and are not updated automatically.
 
 #### Official baseline pack
 
@@ -1168,24 +1247,29 @@ baseline hygiene checks. It requires Python 3.8+ on `PATH` and consumes only
 metadata already collected by the scan - it opens no additional connections.
 The manifest invokes `python3`; on Windows installations that only provide
 `python.exe`, edit the installed manifest's `command` entries accordingly.
-All four scripts are `danger = "safe"`:
+The pack contains 24 `danger = "safe"` metadata-only scripts, each with a
+positive and negative fixture. Representative checks:
 
-| Script | Finding |
+| Script family | Findings |
 | :--- | :--- |
-| `tls-certificate` | Expired, not-yet-valid, expiring-soon, self-signed, and SHA-1/MD5-signed certificates |
+| `tls-certificate`, `tls-weak-protocol`, `tls-weak-cipher`, `tls-hostname-mismatch` | Certificate hygiene, deprecated TLS versions/ciphers, and hostname mismatches |
+| `cleartext-ftp/telnet/http/smtp/pop3/imap` | Services reachable without TLS |
+| `ssh/http/mysql/postgresql/redis/mongodb/memcached-version-disclosure` | Passive product/version disclosure |
 | `smb-hardening` | SMB signing not required, and SMBv1 negotiation accepted |
 | `redis-unauthenticated` | Redis answered `INFO` without authentication |
 | `docker-unauthenticated` | Docker Engine API answered a version/ping request without authentication |
+| `vnc-exposed`, `rdp-exposed`, `mongodb-exposed`, `elasticsearch-exposed` | Management or data services reachable from the scanned network |
 
 ```bash
-rayscan scripts install ./packs/official-baseline
-rayscan scripts list
-rayscan scan -t 10.0.0.5 -p 443,445,6379,2375 --scripts-library --json
+portensor scripts install ./packs/official-baseline
+portensor scripts list
+portensor scan -t 10.0.0.5 -p 443,445,6379,2375 --scripts-library --json
 ```
 
 The pack is not installed automatically, so the scanner itself remains a
-single dependency-free binary. Install only packs you trust; sidecars run with
-your privileges.
+single dependency-free binary. Install only packs you trust. Sidecars are
+network-denied and receive a cleared environment on Linux; on other platforms
+they are refused, so prefer WASM for portable checks.
 
 #### Remote marketplace
 
@@ -1209,10 +1293,10 @@ host, object store, or internal mirror can serve packs without a service:
 ```
 
 ```bash
-rayscan scripts search http --registry https://mirror.example/registry/index.json
-rayscan scripts search --json --registry https://mirror.example/registry/index.json
-rayscan scripts install web-audit --registry https://mirror.example/registry/index.json
-rayscan scripts install https://mirror.example/web-audit-1.2.0.tar.gz --sha256 HEX
+portensor scripts search http --registry https://mirror.example/registry/index.json
+portensor scripts search --json --registry https://mirror.example/registry/index.json
+portensor scripts install web-audit --registry https://mirror.example/registry/index.json
+portensor scripts install https://mirror.example/web-audit-1.2.0.tar.gz --sha256 HEX
 ```
 
 `search` filters case-insensitively on name, description, and tags; `--json`
@@ -1223,7 +1307,7 @@ the library — a corrupt or mismatched archive never lands on disk. Archives
 are gzip tarballs with one top-level directory named after the pack;
 extraction refuses absolute paths, `..` traversal, links, device nodes, more
 than 4096 entries, archives over 64 MiB, and expanded trees over 512 MiB.
-Direct URLs require `--sha256`; `RAYSCAN_SCRIPT_REGISTRY` supplies the
+Direct URLs require `--sha256`; `PORTENSOR_SCRIPT_REGISTRY` supplies the
 registry URL for both commands. Prefer HTTPS: plain HTTP works but prints a
 warning, with integrity guaranteed only by the digest.
 
@@ -1254,19 +1338,30 @@ the plaintext HTTP probe but complete a TLS handshake are promoted from
 `closed` to `open` instead of being lost.
 
 ```bash
-rayscan scan -t 10.0.0.5 -p 443,8443 --tls --json
-rayscan scan -t 10.0.0.5 -p 443 --no-tls
+portensor scan -t 10.0.0.5 -p 443,8443 --tls --json
+portensor scan -t 10.0.0.5 -p 443 --no-tls
+
+# Virtual hosts sharing one IP: override SNI independently of the target.
+portensor scan -t 10.0.0.5 -p 443 --tls --sni sts.example.test --json
+portensor scan -t 10.0.0.5 -p 3000 --tls --sni chat.example.test --json
 ```
+
+`--sni HOST` sets the DNS name used in the TLS handshake, the HTTP `Host`
+header, and certificate name validation. It is independent of the target IP and
+lets one scan select a specific virtual host. Names are normalized to lowercase
+DNS form; IP literals, wildcards, underscores, and non-FQDNs are rejected.
+Without `--sni`, certificate matching remains IP-based against the scan target.
+`--sni` conflicts with `--no-tls` and `--ack`.
 
 The JSON port object gains a `tls` object containing `version`, `cipher`,
 `alpn`, `key_algorithm`, `signature_algorithm`, `chain` (certificate subject
 lines), `subject`, `issuer`, `san`, `serial`, `not_before`, `not_after`,
 `days_remaining`, `expired`, `not_yet_valid`, `self_signed`,
-`hostname_matches`, `chain_len`, and optional `starttls`. Sessions advertise
-`h2`/`http/1.1` via ALPN and report the negotiated protocol. The certificate is
-captured even when it is self-signed, expired, or does not match the target;
-these conditions are reported as fields rather than treated as handshake
-failures.
+`hostname_matches`, `chain_len`, optional `starttls`, and the explicit `sni`
+name when configured. Sessions advertise `h2`/`http/1.1` via ALPN and report
+the negotiated protocol. The certificate is captured even when it is
+self-signed, expired, or does not match the target; these conditions are
+reported as fields rather than treated as handshake failures.
 
 ### IPv6 Raw SYN and OS Fingerprinting
 
@@ -1280,33 +1375,44 @@ window, and TCP options. IPv6 ACK probes (`--ack`) validate the echoed cookie
 against the full address and both ports.
 
 ```bash
-sudo rayscan scan -6 -t 2001:db8::10 -p 1-1024 --syn --os
-sudo rayscan scan -6 -t ::1 -p 80,443 --syn --format json
-sudo rayscan scan -6 -t 2001:db8::10 -p 1-1024 --ack
+sudo portensor scan -6 -t 2001:db8::10 -p 1-1024 --syn --os
+sudo portensor scan -6 -t ::1 -p 80,443 --syn --format json
+sudo portensor scan -6 -t 2001:db8::10 -p 1-1024 --ack
 ```
 
 Decoys and IPv4 fragmentation remain IPv4-only. Mixed IPv4/IPv6 target sets are
 partitioned automatically and merged into one report. `--ttl` sets the IPv4 TTL
 or IPv6 hop limit for raw SYN, ACK, and OS fingerprint probes.
 
+OS results are endpoint-aware. Every SYN-ACK sample is retained as an
+`os_fingerprints[host].endpoints[]` entry with its port, detected service,
+family, confidence, TTL/hop metadata, and TCP/IP evidence. The host-level
+family is the normal consensus when one stack dominates. When two or more
+families each have strong endpoint evidence (confidence at least 35%), the host
+family is `mixed` and the endpoint rows identify which ports belong to which
+stack. This avoids claiming a single OS for a Linux TLS front end that proxies
+to Windows ADFS, or for a host exposing multiple container or appliance
+stacks. Per-port accuracy scoring and the terminal/Markdown/HTML/Nmap XML
+reports use the endpoint result when one exists.
+
 ### Stealth, Jitter, TTL, Decoys, and Fragmentation
 
 ```bash
 # 0-250 ms random delay before probes:
-sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --jitter-ms 250
+sudo portensor scan -t 10.0.0.5 -p 1-1024 --syn --jitter-ms 250
 
 # Set a custom IPv4 TTL / IPv6 hop limit for SYN and OS probes:
-sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --os --ttl 128
+sudo portensor scan -t 10.0.0.5 -p 1-1024 --syn --os --ttl 128
 
 # Restrict raw SYN/ACK source ports (retries advance within this range):
-sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --source-port-range 40000-40100
-sudo rayscan scan -t 10.0.0.5 -p 1-1024 --ack --source-port-range 40000-40100
+sudo portensor scan -t 10.0.0.5 -p 1-1024 --syn --source-port-range 40000-40100
+sudo portensor scan -t 10.0.0.5 -p 1-1024 --ack --source-port-range 40000-40100
 
 # Add up to eight IPv4 decoy source addresses:
-sudo rayscan scan -t 10.0.0.5 -p 1-1024 --syn --decoys 10.0.0.101,10.0.0.102
+sudo portensor scan -t 10.0.0.5 -p 1-1024 --syn --decoys 10.0.0.101,10.0.0.102
 
 # Split IPv4 SYN probes into 8-byte-aligned fragments:
-sudo rayscan scan -t 10.0.0.5 -p 80,443 --syn --fragment-size 8
+sudo portensor scan -t 10.0.0.5 -p 80,443 --syn --fragment-size 8
 ```
 
 The `stealth` profile defaults to 50 ms jitter in addition to its 20 pps rate
@@ -1328,16 +1434,23 @@ their dedicated source ports (62000 for IPv4, 62001 for IPv6).
 | `nmap-xml` | `--format nmap-xml` | Nmap-compatible XML (Metasploit, nmap-parse-output) |
 | `greppable` | `--format greppable` | Nmap `-oG` style, one line per host |
 | `sarif` | `--format sarif` | SARIF 2.1.0 rules/results for code-scanning and vulnerability dashboards |
-| `markdown` | `--format markdown` | Summary, services, advisories, TLS, OS, defense, and diff tables | 
+| `markdown` | `--format markdown` | Summary, services, advisories, TLS, OS, defense, and diff tables |
+| `html` | `--format html` | Self-contained report with inline CSS, escaped fields, no remote assets |
 
 SARIF output creates one rule per advisory ID and one result per affected
 host/port, with CVSS/severity properties and a `tcp://host:port` artifact URI.
 Markdown output is designed for tickets and pull requests. Both formats include
 the full advisory list regardless of the table truncation limit.
 
+HTML output inlines its CSS and escapes every scan-controlled field. It includes
+services and evidence, advisories, script findings, TLS details, OS
+fingerprints, and change tables when a diff is active; no remote assets are
+loaded.
+
 ```bash
-rayscan scan -t 10.0.0.5 -p 1-1024 --advisories --format sarif -o rayscan.sarif
-rayscan scan -t 10.0.0.5 -p 1-1024 --advisories --format markdown -o report.md
+portensor scan -t 10.0.0.5 -p 1-1024 --advisories --format sarif -o portensor.sarif
+portensor scan -t 10.0.0.5 -p 1-1024 --advisories --format markdown -o report.md
+portensor scan -t 10.0.0.5 -p 1-1024 --advisories --tls --os --format html -o report.html
 ```
 
 ### Resumable scans
@@ -1346,10 +1459,10 @@ Save state on completion or Ctrl-C, then resume later:
 
 ```bash
 # Start scan, save state if interrupted
-rayscan scan -t 192.168.100.37 -p 1-65535 --save-state /tmp/scan.json
+portensor scan -t 192.168.100.37 -p 1-65535 --save-state /tmp/scan.json
 
 # Resume from where it stopped; the saved port spec is reused automatically
-rayscan scan -t 192.168.100.37 --resume /tmp/scan.json
+portensor scan -t 192.168.100.37 --resume /tmp/scan.json
 ```
 
 The state file records the original port specification, the ports actually
@@ -1364,19 +1477,27 @@ ACK modes (`--syn`, `--ack`) still require a single target for resumable scans.
 ### Packaging
 
 ```bash
-make musl     # static binary → target/x86_64-unknown-linux-musl/release/rayscan
+make musl     # static binary → target/x86_64-unknown-linux-musl/release/portensor
 make install  # install to /usr/local/bin and /usr/local/share/man/man1
-make docker   # docker build -t rayscan:latest .
-make man      # regenerate man/rayscan.1 from CLI definition
+make docker   # docker build -t portensor:latest .
+make man      # regenerate man/portensor.1 from CLI definition
 make dist     # package the prebuilt Linux/Windows binaries and SHA256SUMS
+make package-metadata  # render local Homebrew/Scoop/Chocolatey/AUR/Compose metadata
+make package-check     # render and run available static package syntax checks
+make p4-external-evidence-status  # report P4-2 external packet completeness
+make p4-external-evidence-check   # enforce accepted P4-2 external evidence
 ```
+
+These targets do not contact a registry, publish a package, or perform a clean
+install. Those remain external P4-2 evidence. The evidence commands operate only
+on a local JSON packet and never contact a registry or store secrets.
 
 ### Profiles
 
 | Profile | Timeout ceiling | Banner wait | Rate | Workers | Retries | Use case |
 | :--- | ---: | ---: | ---: | ---: | ---: | :--- |
 | `fast` | 1s | 150ms | 5,000/s | auto | 1 | Local Gigabit LANs / non-rate-limited hosts |
-| `balanced` | 2s | 300ms | 1,000/s | auto | 2 | **Default** — optimal speed and accuracy balance |
+| `balanced` | 2s | 300ms | 1,000/s | auto | 4 | **Default** — optimal speed and accuracy balance |
 | `careful` | 5s | 750ms | 200/s | 128 | 3 | Sensitive networks / high-latency WAN links |
 | `stealth` | 5s | 1,000ms | 20/s | 8 | 3 | IDS evasion, low-profile scanning, randomized |
 
@@ -1384,7 +1505,7 @@ The default profile is `balanced`. Pass `--profile NAME` or use the `--stealth` 
 
 ### Configuration
 
-Create `rayscan.toml` in the working directory, or pass `--config FILE`:
+Create `portensor.toml` in the working directory, or pass `--config FILE`:
 
 ```toml
 profile = "balanced"
@@ -1394,7 +1515,7 @@ rate = 1000
 workers = 0
 host_concurrency = 0
 os_probes = 3
-retries = 2
+retries = 4
 randomize = false
 connect_only = false
 format = "table"
@@ -1433,7 +1554,7 @@ with a connect and banner read before it is reported as `open`. Tarpits become
 tarpits and SYN proxies as open.
 
 Output formats are `table` (default), `json`, `jsonl`, `csv`, `host-port`,
-`nmap-xml`, `greppable`, `sarif`, and `markdown`. Use `--json` as the
+`nmap-xml`, `greppable`, `sarif`, `markdown`, and `html`. Use `--json` as the
 benchmark-compatible alias for `--format json`.
 Progress is written to stderr; JSON on stdout stays clean. Use `--output FILE`
 to write to a file instead of stdout, and `--quiet` to suppress progress and
@@ -1445,14 +1566,14 @@ Structured diagnostics are opt-in and always go to stderr, so `--json` and
 `--stream` output stays clean:
 
 ```bash
-RAYSCAN_LOG=info rayscan scan -t 10.0.0.0/24 -p 22,80,443 --no-db-update
-rayscan --log-level debug scan -t 10.0.0.1 -p 1-1024 --timeout 2
+PORTENSOR_LOG=info portensor scan -t 10.0.0.0/24 -p 22,80,443 --no-db-update
+portensor --log-level debug scan -t 10.0.0.1 -p 1-1024 --timeout 2
 ```
 
 Each line is a JSON object with `ts_ms`, `level`, `event`, and event-specific
 fields. Levels are `off` (default), `error`, `warn`, `info`, `debug`, and
 `trace`;
-`--log-level` overrides `RAYSCAN_LOG`. Scan events record target/port counts,
+`--log-level` overrides `PORTENSOR_LOG`. Scan events record target/port counts,
 mode, retry decisions, and final state counts. Distributed events record worker
 start/stop, claimed jobs, heartbeat and result-delivery failures, and
 coordinator completion. Tokens, banners, payloads, and report contents are never
@@ -1479,7 +1600,7 @@ sudo make lab-down     # stop
 Inside this WSL2 environment, use the root WSL user to avoid a sudo prompt:
 
 ```bash
-wsl -u root -e bash -lc 'cd /mnt/e/VulnQuest_Pro/rayscan && make lab-check'
+wsl -u root -e bash -lc 'cd /mnt/e/VulnQuest_Pro/portensor && make lab-check'
 ```
 
 Topology:
@@ -1515,16 +1636,16 @@ CPU only, because `ru_maxrss` is not per-process.
 
 ```bash
 sudo make lab
-python3 bench/bench.py --lab --tools rayscan,nmap
+python3 bench/bench.py --lab --tools portensor,nmap
 make bench-test
 ```
 
-Rayscan reports all five ground-truth open ports and no false positives:
+Portensor reports all five ground-truth open ports and no false positives:
 
 ```text
 tool       status       seconds   recall  precision      f1  open
 -----------------------------------------------------------------
-rayscan    ok             1.530    1.000      1.000   1.000     5
+portensor    ok             1.530    1.000      1.000   1.000     5
 nmap       ok             1.364    1.000      0.714   0.833     7
 ```
 
@@ -1536,12 +1657,12 @@ The JSON report is written to `bench/results/latest.json` unless `--no-save` is
 used. Missing tools are reported as skipped, not treated as failures, unless
 `--require-all` is supplied.
 
-The standardized localhost validation suite compares verified rayscan against
+The standardized localhost validation suite compares verified portensor against
 nmap on a scenario with banner services, silent tarpits, and closed ports. It
-also compares a handshake-only rayscan mode against nmap on the same non-tarpit
+also compares a handshake-only portensor mode against nmap on the same non-tarpit
 ports, so speed is measured with matched discovery semantics. Every tool runs
 in interleaved warmup and measured rounds; the report includes median/p95 wall
-time, CPU, peak RSS, exactness, and the rayscan-to-nmap handshake ratio.
+time, CPU, peak RSS, exactness, and the portensor-to-nmap handshake ratio.
 
 ```bash
 make bench-validate
@@ -1551,29 +1672,42 @@ Measured on the documented WSL2 machine (5 runs, release build of this tree):
 
 ```text
 tool             mode       ports exact    runs  median_s    p95_s    cpu_s   rss_mib
-rayscan          verified      20 yes    5/5        1.117    1.125    0.070      12.6
-nmap             handshake     20 no     5/5        0.039    0.065    0.020      14.5
-rayscan-connect  handshake     18 yes    5/5        0.101    0.103    0.050      12.5
-nmap-speed       handshake     18 yes    5/5        0.039    0.051    0.030      14.5
+portensor          verified      20 yes    5/5        0.722    0.765    0.050      12.9
+portensor-connect  handshake     18 yes    5/5        0.114    0.128    0.040      12.4
+nmap             handshake     20 no     5/5        0.038    0.039    0.030      14.4
+nmap-speed       handshake     18 yes    5/5        0.038    0.040    0.030      14.6
 ```
 
-Verified rayscan found all eight banner services with no false positives;
+Verified portensor found all eight banner services with no false positives;
 nmap's handshake scan reported both tarpits as open. On the matched 18-port
-handshake scenario both tools were exact, and nmap was about 2.6x faster.
-Verified mode rechecks an ambiguous silent result so a banner lost after the
-handshake is recovered; because one connection cannot distinguish that from a
-tarpit, the safety can cost up to two extra probe windows per tarpit
-(`--retries` controls the budget). `--retries 0` disables the recheck when
+handshake scenario both tools were exact, and nmap was about 3.0x faster.
+Verified mode fans out up to eight concurrent verification reconnects when a
+handshake is silent (two per retry, capped at eight), so a banner lost after the
+handshake is recovered without spending one full window per tarpit. A tarpit
+costs one additional probe window; `--retries 0` disables the recheck when
 speed matters more than loss recovery.
 The suite writes `bench/results/validation.json` and
 `bench/results/validation.md` and exits non-zero on accuracy or resource
 regressions. `--netem-loss` reruns it inside an unprivileged network namespace
-with `tc netem`; with the 1.5 s timeout floor and bounded retries, the measured
-5% and 20% runs are now exact for both rayscan modes while nmap remains fast.
-The 20% case costs about 8.3 s because lost SYNs and banners consume full retry
-windows. See
+with `tc netem`; the measured 5% and 20% runs are exact for both portensor modes.
+The no-loss nmap handshake runs remain faster, but nmap was not part of the loss matrix. The 20% case now completes at about 5.3 s median and
+6.6 s p95 because concurrent verification reconnects recover lost banners
+without serial retry windows. See
 [`docs/benchmark-validation.md`](docs/benchmark-validation.md) for the full
 table. The privileged lab suite below remains the multi-target loss gate.
+
+The v0.10 gate evidence adds full-range and coordinator-fault labs:
+
+```bash
+make scale-baseline     # 65,535 ports x 16 loopback hosts, 3 runs
+make distributed-lab    # fake-worker crash, restart, and uneven-load lab
+```
+
+Full-range completed at 8.511 s median wall, 43.820 s median CPU, and 102.1 MiB
+median peak RSS (limits 12.321 s, 75.375 s, and 128 MiB). All seven coordinator
+crash, restart, observability, and uneven-load scenarios pass. Measurements,
+commands, and frozen thresholds are recorded in
+[`docs/validation-baseline.md`](docs/validation-baseline.md).
 
 For saturation and leak-style repeatability, the soak harness scans a
 configurable open/closed loopback scenario with high worker and per-host
@@ -1624,7 +1758,7 @@ optionally GPG- or cosign-sign `SHA256SUMS` through repository secrets.
 
 Raw packet tests and the namespace lab need root and are therefore **not** run
 on shared runners. `.github/workflows/lab.yml` is a manual workflow for a
-self-hosted runner labelled `rayscan-lab`:
+self-hosted runner labelled `portensor-lab`:
 
 ```bash
 sudo -E make lab-check
@@ -1661,6 +1795,8 @@ environment-specific gates and are called out in the release notes.
   target sharding and report merging, lightweight stealth shaping, SARIF and
   Markdown reporting, and supply-chain tooling. Complete in `0.3.0`; see
   [Phase 9 feature gate](docs/phase9-features.md).
+- Current development plan: [Development roadmap](docs/development-roadmap.md);
+  release gates are documented in [Release process](docs/release-process.md).
 
 ## Layout
 
@@ -1670,6 +1806,7 @@ src/config.rs               TOML loading, profiles, state filters
 src/theme.rs                dark/light/hacker/minimal palettes and table presets
 src/doctor.rs               environment and capability diagnostics
 src/interactive.rs          guarded guided scan setup
+src/plan.rs                 explainable smart plans and interactive plan model
 src/targets.rs              IP/CIDR/range/file/hostname expansion
 src/ports.rs                port list and range parsing
 src/scanner.rs              worker pool, connect engine, banner verification
@@ -1700,31 +1837,69 @@ src/classify.rs             error taxonomy
 src/rtt.rs                  RFC 6298 per-host estimator
 src/rate.rs                 global token bucket
 src/limits.rs               target/worker bounds and RLIMIT handling
-src/output.rs               table/JSON/JSONL/CSV/NmapXml/Greppable/SARIF/Markdown rendering
+src/output.rs               table/JSON/JSONL/CSV/NmapXml/Greppable/SARIF/Markdown/HTML rendering
 src/fingerprint.rs          OS fingerprinting via TCP/IP stack analysis
 src/bin/gen_man.rs          man page generator (cargo run --bin gen_man)
-man/rayscan.1               generated man page (plus one page per subcommand)
+man/portensor.1               generated man page (plus one page per subcommand)
 Dockerfile                  multi-stage musl build → scratch image
 deny.toml                   cargo-deny license/advisory/source policy
 data/probes/                built-in probe packs (embedded via include_str!)
 packs/official-baseline/    read-only official script pack (Python sidecar)
 fuzz/                       cargo-fuzz targets for parsers and service detection
 scripts/sign-release.sh     optional GPG/cosign release signing
+scripts/release-check.sh    version, clean-tree, and artifact pre-tag checks
+scripts/p4-local-check.sh   ephemeral signing, SBOM, and release-control validation
+scripts/p4_evidence_check.py P4 evidence, status, link, and CI consistency audit
+scripts/p4_external_evidence_check.py P4-2 external evidence packet schema and acceptance check
+scripts/generate_package_metadata.py local package metadata generation and archive validation
+.github/actionlint.yaml     custom self-hosted runner labels for workflow lint
 tests/cli.rs                binary-level CLI and JSON tests
 lab/lab.sh                  namespace and veth lifecycle
 lab/targets.py              ground-truth TCP services
 lab/verify_lab.py           ground-truth checker
 bench/bench.py              runner, parsers, and metrics
 bench/validate.py           matched-mode localhost validation with reports
+bench/scale_baseline.py     full-range 65,535-port x 16-host scale baseline
+bench/distributed_lab.py    coordinator crash and uneven-load baseline
 bench/soak.py               high-concurrency and long-duration loopback soak
 bench/localhost_gate.py     exact 1-65535 localhost gate
 bench/syn_gate.py           exact raw-SYN lab accuracy gate
 bench/accuracy_suite.py     multi-profile accuracy runner (0%/5%/20% packet loss)
+bench/htb/                  authorized live target scope, evidence, and analysis
 bench/tests/                offline harness tests
 docs/architecture.md        boundaries and design rules
+docs/development-roadmap.md prerequisites, milestones, and measurable exit gates
+docs/p4-release-readiness.md P4 signing, registry, runner, SBOM, and OT evidence status
+docs/p4-closure-checklist.md P4 requirement status, acceptance criteria, and sign-off
+docs/p4-closure-evidence.json machine-readable P4 evidence and status
+docs/p4-evidence-audit.md   local P4 evidence audit, findings, and closure decision
+docs/p4-external-evidence-owners.md external evidence owners and responsibilities
+docs/p4-external-blockers.md external blockers and required closure evidence
+docs/p4-signoff-readiness.md formal P4 sign-off readiness and approval state
+docs/compatibility-policy.md v1.0 versioning, compatibility, platform, and release policy
+docs/release-process.md     workflow lint, version, artifact, and pre-tag gates
+docs/security/production-signing-policy.md production signing architecture and approval requirements
+docs/security/key-custody-procedure.md production key custody, rotation, and revocation procedure
+docs/security/release-signature-verification.md independent release verification procedure
+docs/security/p4-1-evidence-register.md P4-1 local evidence and external evidence placeholders
+docs/security/p4-1-evidence-submission.md secure production evidence intake and owner inputs
+docs/security/p4-1-clean-host-verification.md independent production signature verification
+docs/security/p4-1-acceptance-report.md P4-1 acceptance decision and missing inputs
+docs/distribution/registry-ownership.md package registry ownership evidence requirements
+docs/distribution/package-maintenance-policy.md package release, access, and maintenance policy
+docs/distribution/clean-install-verification.md per-channel clean-environment install procedure
+docs/distribution/p4-2-external-evidence-intake.md blank P4-2 owner, token, install, and digest evidence packet
+docs/distribution/p4-2-external-evidence.template.json machine-readable P4-2 external evidence packet template
+packaging/README.md         local package templates, generated metadata, and validation scope
+docs/release-runners.md     runner labels, action pins, and reproducibility limits
+docs/sbom.md                CycloneDX generation, checksum coverage, and verification
+docs/decisions/             architecture decision records
+docs/security/              signing policy, custody, verification, and P4-1 evidence register
 docs/probe-engine.md        probe schema, built-in library, and authoring guide
+docs/pipelines.md           tested host-port, JSONL, port-list, and smart/HTML presets
 docs/benchmark-contract.md  CLI/JSON contract
 docs/benchmark-validation.md  measured matched-mode validation results
+docs/validation-baseline.md  P2 loss, full-range, and fault-lab baselines
 docs/phase0-gate.md         Phase 0 evidence
 docs/phase1-gate.md         Phase 1 evidence
 docs/phase2-gate.md         Phase 2 evidence
@@ -1742,7 +1917,7 @@ docs/phase9-features.md     Phase 9 feature gate and live validations
 ## Author & Maintainer
 
 - **Author & Project Lead:** vulnquest58 ([@vulnquest58](https://github.com/vulnquest58))
-- **GitHub Repository:** [https://github.com/vulnquest58/rayscan](https://github.com/vulnquest58/rayscan)
+- **GitHub Repository:** [https://github.com/vulnquest58/portensor](https://github.com/vulnquest58/portensor)
 
 ## Legal and ethical use
 

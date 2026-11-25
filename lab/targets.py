@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Ground-truth TCP services for the rayscan lab.
+"""Ground-truth TCP services for the portensor lab.
 
-This process runs inside the ``rayscan-srv`` network namespace. It binds one
+This process runs inside the ``portensor-srv`` network namespace. It binds one
 listener per port so every result can be checked against a known state.
 """
 
@@ -18,31 +18,31 @@ from pathlib import Path
 BANNERS = {
     80: (
         b"HTTP/1.1 200 OK\r\n"
-        b"Server: rayscan-lab\r\n"
+        b"Server: portensor-lab\r\n"
         b"Content-Type: text/plain\r\n"
         b"Content-Length: 2\r\n"
         b"Connection: close\r\n\r\nOK"
     ),
     443: (
         b"HTTP/1.1 400 Bad Request\r\n"
-        b"Server: rayscan-lab\r\n"
+        b"Server: portensor-lab\r\n"
         b"Content-Length: 0\r\n"
         b"Connection: close\r\n\r\n"
     ),
     8080: (
         b"HTTP/1.1 200 OK\r\n"
-        b"Server: rayscan-lab\r\n"
+        b"Server: portensor-lab\r\n"
         b"Content-Length: 5\r\n"
         b"Connection: close\r\n\r\nhello"
     ),
     8081: (
         b"HTTP/1.1 200 OK\r\n"
-        b"Server: rayscan-lab-rate-limited\r\n"
+        b"Server: portensor-lab-rate-limited\r\n"
         b"Content-Length: 2\r\n"
         b"Connection: close\r\n\r\nOK"
     ),
     3306: (
-        b"\x4a\x00\x00\x00\x0a8.0.36-rayscan-lab\x00"
+        b"\x4a\x00\x00\x00\x0a8.0.36-portensor-lab\x00"
         b"\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
     ),
 }
@@ -101,7 +101,7 @@ def handle(
                 time.sleep(0.5)
             return
 
-        banner = BANNERS.get(port, f"rayscan-lab service on port {port}\n".encode())
+        banner = BANNERS.get(port, f"portensor-lab service on port {port}\n".encode())
         connection.sendall(banner)
         connection.shutdown(socket.SHUT_WR)
         time.sleep(0.02)

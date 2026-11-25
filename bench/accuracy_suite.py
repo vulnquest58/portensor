@@ -2,7 +2,7 @@
 """Multi-profile accuracy suite for the raw SYN engine.
 
 Cycles through 0 %, 5 %, and 20 % packet-loss netem profiles and runs
-rayscan --syn against the lab target.  At each profile asserts:
+portensor --syn against the lab target.  At each profile asserts:
   - recall >= 0.99  (at least 99 % of true-open ports found)
   - false_positives == 0  (no tarpit / SYN-proxy ports in open list)
   - summary total == jobs  (no accounting bug)
@@ -10,7 +10,7 @@ rayscan --syn against the lab target.  At each profile asserts:
 Requires:
   - Root privileges (lab setup and teardown use ip netns / tc).
   - lab/lab.sh in the project root.
-  - A compiled release binary at target/release/rayscan.
+  - A compiled release binary at target/release/portensor.
 
 Usage:
   sudo python3 bench/accuracy_suite.py [--runs N] [--binary PATH]
@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BINARY = ROOT / "target" / "release" / "rayscan"
+DEFAULT_BINARY = ROOT / "target" / "release" / "portensor"
 DEFAULT_TRUTH = ROOT / "lab" / "ground_truth.json"
 LAB_SH = ROOT / "lab" / "lab.sh"
 
@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     forbidden = {int(p) for p in truth.get("tarpit", [])}
     forbidden |= {int(p) for p in truth.get("synproxy", [])}
 
-    print(f"rayscan Phase 3 accuracy suite")
+    print(f"portensor Phase 3 accuracy suite")
     print(f"binary : {args.binary}")
     print(f"target : {args.target}  ports: {args.ports}")
     print(f"expected open: {sorted(expected)}")

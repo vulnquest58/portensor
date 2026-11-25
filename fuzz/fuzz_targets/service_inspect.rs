@@ -8,5 +8,5 @@ fuzz_target!(|data: &[u8]| {
     }
     let port = u16::from_be_bytes([data[0], data[1]]);
     let payload = &data[2..];
-    std::hint::black_box(rayscan::service::inspect(port, payload));
+    std::hint::black_box(portensor::service::inspect(port, payload));
 });

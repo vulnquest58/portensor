@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor-scripts-search 1  "search "
+.SH NAME
+portensor\-scripts\-search \- Search a remote script pack registry index
+.SH SYNOPSIS
+\fBsearch\fR [\fB\-\-registry\fR] [\fB\-\-json\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fIQUERY\fR]
+.SH DESCRIPTION
+Search a remote script pack registry index
+.SH OPTIONS
+.TP
+\fB\-\-registry\fR \fI<URL>\fR
+JSON registry index URL (or set PORTENSOR_SCRIPT_REGISTRY)
+.TP
+\fB\-\-json\fR
+Emit machine\-readable JSON
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+[\fIQUERY\fR]
+Case\-insensitive filter matched against pack name, description, and tags

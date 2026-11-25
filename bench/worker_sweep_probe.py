@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fine worker-count sweep to pick rayscan's automatic worker target."""
+"""Fine worker-count sweep to pick portensor's automatic worker target."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-BINARY = Path("/mnt/e/VulnQuest_Pro/rayscan/target/release/rayscan")
+BINARY = Path("/mnt/e/VulnQuest_Pro/portensor/target/release/portensor")
 
 
 def run(workers: int, runs: int = 3) -> tuple[float, float]:

@@ -64,12 +64,19 @@ pub struct Detection {
 
 /// Build the HTTP probe used when a service does not speak first.
 pub fn http_probe(host: IpAddr) -> Vec<u8> {
-    let host = match host {
+    let authority = match host {
         IpAddr::V4(address) => address.to_string(),
         IpAddr::V6(address) => format!("[{address}]"),
     };
+    http_probe_authority(&authority)
+}
+
+/// Build a minimal HTTP probe with an explicit Host authority. This is used
+/// for TLS virtual hosts where the SNI name, not the target IP, identifies the
+/// application.
+pub fn http_probe_authority(authority: &str) -> Vec<u8> {
     format!(
-        "GET / HTTP/1.0\r\nHost: {host}\r\nUser-Agent: rayscan/{}\r\nAccept: */*\r\nConnection: close\r\n\r\n",
+        "GET / HTTP/1.0\r\nHost: {authority}\r\nUser-Agent: portensor/{}\r\nAccept: */*\r\nConnection: close\r\n\r\n",
         env!("CARGO_PKG_VERSION")
     )
     .into_bytes()
@@ -989,7 +996,7 @@ mod tests {
 
     #[test]
     fn detects_mysql_handshake_version() {
-        let version = b"8.0.36-rayscan-lab";
+        let version = b"8.0.36-portensor-lab";
         let mut data = Vec::new();
         let packet_len = version.len() + 2;
         data.extend_from_slice(&[
@@ -1005,8 +1012,8 @@ mod tests {
         let detection = inspect(3306, &data);
         let mysql = service(&detection, "mysql");
         assert_eq!(mysql.product.as_deref(), Some("MySQL"));
-        assert_eq!(mysql.version.as_deref(), Some("8.0.36-rayscan-lab"));
-        assert_eq!(detection.banner.as_deref(), Some("8.0.36-rayscan-lab"));
+        assert_eq!(mysql.version.as_deref(), Some("8.0.36-portensor-lab"));
+        assert_eq!(detection.banner.as_deref(), Some("8.0.36-portensor-lab"));
     }
 
     #[test]
@@ -1093,6 +1100,13 @@ mod tests {
         assert!(text.starts_with("GET / HTTP/1.0\r\n"));
         assert!(text.contains("\r\nHost: 10.77.0.2\r\n"));
         assert!(text.ends_with("\r\n\r\n"));
+    }
+
+    #[test]
+    fn http_probe_authority_keeps_virtual_host_names() {
+        let request = http_probe_authority("chat.airways.htb");
+        let text = String::from_utf8(request).unwrap();
+        assert!(text.contains("\r\nHost: chat.airways.htb\r\n"));
     }
 
     #[test]
@@ -1207,8 +1221,8 @@ mod tests {
             (Some("Apache".to_string()), Some("2.4.58".to_string()))
         );
         assert_eq!(
-            parse_product_version("rayscan-lab"),
-            (Some("rayscan-lab".to_string()), None)
+            parse_product_version("portensor-lab"),
+            (Some("portensor-lab".to_string()), None)
         );
         assert_eq!(parse_product_version(""), (None, None));
     }

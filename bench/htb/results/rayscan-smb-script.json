@@ -1,0 +1,44 @@
+{
+  "target": "10.129.244.207",
+  "targets": 1,
+  "ports": 1,
+  "jobs": 1,
+  "workers": 1,
+  "open": [
+    {
+      "host": "10.129.244.207",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 88.126,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:88.1ms(20%)"
+    }
+  ],
+  "defense": {
+    "10.129.244.207": {
+      "host": "10.129.244.207",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 1 open port(s) (with 1 identified services) responded with standard TCP semantics"
+      ]
+    }
+  },
+  "summary": {
+    "open": 1,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 393.735
+}

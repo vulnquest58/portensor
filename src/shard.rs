@@ -2,7 +2,7 @@
 //!
 //! Every target address is mapped to exactly one shard with a stable hash so
 //! independent scan nodes can cover a large target set without coordination.
-//! Combine the resulting reports with `rayscan merge`.
+//! Combine the resulting reports with `portensor merge`.
 
 use std::net::IpAddr;
 
@@ -92,6 +92,24 @@ mod tests {
         let mut expected = all;
         expected.sort();
         assert_eq!(combined, expected);
+    }
+
+    #[test]
+    fn work_units_partition_an_assigned_shard() {
+        let all = targets();
+        let count = 3;
+        let parts = 4;
+        for index in 0..count {
+            let shard = select(all.clone(), index, count);
+            let mut combined = Vec::new();
+            for part in 0..parts {
+                combined.extend(select(shard.clone(), part, parts));
+            }
+            combined.sort();
+            let mut expected = shard;
+            expected.sort();
+            assert_eq!(combined, expected);
+        }
     }
 
     #[test]

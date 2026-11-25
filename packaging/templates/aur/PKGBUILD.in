@@ -1,0 +1,23 @@
+pkgname=portensor
+pkgver=@@VERSION@@
+pkgrel=1
+pkgdesc='Accuracy-first TCP/UDP port scanner with OS fingerprinting'
+arch=('x86_64')
+url='https://github.com/@@REPO@@'
+license=('MIT')
+depends=('glibc')
+source=("@@LINUX_ARCHIVE@@::@@RELEASE_BASE_URL@@/@@LINUX_ARCHIVE@@")
+sha256sums=('@@LINUX_SHA256@@')
+
+package() {
+  if [ -x "$srcdir/bin/portensor" ]; then
+    install -Dm755 "$srcdir/bin/portensor" "$pkgdir/usr/bin/portensor"
+  else
+    install -Dm755 "$srcdir/bin/portensor-linux" "$pkgdir/usr/bin/portensor"
+  fi
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -d "$pkgdir/usr/share/man/man1"
+  install -m644 "$srcdir"/share/man/man1/*.1 "$pkgdir/usr/share/man/man1/"
+  install -d "$pkgdir/usr/share/portensor/packs"
+  cp -a "$srcdir/packs/official-baseline/." "$pkgdir/usr/share/portensor/packs/"
+}

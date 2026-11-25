@@ -1,0 +1,16 @@
+# Nmap 7.80 scan initiated Sun Nov 22 08:17:59 2026 as: nmap -Pn -p445 --script smb-os-discovery,smb2-security-mode,smb2-time -oN bench/htb/results-unclaimed/nmap-smb.txt 10.129.215.81
+Nmap scan report for 10.129.215.81
+Host is up (0.30s latency).
+
+PORT    STATE SERVICE
+445/tcp open  microsoft-ds
+
+Host script results:
+| smb2-security-mode: 
+|   2.02: 
+|_    Message signing enabled and required
+| smb2-time: 
+|   date: 2026-11-22T07:18:02
+|_  start_date: N/A
+
+# Nmap done at Sun Nov 22 08:18:03 2026 -- 1 IP address (1 host up) scanned in 4.08 seconds

@@ -16,12 +16,20 @@ permissions are unavailable.
 
 The Q4 enhancement samples up to `--os-probes N` distinct open ports per host
 (default 3, range 1-8), probes each port concurrently, and combines the samples
-with a family majority vote. Unknown samples do not vote; port disagreement
+with a family consensus. Unknown samples do not vote; port disagreement
 dilutes the winning confidence and can leave the family Unknown. Results record
 `samples`, `agreement`, `hops`, and the sampled `ports` in addition to the
 Phase 5 family/evidence fields. `--ttl` also applies to fingerprint probes;
 OS probes keep their dedicated source ports (62000 IPv4, 62001 IPv6), so
 `--source-port-range` only shapes the SYN scan.
+
+**Post-gate endpoint update:** consensus no longer discards per-port stacks.
+Every sample is retained as an endpoint with its own family, detail,
+confidence, TTL, hops, evidence, and detected service. When at least two named
+families have endpoint confidence >= 0.35, the host summary becomes `mixed`
+instead of forcing a single family. A Linux TLS edge in front of Windows ADFS
+therefore reports Linux for the edge ports and Windows for the TLS/ADFS port,
+and accuracy/output paths use the endpoint guess for each port.
 
 ---
 
@@ -50,8 +58,9 @@ run_scan()
 | Item | Purpose |
 |------|---------|
 | `TcpFingerprint` | Raw features: TTL, hops, window, MSS, WScale, SACK, TS, DF, options order |
-| `OsFamily` | Enum: Linux / Windows / MacOS / Bsd / Cisco / Unknown |
-| `OsGuess` | Classified result with family, detail, confidence, initial_ttl, sampled ports, samples, agreement, and hops |
+| `OsFamily` | Enum: Linux / Windows / MacOS / Bsd / Cisco / Mixed / Unknown |
+| `OsGuess` | Host summary with family, detail, confidence, initial_ttl, sampled ports, samples, agreement, hops, and per-port `endpoints` |
+| `OsEndpointGuess` | Independent port result with family, detail, confidence, TTL, hops, evidence, and service |
 | `WinMatch` | Window-size matcher (Any / Exact / Range / Set) |
 | `OsSig` | One signature entry with per-feature weights |
 | `SIGNATURES` | 11-entry const signature DB covering 7 OS families |
@@ -136,7 +145,7 @@ test fingerprint::tests::estimate_hops_is_correct_for_common_ttls   ... ok
 ```bash
 wsl -u root -e bash -c "
   source /home/vuln/.cargo/env
-  cd /mnt/e/VulnQuest_Pro/rayscan
+  cd /mnt/e/VulnQuest_Pro/portensor
   ./target/release/rayscan scan \
     --target 192.168.100.37 \
     --ports 22,23,80,3306,5900 \

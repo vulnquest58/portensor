@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use rayscan::Cli;
+use portensor::Cli;
 
 fn main() {
     let cli = Cli::parse();
@@ -10,14 +10,14 @@ fn main() {
     {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("rayscan: cannot start async runtime: {error}");
+            eprintln!("portensor: cannot start async runtime: {error}");
             std::process::exit(1);
         }
     };
 
-    if let Err(error) = runtime.block_on(rayscan::run(cli)) {
+    if let Err(error) = runtime.block_on(portensor::run(cli)) {
         if !error.is_silent() {
-            eprintln!("rayscan: {error}");
+            eprintln!("portensor: {error}");
         }
         std::process::exit(error.exit_code());
     }

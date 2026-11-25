@@ -55,7 +55,7 @@ fn python_available() -> bool {
 #[test]
 fn official_pack_lists_read_only_checks() {
     let manifest = pack_dir().join("pack.toml");
-    let output = Command::new(env!("CARGO_BIN_EXE_rayscan"))
+    let output = Command::new(env!("CARGO_BIN_EXE_portensor"))
         .args([
             "scripts",
             "list",
@@ -75,17 +75,32 @@ fn official_pack_lists_read_only_checks() {
         .iter()
         .map(|script| script["plugin"].as_str().expect("plugin id"))
         .collect();
-    assert_eq!(
-        plugins,
-        vec![
-            "official-baseline/tls-certificate",
-            "official-baseline/smb-hardening",
-            "official-baseline/redis-unauthenticated",
-            "official-baseline/docker-unauthenticated",
-        ]
+    assert!(
+        plugins.len() >= 20,
+        "expected at least 20 official scripts, found {}",
+        plugins.len()
     );
+    for expected in [
+        "official-baseline/tls-certificate",
+        "official-baseline/tls-weak-protocol",
+        "official-baseline/tls-weak-cipher",
+        "official-baseline/tls-hostname-mismatch",
+        "official-baseline/smb-hardening",
+        "official-baseline/redis-unauthenticated",
+        "official-baseline/docker-unauthenticated",
+        "official-baseline/cleartext-ftp",
+        "official-baseline/cleartext-telnet",
+        "official-baseline/cleartext-http",
+        "official-baseline/ssh-version-disclosure",
+        "official-baseline/vnc-exposed",
+        "official-baseline/rdp-exposed",
+        "official-baseline/elasticsearch-exposed",
+    ] {
+        assert!(plugins.contains(&expected), "missing {expected}");
+    }
     for script in scripts {
         assert_eq!(script["danger"], "safe");
+        assert_eq!(script["capabilities"][0], "metadata");
         assert_eq!(script["timeout_ms"], 3000);
         assert_eq!(script["kind"], "sidecar");
         assert_eq!(script["command"][1], "checks.py");
@@ -108,6 +123,62 @@ fn official_pack_lists_read_only_checks() {
             .iter()
             .any(|service| service == "tls")
     );
+
+    let fixtures: Value = serde_json::from_slice(
+        &std::fs::read(pack_dir().join("fixtures.json")).expect("fixtures file"),
+    )
+    .expect("fixture JSON");
+    let fixtures = fixtures.as_object().expect("fixture object");
+    assert_eq!(
+        fixtures.len(),
+        plugins.len(),
+        "every official script needs fixtures"
+    );
+    for plugin in &plugins {
+        let name = plugin
+            .strip_prefix("official-baseline/")
+            .expect("official plugin prefix");
+        let fixture = fixtures.get(name).expect("fixture for script");
+        for mode in ["positive", "negative"] {
+            assert!(
+                fixture[mode]["input"].is_object(),
+                "{name} is missing a {mode} fixture"
+            );
+            assert!(
+                fixture[mode]["findings"].is_array(),
+                "{name} is missing expected {mode} findings"
+            );
+        }
+    }
+}
+
+#[test]
+fn official_fixtures_match_expected_findings() {
+    if !python_available() {
+        eprintln!("python3 is unavailable; skipping official fixture test");
+        return;
+    }
+    let fixtures: Value = serde_json::from_slice(
+        &std::fs::read(pack_dir().join("fixtures.json")).expect("fixtures file"),
+    )
+    .expect("fixture JSON");
+    for (name, fixture) in fixtures.as_object().expect("fixture object") {
+        for mode in ["positive", "negative"] {
+            let input = fixture[mode]["input"].to_string();
+            let expected: Vec<String> = fixture[mode]["findings"]
+                .as_array()
+                .expect("expected findings")
+                .iter()
+                .map(|value| value.as_str().expect("finding id").to_string())
+                .collect();
+            let output = run_check(name, &input);
+            let actual: Vec<String> = finding_ids(&output)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
+            assert_eq!(actual, expected, "{name} {mode} fixture mismatch");
+        }
+    }
 }
 
 #[test]

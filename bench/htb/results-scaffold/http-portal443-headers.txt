@@ -1,0 +1,10 @@
+HTTP/2 401 
+content-type: text/html
+server: Microsoft-IIS/10.0
+www-authenticate: Negotiate
+www-authenticate: NTLM
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+date: Mon, 23 Nov 2026 01:56:16 GMT
+content-length: 1293
+

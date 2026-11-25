@@ -1,0 +1,30 @@
+{
+  "target": "10.129.244.207",
+  "targets": 1,
+  "ports": 7,
+  "jobs": 7,
+  "workers": 5,
+  "open": [],
+  "defense": {
+    "10.129.244.207": {
+      "host": "10.129.244.207",
+      "defense_type": "tarpit",
+      "confidence": 0.9,
+      "summary": "Target or perimeter firewall employs TCP Tarpits (`xt_TARPIT` or LaBrea style mute listeners).",
+      "indicators": [
+        "1 port(s) completed TCP handshakes but held connections mute without emitting application banners (tarpit behavior)"
+      ],
+      "recommended_action": "Filter out silent ports by showing only verified open services (`--show open`)."
+    }
+  },
+  "summary": {
+    "open": 0,
+    "closed": 0,
+    "filtered": 6,
+    "unfiltered": 0,
+    "silent": 1,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 4096.272
+}

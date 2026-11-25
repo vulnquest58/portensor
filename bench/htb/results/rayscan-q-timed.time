@@ -1,0 +1,25 @@
+[scope] validated 1 target(s) against scope policy 'Hack The Box - authorized lab session (user-provided target)'
+wrote bench/htb/results/rayscan-q-timed.json
+	Command being timed: "./target/release/rayscan scan --target 10.129.244.207 --scope bench/htb/lab-scope.toml --preset q --connect-only --profile fast --timeout 2 --retries 1 --workers 256 --json -o bench/htb/results/rayscan-q-timed.json --log-level warn"
+	User time (seconds): 0.04
+	System time (seconds): 0.19
+	Percent of CPU this job got: 2%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:09.53
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 16540
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 6
+	Minor (reclaiming a frame) page faults: 2636
+	Voluntary context switches: 2936
+	Involuntary context switches: 23
+	Swaps: 0
+	File system inputs: 2
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

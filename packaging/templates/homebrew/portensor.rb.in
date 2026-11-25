@@ -1,0 +1,25 @@
+class Portensor < Formula
+  desc "Accuracy-first TCP/UDP port scanner with OS fingerprinting"
+  homepage "https://github.com/@@REPO@@"
+  url "@@RELEASE_BASE_URL@@/@@LINUX_ARCHIVE@@"
+  sha256 "@@LINUX_SHA256@@"
+  version "@@VERSION@@"
+  license "MIT"
+
+  depends_on :linux
+  depends_on arch: :x86_64
+
+  def install
+    if File.exist?("bin/portensor")
+      bin.install "bin/portensor"
+    else
+      bin.install "bin/portensor-linux" => "portensor"
+    end
+    man1.install Dir["share/man/man1/*.1"]
+    (pkgshare/"packs").install Dir["packs/official-baseline/*"]
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/portensor --version")
+  end
+end

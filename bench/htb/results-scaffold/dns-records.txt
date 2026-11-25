@@ -1,0 +1,4 @@
+dc.scaffold.htb. hostmaster.scaffold.htb. 315 900 600 86400 3600
+dc.scaffold.htb.
+10.129.215.153
+0 100 389 dc.scaffold.htb.

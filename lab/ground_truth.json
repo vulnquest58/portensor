@@ -15,11 +15,11 @@
     "9003": "syn-proxy"
   },
   "service_details": {
-    "80": {"name": "http", "product": "rayscan-lab"},
-    "443": {"name": "http", "product": "rayscan-lab"},
-    "3306": {"name": "mysql", "product": "MySQL", "version": "8.0.36-rayscan-lab"},
-    "8080": {"name": "http", "product": "rayscan-lab"},
-    "8081": {"name": "http", "product": "rayscan-lab-rate-limited"}
+    "80": {"name": "http", "product": "portensor-lab"},
+    "443": {"name": "http", "product": "portensor-lab"},
+    "3306": {"name": "mysql", "product": "MySQL", "version": "8.0.36-portensor-lab"},
+    "8080": {"name": "http", "product": "portensor-lab"},
+    "8081": {"name": "http", "product": "portensor-lab-rate-limited"}
   },
   "notes": "9000 completes the handshake but never sends data; 8081 accepts new connections only within a 5/s limit; 9001 is dropped; 9003 is answered by netfilter SYNPROXY without a backend."
 }

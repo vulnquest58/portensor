@@ -127,6 +127,44 @@ pub struct TlsInfo {
     pub chain_len: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub starttls: Option<String>,
+    /// Explicit DNS name used for TLS SNI and certificate name matching.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sni: Option<String>,
+}
+
+/// Validate and normalize an explicit TLS server name.
+///
+/// SNI carries a DNS hostname, not an IP literal. The name is lowercased,
+/// trailing dots are removed, and wildcard/underscore forms are rejected.
+pub fn validate_sni(value: &str) -> Result<String, String> {
+    let name = value.trim().trim_end_matches('.').to_ascii_lowercase();
+    if name.is_empty() {
+        return Err("--sni requires a non-empty DNS hostname".to_string());
+    }
+    if name.parse::<IpAddr>().is_ok() {
+        return Err("--sni must be a DNS hostname, not an IP address".to_string());
+    }
+    if name.len() > 253 {
+        return Err("--sni hostname must be at most 253 characters".to_string());
+    }
+    if !name.contains('.') || name.starts_with('.') || name.contains("..") {
+        return Err("--sni requires a fully qualified DNS hostname".to_string());
+    }
+    for label in name.split('.') {
+        if label.is_empty() || label.len() > 63 {
+            return Err("--sni has an empty or oversized DNS label".to_string());
+        }
+        if !label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            return Err("--sni contains a character outside [a-z0-9-]".to_string());
+        }
+        if label.starts_with('-') || label.ends_with('-') {
+            return Err("--sni labels cannot start or end with '-'".to_string());
+        }
+    }
+    Ok(name)
 }
 
 /// Inspect every eligible open result in a report.
@@ -135,6 +173,7 @@ pub async fn apply(
     mode: TlsMode,
     timeout: Duration,
     quiet: bool,
+    sni: Option<&str>,
 ) -> usize {
     if mode == TlsMode::Disabled {
         return 0;
@@ -168,11 +207,18 @@ pub async fn apply(
         eprintln!("[tls] inspecting {} candidate port(s) …", candidates.len());
     }
 
+    let sni = sni.map(str::to_string);
     let mut inspected = Vec::new();
     for chunk in candidates.chunks(32) {
         let mut tasks = JoinSet::new();
         for &(index, host, port, probe) in chunk {
-            tasks.spawn(async move { (index, inspect(host, port, timeout, probe).await) });
+            let sni = sni.clone();
+            tasks.spawn(async move {
+                (
+                    index,
+                    inspect(host, port, timeout, probe, sni.as_deref()).await,
+                )
+            });
         }
         while let Some(joined) = tasks.join_next().await {
             match joined {
@@ -288,11 +334,15 @@ pub async fn inspect(
     port: u16,
     timeout: Duration,
     probe: TlsProbe,
+    sni: Option<&str>,
 ) -> Option<TlsOutcome> {
-    tokio::task::spawn_blocking(move || inspect_blocking(host, port, timeout, probe))
-        .await
-        .ok()
-        .flatten()
+    let sni = sni.map(str::to_string);
+    tokio::task::spawn_blocking(move || {
+        inspect_blocking(host, port, timeout, probe, sni.as_deref())
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 fn inspect_blocking(
@@ -300,17 +350,18 @@ fn inspect_blocking(
     port: u16,
     timeout: Duration,
     probe: TlsProbe,
+    sni: Option<&str>,
 ) -> Option<TlsOutcome> {
     let stream = connect(host, port, timeout)?;
     match probe {
         TlsProbe::Direct => {
-            let (info, mut connection, mut stream) = handshake(stream, host, timeout, None)?;
-            let https = https_identity(&mut connection, &mut stream, host, port, timeout);
+            let (info, mut connection, mut stream) = handshake(stream, host, timeout, None, sni)?;
+            let https = https_identity(&mut connection, &mut stream, host, port, timeout, sni);
             Some(TlsOutcome { info, https })
         }
         TlsProbe::StartTls(protocol) => {
             let stream = negotiate_starttls(stream, protocol, timeout)?;
-            handshake(stream, host, timeout, Some(protocol))
+            handshake(stream, host, timeout, Some(protocol), sni)
                 .map(|(info, _, _)| TlsOutcome { info, https: None })
         }
     }
@@ -324,10 +375,12 @@ fn https_identity(
     host: IpAddr,
     port: u16,
     timeout: Duration,
+    sni: Option<&str>,
 ) -> Option<crate::service::Detection> {
+    let authority = sni.map(str::to_string).unwrap_or_else(|| host.to_string());
     connection
         .writer()
-        .write_all(&crate::service::http_probe(host))
+        .write_all(&crate::service::http_probe_authority(&authority))
         .ok()?;
     let deadline = std::time::Instant::now() + timeout.min(Duration::from_millis(700));
     let mut data = Vec::new();
@@ -404,7 +457,7 @@ fn negotiate_starttls(
             if !greeting.starts_with("220") {
                 return None;
             }
-            write_command(&mut stream, "EHLO rayscan\r\n")?;
+            write_command(&mut stream, "EHLO portensor\r\n")?;
             loop {
                 let line = read_line(&mut stream, deadline)?;
                 if line == "250" || line.starts_with("250 ") || !line.starts_with("250") {
@@ -565,6 +618,7 @@ fn handshake(
     host: IpAddr,
     timeout: Duration,
     starttls: Option<&str>,
+    sni: Option<&str>,
 ) -> Option<(TlsInfo, ClientConnection, TcpStream)> {
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
@@ -581,7 +635,10 @@ fn handshake(
         .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-    let server_name = ServerName::try_from(host.to_string()).ok()?;
+    let server_name = match sni {
+        Some(name) => ServerName::try_from(name.to_string()).ok()?,
+        None => ServerName::try_from(host.to_string()).ok()?,
+    };
     let mut connection = ClientConnection::new(Arc::new(config), server_name).ok()?;
 
     let deadline = std::time::Instant::now() + timeout;
@@ -604,7 +661,7 @@ fn handshake(
     let alpn = connection
         .alpn_protocol()
         .map(|protocol| String::from_utf8_lossy(protocol).into_owned());
-    let mut info = parse_info(host, &version, &cipher, &chain, starttls);
+    let mut info = parse_info(host, sni, &version, &cipher, &chain, starttls);
     info.alpn = alpn;
     Some((info, connection, stream))
 }
@@ -619,6 +676,7 @@ fn format_version(version: rustls::ProtocolVersion) -> String {
 
 fn parse_info(
     host: IpAddr,
+    sni: Option<&str>,
     version: &str,
     cipher: &str,
     chain: &[Vec<u8>],
@@ -649,6 +707,7 @@ fn parse_info(
         hostname_matches: false,
         chain_len: chain.len(),
         starttls: starttls.map(str::to_string),
+        sni: sni.map(str::to_string),
     };
 
     for certificate in chain.iter().take(8) {
@@ -710,18 +769,31 @@ fn parse_info(
         .and_then(|name| name.as_str().ok())
         .map(str::to_string);
 
-    // Targets are always IP literals (the resolver runs before scanning), so
-    // match IP SANs first and fall back to an IP common name.  DNS SANs are
-    // reported but cannot satisfy an IP-literal target.
-    info.hostname_matches = if ip_names.contains(&host) {
-        true
-    } else if ip_names.is_empty() {
-        common_name
-            .as_deref()
-            .and_then(|name| name.parse::<IpAddr>().ok())
-            .is_some_and(|name| name == host)
-    } else {
-        false
+    // With an explicit SNI name, validate the certificate against DNS SANs
+    // (including single-label wildcards) and then the common name. Without
+    // SNI, targets remain IP literals, so only IP SANs or an IP common name
+    // can satisfy the match.
+    info.hostname_matches = match sni {
+        Some(name) => {
+            info.san
+                .iter()
+                .any(|pattern| dns_name_matches(pattern, name))
+                || common_name
+                    .as_deref()
+                    .is_some_and(|pattern| dns_name_matches(pattern, name))
+        }
+        None => {
+            if ip_names.contains(&host) {
+                true
+            } else if ip_names.is_empty() {
+                common_name
+                    .as_deref()
+                    .and_then(|name| name.parse::<IpAddr>().ok())
+                    .is_some_and(|name| name == host)
+            } else {
+                false
+            }
+        }
     };
 
     info
@@ -804,6 +876,7 @@ mod tests {
             hostname_matches: false,
             chain_len: 1,
             starttls: None,
+            sni: None,
         }
     }
 
@@ -895,6 +968,78 @@ mod tests {
         assert_eq!(service_name(993, None), "imaps");
         assert_eq!(service_name(25, Some("smtp")), "smtp-starttls");
         assert_eq!(service_name(21, Some("ftp")), "ftp-starttls");
+    }
+
+    #[test]
+    fn explicit_sni_selects_and_validates_virtual_host_names() {
+        let cert = include_bytes!("../tests/fixtures/tls-vhosts.der").to_vec();
+        let host: IpAddr = "10.129.214.126".parse().unwrap();
+        let chain = [cert];
+
+        let chat = parse_info(
+            host,
+            Some("chat.airways.htb"),
+            "TLSv1.3",
+            "TLS13_AES_256_GCM_SHA384",
+            &chain,
+            None,
+        );
+        assert_eq!(chat.sni.as_deref(), Some("chat.airways.htb"));
+        assert!(chat.hostname_matches);
+        assert!(chat.san.contains(&"chat.airways.htb".to_string()));
+
+        let sts = parse_info(
+            host,
+            Some("STS.AIRWAYS.HTB"),
+            "TLSv1.3",
+            "TLS13_AES_256_GCM_SHA384",
+            &chain,
+            None,
+        );
+        assert!(sts.hostname_matches);
+
+        let unknown = parse_info(
+            host,
+            Some("unknown.airways.htb"),
+            "TLSv1.3",
+            "TLS13_AES_256_GCM_SHA384",
+            &chain,
+            None,
+        );
+        assert!(!unknown.hostname_matches);
+
+        let by_ip = parse_info(
+            host,
+            None,
+            "TLSv1.3",
+            "TLS13_AES_256_GCM_SHA384",
+            &chain,
+            None,
+        );
+        assert!(by_ip.hostname_matches);
+        assert_eq!(by_ip.sni, None);
+    }
+
+    #[test]
+    fn sni_validation_accepts_dns_names_and_rejects_unsafe_forms() {
+        assert_eq!(
+            validate_sni(" Geo.Airways.HTB. ").unwrap(),
+            "geo.airways.htb"
+        );
+        for value in [
+            "",
+            " ",
+            "10.129.214.126",
+            "localhost",
+            "*.airways.htb",
+            "bad_name.airways.htb",
+            "-bad.airways.htb",
+            "bad-.airways.htb",
+            "a..airways.htb",
+            ".airways.htb",
+        ] {
+            assert!(validate_sni(value).is_err(), "accepted {value:?}");
+        }
     }
 
     #[test]

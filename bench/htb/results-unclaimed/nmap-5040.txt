@@ -1,0 +1,9 @@
+# Nmap 7.80 scan initiated Sun Nov 22 08:17:12 2026 as: nmap -Pn -p5040 --script=banner -sV --version-all -oN bench/htb/results-unclaimed/nmap-5040.txt 10.129.215.81
+Nmap scan report for 10.129.215.81
+Host is up (0.27s latency).
+
+PORT     STATE SERVICE    VERSION
+5040/tcp open  tcpwrapped
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+# Nmap done at Sun Nov 22 08:17:18 2026 -- 1 IP address (1 host up) scanned in 6.33 seconds

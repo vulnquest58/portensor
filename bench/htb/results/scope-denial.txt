@@ -1,0 +1,1 @@
+rayscan: SCOPE VIOLATION: Target IP '10.129.244.208' is outside the authorized scope for program 'Hack The Box - authorized lab session (user-provided target)'. Scan aborted for legal safety (use --force-out-of-scope to override).

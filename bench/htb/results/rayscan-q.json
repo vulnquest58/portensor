@@ -1,0 +1,165 @@
+{
+  "target": "10.129.244.207",
+  "targets": 1,
+  "ports": 1000,
+  "jobs": 1000,
+  "workers": 128,
+  "open": [
+    {
+      "host": "10.129.244.207",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 159.833,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:159.8ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 174.384,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:174.4ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 389,
+      "state": "open",
+      "latency_ms": 173.433,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:173.4ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 89.996,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:90.0ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 464,
+      "state": "open",
+      "latency_ms": 162.081,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:162.1ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 593,
+      "state": "open",
+      "latency_ms": 161.42,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:161.4ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 636,
+      "state": "open",
+      "latency_ms": 171.9,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:171.9ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 2179,
+      "state": "open",
+      "latency_ms": 169.978,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:170.0ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 3268,
+      "state": "open",
+      "latency_ms": 172.106,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:172.1ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 3269,
+      "state": "open",
+      "latency_ms": 172.075,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:172.1ms(20%)"
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 3389,
+      "state": "open",
+      "latency_ms": 173.92,
+      "banner": "RDP HYBRID_EX / DC01.garfield.htb / 10.0.17763",
+      "service": {
+        "name": "rdp",
+        "product": "Windows 10 / Server 2019",
+        "version": "10.0.17763",
+        "confidence": 0.98
+      },
+      "detail": "rdp:hybrid_ex",
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:rdp/Windows 10 / Server 2019(40%) stack:standard(15%) latency:173.9ms(20%)",
+      "rdp": {
+        "protocol": "HYBRID_EX",
+        "target": "GARFIELD",
+        "computer_name": "DC01.garfield.htb",
+        "domain": "garfield.htb",
+        "os_version": "10.0.17763",
+        "product": "Windows 10 / Server 2019"
+      }
+    },
+    {
+      "host": "10.129.244.207",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 87.33,
+      "banner": "HTTP/1.1 401",
+      "service": {
+        "name": "winrm",
+        "product": "Microsoft WinRM",
+        "confidence": 0.9,
+        "cpe": "cpe:2.3:a:microsoft:windows_remote_management"
+      },
+      "detail": "plugin:remote/winrm-wsman",
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:winrm/Microsoft WinRM(40%) stack:standard(15%) latency:87.3ms(20%) | probe match plugin:remote/winrm-wsman (1 step(s): wsman-probe)"
+    }
+  ],
+  "defense": {
+    "10.129.244.207": {
+      "host": "10.129.244.207",
+      "defense_type": "rate_limiting",
+      "confidence": 0.8,
+      "summary": "Target network enforces probe rate-limiting or token-bucket traffic policing.",
+      "indicators": [
+        "7 port(s) required probe retries or backoff, suggesting packet loss or rate-limiting thresholds"
+      ],
+      "recommended_action": "Use `--rate 50` or `--profile careful` to stay below packet drop thresholds."
+    }
+  },
+  "summary": {
+    "open": 12,
+    "closed": 0,
+    "filtered": 986,
+    "unfiltered": 0,
+    "silent": 2,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 33124.736
+}

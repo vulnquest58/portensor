@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Run and score port scanners against the rayscan lab.
+"""Run and score port scanners against the portensor lab.
 
 The harness is intentionally dependency-free. It knows the output formats of
-rayscan, nmap, masscan, and rustscan, and it treats the lab's ground truth as
+portensor, nmap, masscan, and rustscan, and it treats the lab's ground truth as
 the only source of truth.
 
-Rayscan's Phase 1 contract is documented in docs/benchmark-contract.md.
+Portensor's Phase 1 contract is documented in docs/benchmark-contract.md.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TRUTH = ROOT / "lab" / "ground_truth.json"
 DEFAULT_OUTPUT = ROOT / "bench" / "results" / "latest.json"
-DEFAULT_TOOLS = ("rayscan", "nmap", "masscan", "rustscan")
+DEFAULT_TOOLS = ("portensor", "nmap", "masscan", "rustscan")
 OPEN = "open"
 
 
@@ -152,7 +152,7 @@ def parse_rustscan(output: str, default_host: str) -> set[Target]:
     return found
 
 
-def parse_rayscan(output: str, default_host: str) -> set[Target]:
+def parse_portensor(output: str, default_host: str) -> set[Target]:
     found: set[Target] = set()
     text = output.strip()
     if not text:
@@ -173,7 +173,7 @@ def parse_rayscan(output: str, default_host: str) -> set[Target]:
             except json.JSONDecodeError:
                 continue
             if isinstance(item, dict):
-                _add_rayscan_item(found, item, default_host)
+                _add_portensor_item(found, item, default_host)
         return found
 
     if isinstance(payload, dict):
@@ -181,11 +181,11 @@ def parse_rayscan(output: str, default_host: str) -> set[Target]:
     else:
         items = payload
     for item in items:
-        _add_rayscan_item(found, item, default_host)
+        _add_portensor_item(found, item, default_host)
     return found
 
 
-def _add_rayscan_item(found: set[Target], item: object, default_host: str) -> None:
+def _add_portensor_item(found: set[Target], item: object, default_host: str) -> None:
     if isinstance(item, int):
         found.add(Target(default_host, item))
         return
@@ -204,7 +204,7 @@ PARSERS: dict[str, Callable[[str, str], set[Target]]] = {
     "nmap": parse_nmap,
     "masscan": parse_masscan,
     "rustscan": parse_rustscan,
-    "rayscan": parse_rayscan,
+    "portensor": parse_portensor,
 }
 
 
@@ -238,7 +238,7 @@ def build_command(
     timeout: float,
     binary: Path,
 ) -> list[str]:
-    if tool == "rayscan":
+    if tool == "portensor":
         return [
             str(binary),
             "scan",
@@ -334,7 +334,7 @@ def run_tool(
     timed_command = command
     env: dict[str, str] | None = None
     if time_binary is not None:
-        handle, report_name = tempfile.mkstemp(prefix="rayscan-bench-", suffix=".time")
+        handle, report_name = tempfile.mkstemp(prefix="portensor-bench-", suffix=".time")
         os.close(handle)
         report_path = Path(report_name)
         timed_command = [time_binary, "-v", "-o", str(report_path), "--", *command]
@@ -443,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ports", help="comma-separated ports")
     parser.add_argument("--truth", type=Path, help="ground-truth JSON")
     parser.add_argument("--tools", default=",".join(DEFAULT_TOOLS))
-    parser.add_argument("--binary", type=Path, default=ROOT / "target" / "release" / "rayscan")
+    parser.add_argument("--binary", type=Path, default=ROOT / "target" / "release" / "portensor")
     parser.add_argument("--rate", type=int, default=1000)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)

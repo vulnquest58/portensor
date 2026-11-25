@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "profile": "balanced",
+  "mode": "connect",
+  "targets": {
+    "inputs": [
+      "10.129.244.207"
+    ],
+    "hosts": 1,
+    "ipv6": false
+  },
+  "ports": {
+    "spec": "1-1024",
+    "count": 1024
+  },
+  "estimated_probes": 1024,
+  "required_privileges": [
+    "none (unprivileged TCP connect)"
+  ],
+  "fallback": {
+    "requested": "auto",
+    "selected": "connect",
+    "rationale": "raw SYN privileges are unavailable; automatic mode selected TCP connect"
+  },
+  "risk_notes": [
+    "auto -> connect: raw SYN privileges are unavailable; automatic mode selected TCP connect"
+  ],
+  "decisions": [
+    {
+      "name": "profile",
+      "value": "balanced",
+      "source": "default/config"
+    },
+    {
+      "name": "mode",
+      "value": "connect",
+      "source": "auto fallback (no raw privileges)"
+    },
+    {
+      "name": "ports",
+      "value": "1-1024",
+      "source": "default (1-1024)"
+    },
+    {
+      "name": "family",
+      "value": "any",
+      "source": "default"
+    },
+    {
+      "name": "service_detection",
+      "value": "true",
+      "source": "default"
+    },
+    {
+      "name": "tls_inspection",
+      "value": "auto",
+      "source": "default"
+    },
+    {
+      "name": "udp_detection",
+      "value": "false",
+      "source": "default"
+    },
+    {
+      "name": "scripts",
+      "value": "disabled",
+      "source": "default"
+    },
+    {
+      "name": "scope",
+      "value": "enforced",
+      "source": "--scope"
+    }
+  ],
+  "scope": {
+    "program": "Hack The Box - authorized lab session (user-provided target)",
+    "file": "bench/htb/lab-scope.toml"
+  }
+}

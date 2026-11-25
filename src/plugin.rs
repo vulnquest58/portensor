@@ -605,7 +605,7 @@ impl Registry {
         self.probes.len()
     }
 
-    /// Probe summaries for `rayscan probes list`.
+    /// Probe summaries for `portensor probes list`.
     pub fn summaries(&self) -> Vec<ProbeSummary> {
         self.probes
             .iter()
@@ -697,7 +697,7 @@ impl Registry {
     }
 }
 
-/// `rayscan probes list`: print the compiled probe library.
+/// `portensor probes list`: print the compiled probe library.
 pub fn run_cli(args: ProbesListArgs) -> Result<(), AppError> {
     let mut registry = Registry::default();
     registry.merge_builtin()?;
@@ -1499,13 +1499,13 @@ pub fn parse_pack(text: &str) -> Result<Registry, AppError> {
     Ok(registry)
 }
 
-/// Return the default plugin directory (`<config dir>/rayscan/plugins`) when present.
+/// Return the default plugin directory (`<config dir>/portensor/plugins`) when present.
 pub fn default_dir() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
-    let path = base.join("rayscan").join("plugins");
+    let path = base.join("portensor").join("plugins");
     path.is_dir().then_some(path)
 }
 
@@ -1546,6 +1546,7 @@ mod tests {
             hostname_matches: false,
             chain_len: 0,
             starttls: None,
+            sni: None,
         }
     }
 

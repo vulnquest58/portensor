@@ -27,7 +27,7 @@ if str(ROOT) not in sys.path:
 
 from bench import bench, validate  # noqa: E402
 
-DEFAULT_BINARY = ROOT / "target" / "release" / "rayscan"
+DEFAULT_BINARY = ROOT / "target" / "release" / "portensor"
 
 
 def scan_command(
@@ -161,9 +161,9 @@ def main(argv: list[str] | None = None) -> int:
                 break
 
             run = bench.run_tool(
-                "rayscan",
+                "portensor",
                 command,
-                bench.parse_rayscan,
+                bench.parse_portensor,
                 validate.HOST,
                 truth,
                 args.scan_timeout,

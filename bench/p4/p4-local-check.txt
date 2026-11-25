@@ -1,0 +1,12 @@
+version=0.7.0
+gpg_fingerprint=0A9E5372307CA9AA477342483ADBB1BBAC63DC74
+gpg_signature=verified
+cosign_signature=verified: v3.1.4
+sbom=CycloneDX 1.5, /mnt/e/VulnQuest_Pro/rayscan/bench/p4/rayscan-0.7.0.cdx.json
+checksum_manifest=archives+sbom
+workflow_signing_and_attestations=present
+scope=p4 local tooling validation only
+external_key_custody=not verified
+registry_ownership=not verified
+clean_runner_execution=not verified
+ot_assessment_approval=not verified

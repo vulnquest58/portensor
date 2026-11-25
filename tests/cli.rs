@@ -7,8 +7,8 @@ use std::thread;
 
 use serde_json::Value;
 
-fn rayscan() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_rayscan"))
+fn portensor() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_portensor"))
 }
 
 struct BannerServer {
@@ -35,7 +35,7 @@ impl BannerServer {
 /// post-scan local recheck), so a listener that stops after the first accept
 /// would be reported closed by the recheck.
 fn banner_server() -> BannerServer {
-    banner_server_with(b"HTTP/1.1 200 OK\r\nServer: rayscan-lab\r\nContent-Length: 0\r\n\r\n")
+    banner_server_with(b"HTTP/1.1 200 OK\r\nServer: portensor-lab\r\nContent-Length: 0\r\n\r\n")
 }
 
 /// Serve `banner` on every connection until [`BannerServer::stop`].
@@ -70,41 +70,44 @@ fn banner_server_with(banner: &[u8]) -> BannerServer {
 
 #[test]
 fn version_is_reported() {
-    let output = rayscan().arg("--version").output().expect("run rayscan");
+    let output = portensor()
+        .arg("--version")
+        .output()
+        .expect("run portensor");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
-    assert!(stdout.starts_with("rayscan "));
+    assert!(stdout.starts_with("portensor "));
     assert!(stdout.contains(env!("CARGO_PKG_VERSION")));
 }
 
 #[test]
 fn help_describes_the_scan_command() {
-    let output = rayscan().arg("--help").output().expect("run rayscan");
+    let output = portensor().arg("--help").output().expect("run portensor");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
-    assert!(stdout.contains("Usage: rayscan"));
+    assert!(stdout.contains("Usage: portensor"));
     assert!(stdout.contains("accuracy-first"));
     assert!(stdout.contains("scan"));
 }
 
 #[test]
 fn no_arguments_shows_help() {
-    let output = rayscan().output().expect("run rayscan");
+    let output = portensor().output().expect("run portensor");
     assert!(!output.status.success());
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(combined.contains("Usage: rayscan"));
+    assert!(combined.contains("Usage: portensor"));
 }
 
 #[test]
 fn empty_shard_emits_a_valid_report() {
     let count = 64;
-    let owner = rayscan::shard::shard_for("127.0.0.1".parse().unwrap(), count);
+    let owner = portensor::shard::shard_for("127.0.0.1".parse().unwrap(), count);
     let empty = (owner + 1) % count;
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -136,7 +139,7 @@ fn empty_shard_emits_a_valid_report() {
 
 #[test]
 fn distributed_plan_prints_shards_and_merge() {
-    let output = rayscan()
+    let output = portensor()
         .args([
             "distributed",
             "plan",
@@ -161,14 +164,14 @@ fn distributed_plan_prints_shards_and_merge() {
     let script = String::from_utf8(output.stdout).expect("utf-8 script");
     assert!(script.contains("--shard-index 0"));
     assert!(script.contains("--shard-index 2"));
-    assert!(script.contains("rayscan merge shards/shard-*.json"));
+    assert!(script.contains("portensor merge shards/shard-*.json"));
 }
 
 #[test]
 fn json_scan_reports_an_open_port() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -181,7 +184,7 @@ fn json_scan_reports_an_open_port() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -192,7 +195,7 @@ fn json_scan_reports_an_open_port() {
     assert_eq!(payload["open"][0]["host"], "127.0.0.1");
     assert_eq!(payload["open"][0]["port"], port);
     assert_eq!(payload["open"][0]["service"]["name"], "http");
-    assert_eq!(payload["open"][0]["service"]["product"], "rayscan-lab");
+    assert_eq!(payload["open"][0]["service"]["product"], "portensor-lab");
     assert_eq!(payload["summary"]["open"], 1);
     server.stop();
 }
@@ -201,7 +204,7 @@ fn json_scan_reports_an_open_port() {
 fn quiet_scan_emits_no_progress_on_stderr() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -212,7 +215,7 @@ fn quiet_scan_emits_no_progress_on_stderr() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -231,7 +234,7 @@ fn quiet_scan_emits_no_progress_on_stderr() {
 fn no_service_detection_keeps_the_open_set_without_metadata() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -245,7 +248,7 @@ fn no_service_detection_keeps_the_open_set_without_metadata() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(output.status.success());
     let payload: Value = serde_json::from_slice(&output.stdout).expect("valid JSON output");
@@ -261,7 +264,7 @@ fn json_scan_reports_a_closed_port_without_listing_it() {
     let port = listener.local_addr().expect("listener address").port();
     drop(listener);
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -274,7 +277,7 @@ fn json_scan_reports_a_closed_port_without_listing_it() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(output.status.success());
     let payload: Value = serde_json::from_slice(&output.stdout).expect("valid JSON output");
@@ -284,10 +287,10 @@ fn json_scan_reports_a_closed_port_without_listing_it() {
 
 #[test]
 fn doctor_json_reports_capability_checks() {
-    let output = rayscan()
+    let output = portensor()
         .args(["doctor", "--json"])
         .output()
-        .expect("run rayscan doctor");
+        .expect("run portensor doctor");
 
     assert!(
         output.status.success(),
@@ -303,10 +306,10 @@ fn doctor_json_reports_capability_checks() {
 
 #[test]
 fn interactive_requires_a_terminal() {
-    let output = rayscan()
+    let output = portensor()
         .arg("interactive")
         .output()
-        .expect("run rayscan interactive");
+        .expect("run portensor interactive");
 
     assert_eq!(output.status.code(), Some(2));
     assert!(
@@ -316,10 +319,10 @@ fn interactive_requires_a_terminal() {
 
 #[test]
 fn invalid_ports_exit_with_usage_status() {
-    let output = rayscan()
+    let output = portensor()
         .args(["scan", "--target", "127.0.0.1", "--ports", "0", "--json"])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("out of range"));
@@ -327,7 +330,7 @@ fn invalid_ports_exit_with_usage_status() {
 
 #[test]
 fn os_probes_requires_os_and_is_bounded() {
-    let missing_os = rayscan()
+    let missing_os = portensor()
         .args([
             "scan",
             "--target",
@@ -339,14 +342,14 @@ fn os_probes_requires_os_and_is_bounded() {
             "--json",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
     assert_eq!(missing_os.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&missing_os.stderr).contains("--os-probes")
             || String::from_utf8_lossy(&missing_os.stderr).contains("requires")
     );
 
-    let out_of_range = rayscan()
+    let out_of_range = portensor()
         .args([
             "scan",
             "--target",
@@ -359,7 +362,7 @@ fn os_probes_requires_os_and_is_bounded() {
             "--json",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
     assert_eq!(out_of_range.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&out_of_range.stderr)
@@ -381,11 +384,11 @@ fn ack_conflicts_and_unsupported_formats_are_rejected() {
         vec!["--scripts", "pack.toml"],
         vec!["--plugins", "probes.toml"],
     ] {
-        let mut command = rayscan();
+        let mut command = portensor();
         command.args(["scan", "--target", "127.0.0.1", "--ports", "9", "--ack"]);
         command.args(&extra);
         command.arg("--json");
-        let output = command.output().expect("run rayscan scan");
+        let output = command.output().expect("run portensor scan");
         assert_eq!(
             output.status.code(),
             Some(2),
@@ -394,7 +397,7 @@ fn ack_conflicts_and_unsupported_formats_are_rejected() {
         );
     }
 
-    let port_list = rayscan()
+    let port_list = portensor()
         .args([
             "scan",
             "--target",
@@ -406,7 +409,7 @@ fn ack_conflicts_and_unsupported_formats_are_rejected() {
             "port-list",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
     assert_eq!(port_list.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&port_list.stderr)
@@ -416,7 +419,7 @@ fn ack_conflicts_and_unsupported_formats_are_rejected() {
 
 #[test]
 fn probe_shaping_flags_are_validated() {
-    let zero_ttl = rayscan()
+    let zero_ttl = portensor()
         .args([
             "scan",
             "--target",
@@ -429,11 +432,11 @@ fn probe_shaping_flags_are_validated() {
             "--json",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
     assert_eq!(zero_ttl.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&zero_ttl.stderr).contains("--ttl must be between 1 and 255"));
 
-    let ttl_without_raw = rayscan()
+    let ttl_without_raw = portensor()
         .args([
             "scan",
             "--target",
@@ -445,14 +448,14 @@ fn probe_shaping_flags_are_validated() {
             "--json",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
     assert_eq!(ttl_without_raw.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&ttl_without_raw.stderr)
             .contains("--ttl requires --syn, --ack, or --os")
     );
 
-    let reversed_range = rayscan()
+    let reversed_range = portensor()
         .args([
             "scan",
             "--target",
@@ -465,14 +468,14 @@ fn probe_shaping_flags_are_validated() {
             "--json",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
     assert_eq!(reversed_range.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&reversed_range.stderr)
             .contains("--source-port-range requires 1 <= MIN <= MAX <= 65535")
     );
 
-    let range_without_syn = rayscan()
+    let range_without_syn = portensor()
         .args([
             "scan",
             "--target",
@@ -484,13 +487,13 @@ fn probe_shaping_flags_are_validated() {
             "--json",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
     assert_eq!(range_without_syn.status.code(), Some(2));
 }
 
 #[test]
 fn omitted_ports_defaults_to_well_known_range() {
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -505,7 +508,7 @@ fn omitted_ports_defaults_to_well_known_range() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -518,7 +521,7 @@ fn omitted_ports_defaults_to_well_known_range() {
 
 #[test]
 fn ot_preset_alias_expands_to_the_control_plane_port_set() {
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -535,7 +538,7 @@ fn ot_preset_alias_expands_to_the_control_plane_port_set() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -550,7 +553,7 @@ fn ot_preset_alias_expands_to_the_control_plane_port_set() {
 fn stealth_flag_runs_scan() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -562,7 +565,7 @@ fn stealth_flag_runs_scan() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -589,7 +592,7 @@ allow = ["10.0.0.0/8"]
     )
     .expect("write scope");
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -600,7 +603,7 @@ allow = ["10.0.0.0/8"]
             scope_path.to_str().unwrap(),
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -608,7 +611,7 @@ allow = ["10.0.0.0/8"]
     assert!(stderr.contains("Engagement Alpha"));
 
     // Overriding with --force-out-of-scope succeeds
-    let override_output = rayscan()
+    let override_output = portensor()
         .args([
             "scan",
             "--target",
@@ -622,7 +625,7 @@ allow = ["10.0.0.0/8"]
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(override_output.status.success());
     let _ = std::fs::remove_file(scope_path);
@@ -644,7 +647,7 @@ allow = ["127.0.0.0/8"]
     )
     .expect("write scope");
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -657,7 +660,7 @@ allow = ["127.0.0.0/8"]
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -687,7 +690,7 @@ deny = ["localhost"]
     .expect("write scope");
     std::fs::write(&targets_path, "localhost\n").expect("write targets");
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target-file",
@@ -698,7 +701,7 @@ deny = ["localhost"]
             scope_path.to_str().unwrap(),
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("SCOPE VIOLATION"));
@@ -710,7 +713,7 @@ deny = ["localhost"]
 fn stream_flag_emits_jsonl_records() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -720,7 +723,7 @@ fn stream_flag_emits_jsonl_records() {
             "--stream",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -749,7 +752,7 @@ fn stream_flag_emits_jsonl_records() {
 fn host_port_format_lists_open_ports_for_pipelines() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -763,7 +766,7 @@ fn host_port_format_lists_open_ports_for_pipelines() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -781,7 +784,7 @@ fn host_port_format_lists_open_ports_for_pipelines() {
 fn port_list_format_stdout_stays_machine_readable() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -797,7 +800,7 @@ fn port_list_format_stdout_stays_machine_readable() {
             "1",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert!(
         output.status.success(),
@@ -830,7 +833,7 @@ fn port_list_format_stdout_stays_machine_readable() {
 fn exclude_ports_rejects_removing_the_entire_scan() {
     let server = banner_server();
     let port = server.port();
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -842,7 +845,7 @@ fn exclude_ports_rejects_removing_the_entire_scan() {
             "--quiet",
         ])
         .output()
-        .expect("run rayscan scan");
+        .expect("run portensor scan");
 
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("--exclude-ports removed every port"));
@@ -853,12 +856,12 @@ fn exclude_ports_rejects_removing_the_entire_scan() {
 fn baseline_alerts_and_fail_on_change_drive_monitoring() {
     let server = banner_server();
     let port = server.port();
-    let dir = std::env::temp_dir().join(format!("rayscan-monitor-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("portensor-monitor-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("create test directory");
     let baseline = dir.join("baseline.json");
     let alert = dir.join("alert.txt");
 
-    let first = rayscan()
+    let first = portensor()
         .args([
             "scan",
             "--target",
@@ -881,7 +884,7 @@ fn baseline_alerts_and_fail_on_change_drive_monitoring() {
     );
     assert!(baseline.exists(), "baseline file must be written");
 
-    let second = rayscan()
+    let second = portensor()
         .args([
             "scan",
             "--target",
@@ -918,7 +921,7 @@ fn baseline_alerts_and_fail_on_change_drive_monitoring() {
     )
     .expect("rewrite baseline");
 
-    let third = rayscan()
+    let third = portensor()
         .args([
             "scan",
             "--target",
@@ -944,7 +947,7 @@ fn baseline_alerts_and_fail_on_change_drive_monitoring() {
 }
 #[test]
 fn diff_accepts_nmap_xml_reports() {
-    let dir = std::env::temp_dir().join(format!("rayscan-nmap-diff-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("portensor-nmap-diff-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("create Nmap diff directory");
     let baseline = dir.join("baseline.xml");
     let current = dir.join("current.xml");
@@ -996,7 +999,7 @@ fn diff_accepts_nmap_xml_reports() {
     )
     .expect("write Nmap XML current report");
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "diff",
             baseline.to_str().expect("baseline path"),
@@ -1033,7 +1036,7 @@ fn diff_accepts_nmap_xml_reports() {
 fn explain_shows_probe_identification_and_facts() {
     let server = banner_server();
     let port = server.port().to_string();
-    let dir = std::env::temp_dir().join(format!("rayscan-probe-expl_{}", server.port()));
+    let dir = std::env::temp_dir().join(format!("portensor-probe-expl_{}", server.port()));
     std::fs::create_dir_all(&dir).expect("create probe temp dir");
     let pack = dir.join("pack.toml");
     std::fs::write(
@@ -1043,11 +1046,11 @@ fn explain_shows_probe_identification_and_facts() {
 name = "explain-test"
 [[probe]]
 name = "lab"
-service = "rayscan-lab"
+service = "portensor-lab"
 ports = [{port}]
 send = "GET / HTTP/1.0\r\nHost: scan\r\n\r\n"
-expect = "rayscan-lab"
-product = "Rayscan Lab"
+expect = "portensor-lab"
+product = "Portensor Lab"
 [probe.info]
 server = 'Server: ([^\r\n]+)'
 "#
@@ -1055,7 +1058,7 @@ server = 'Server: ([^\r\n]+)'
     )
     .expect("write probe pack");
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -1077,7 +1080,7 @@ server = 'Server: ([^\r\n]+)'
     );
     let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
     assert!(stdout.contains("Identification:      plugin:explain-test/lab"));
-    assert!(stdout.contains("Fact server: rayscan-lab"));
+    assert!(stdout.contains("Fact server: portensor-lab"));
 
     let _ = std::fs::remove_dir_all(&dir);
     server.stop();
@@ -1085,10 +1088,10 @@ server = 'Server: ([^\r\n]+)'
 
 #[test]
 fn probes_list_reports_built_in_packs() {
-    let output = rayscan()
+    let output = portensor()
         .args(["probes", "list"])
         .output()
-        .expect("run rayscan probes list");
+        .expect("run portensor probes list");
     assert!(
         output.status.success(),
         "probes list failed: {}",
@@ -1103,10 +1106,10 @@ fn probes_list_reports_built_in_packs() {
 
 #[test]
 fn probes_list_json_is_machine_readable() {
-    let output = rayscan()
+    let output = portensor()
         .args(["probes", "list", "--json"])
         .output()
-        .expect("run rayscan probes list --json");
+        .expect("run portensor probes list --json");
     assert!(output.status.success());
     let probes: Value = serde_json::from_slice(&output.stdout).expect("probe JSON");
     let probes = probes.as_array().expect("probe array");
@@ -1125,7 +1128,7 @@ fn probes_list_json_is_machine_readable() {
 
 #[test]
 fn scripts_list_reports_manifest_metadata() {
-    let dir = std::env::temp_dir().join(format!("rayscan-scripts-list-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("portensor-scripts-list-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("create script temp dir");
     let manifest = dir.join("pack.toml");
     std::fs::write(
@@ -1144,7 +1147,7 @@ timeout_ms = 2500
     )
     .expect("write script manifest");
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scripts",
             "list",
@@ -1152,7 +1155,7 @@ timeout_ms = 2500
             "--json",
         ])
         .output()
-        .expect("run rayscan scripts list");
+        .expect("run portensor scripts list");
     assert!(
         output.status.success(),
         "scripts list failed: {}",
@@ -1164,6 +1167,7 @@ timeout_ms = 2500
     assert_eq!(scripts[0]["plugin"], "test-scripts/lab-check");
     assert_eq!(scripts[0]["category"], "vulnerability");
     assert_eq!(scripts[0]["danger"], "safe");
+    assert_eq!(scripts[0]["capabilities"][0], "metadata");
     assert_eq!(scripts[0]["timeout_ms"], 2500);
     assert_eq!(scripts[0]["services"][0], "http");
 
@@ -1197,7 +1201,7 @@ fn wasm_module_emitting(output: &str) -> String {
 fn wasm_scripts_run_end_to_end() {
     let server = banner_server();
     let port = server.port().to_string();
-    let dir = std::env::temp_dir().join(format!("rayscan-scripts-wasm-{}", server.port()));
+    let dir = std::env::temp_dir().join(format!("portensor-scripts-wasm-{}", server.port()));
     std::fs::create_dir_all(&dir).expect("create script temp dir");
     let output = r#"{"findings":[{"id":"wasm-lab","title":"Wasm finding","severity":"medium","confidence":0.8}],"service":{"name":"http","product":"Wasm Lab","version":"1.0"}}"#;
     std::fs::write(dir.join("check.wat"), wasm_module_emitting(output)).expect("write wasm module");
@@ -1215,7 +1219,7 @@ timeout_ms = 3000
     )
     .expect("write wasm manifest");
 
-    let listed = rayscan()
+    let listed = portensor()
         .args([
             "scripts",
             "list",
@@ -1223,7 +1227,7 @@ timeout_ms = 3000
             "--json",
         ])
         .output()
-        .expect("run rayscan scripts list");
+        .expect("run portensor scripts list");
     assert!(
         listed.status.success(),
         "scripts list failed: {}",
@@ -1237,7 +1241,7 @@ timeout_ms = 3000
             .is_some_and(|path| path.ends_with("check.wat"))
     );
 
-    let scanned = rayscan()
+    let scanned = portensor()
         .args([
             "scan",
             "--target",
@@ -1271,7 +1275,7 @@ timeout_ms = 3000
 fn script_library_install_list_scan_uninstall() {
     let server = banner_server();
     let port = server.port().to_string();
-    let base = std::env::temp_dir().join(format!("rayscan-scripts-lib-{}", server.port()));
+    let base = std::env::temp_dir().join(format!("portensor-scripts-lib-{}", server.port()));
     let source = base.join("src").join("wasm-lib-pack");
     std::fs::create_dir_all(&source).expect("create source pack");
     let output = r#"{"findings":[{"title":"Library finding","severity":"low"}],"service":{"name":"http","product":"Library Lab","version":"1.1"}}"#;
@@ -1284,7 +1288,7 @@ fn script_library_install_list_scan_uninstall() {
     .expect("write manifest");
     let library = base.join("library");
 
-    let installed = rayscan()
+    let installed = portensor()
         .args([
             "--scripts-dir",
             library.to_str().expect("library path"),
@@ -1300,7 +1304,7 @@ fn script_library_install_list_scan_uninstall() {
         String::from_utf8_lossy(&installed.stderr)
     );
 
-    let info = rayscan()
+    let info = portensor()
         .args([
             "--scripts-dir",
             library.to_str().expect("library path"),
@@ -1319,7 +1323,7 @@ fn script_library_install_list_scan_uninstall() {
             .is_some_and(|path| path.ends_with("library"))
     );
 
-    let listed = rayscan()
+    let listed = portensor()
         .args([
             "--scripts-dir",
             library.to_str().expect("library path"),
@@ -1338,7 +1342,7 @@ fn script_library_install_list_scan_uninstall() {
     assert_eq!(scripts[0]["plugin"], "wasm-lib-pack/check");
     assert_eq!(scripts[0]["kind"], "wasm");
 
-    let scanned = rayscan()
+    let scanned = portensor()
         .args([
             "--scripts-dir",
             library.to_str().expect("library path"),
@@ -1365,7 +1369,7 @@ fn script_library_install_list_scan_uninstall() {
     );
     assert_eq!(payload["open"][0]["service"]["product"], "Library Lab");
 
-    let removed = rayscan()
+    let removed = portensor()
         .args([
             "--scripts-dir",
             library.to_str().expect("library path"),
@@ -1380,7 +1384,7 @@ fn script_library_install_list_scan_uninstall() {
         "uninstall failed: {}",
         String::from_utf8_lossy(&removed.stderr)
     );
-    let empty = rayscan()
+    let empty = portensor()
         .args([
             "--scripts-dir",
             library.to_str().expect("library path"),
@@ -1397,23 +1401,23 @@ fn script_library_install_list_scan_uninstall() {
 
 #[test]
 fn scripts_marketplace_rejects_incomplete_requests() {
-    let base = std::env::temp_dir().join(format!("rayscan-market-cli-{}", std::process::id()));
+    let base = std::env::temp_dir().join(format!("portensor-market-cli-{}", std::process::id()));
     let library = base.join("library");
     let library = library.to_str().expect("library path");
 
-    let search = rayscan()
+    let search = portensor()
         .args(["--scripts-dir", library, "scripts", "search"])
-        .env_remove("RAYSCAN_SCRIPT_REGISTRY")
+        .env_remove("PORTENSOR_SCRIPT_REGISTRY")
         .output()
         .expect("run scripts search");
     assert_eq!(search.status.code(), Some(2));
     assert!(
-        String::from_utf8_lossy(&search.stderr).contains("RAYSCAN_SCRIPT_REGISTRY"),
+        String::from_utf8_lossy(&search.stderr).contains("PORTENSOR_SCRIPT_REGISTRY"),
         "unexpected stderr: {}",
         String::from_utf8_lossy(&search.stderr)
     );
 
-    let missing_digest = rayscan()
+    let missing_digest = portensor()
         .args([
             "--scripts-dir",
             library,
@@ -1431,7 +1435,7 @@ fn scripts_marketplace_rejects_incomplete_requests() {
     );
 
     let digest = "00".repeat(32);
-    let conflicting = rayscan()
+    let conflicting = portensor()
         .args([
             "--scripts-dir",
             library,
@@ -1488,11 +1492,11 @@ timeout_ms = 3000
 fn script_findings_appear_in_json_and_explain() {
     let server = banner_server();
     let port = server.port().to_string();
-    let dir = std::env::temp_dir().join(format!("rayscan-scripts-run-{}", server.port()));
+    let dir = std::env::temp_dir().join(format!("portensor-scripts-run-{}", server.port()));
     std::fs::create_dir_all(&dir).expect("create script temp dir");
     let manifest = write_script_plugin(&dir, "safe");
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -1518,7 +1522,7 @@ fn script_findings_appear_in_json_and_explain() {
     assert_eq!(finding["plugin"], "test-scripts/lab-check");
     assert_eq!(finding["cve"][0], "CVE-2024-1234");
 
-    let explained = rayscan()
+    let explained = portensor()
         .args([
             "scan",
             "--target",
@@ -1548,11 +1552,11 @@ fn script_findings_appear_in_json_and_explain() {
 fn intrusive_scripts_require_the_allow_flag() {
     let server = banner_server();
     let port = server.port().to_string();
-    let dir = std::env::temp_dir().join(format!("rayscan-scripts-danger-{}", server.port()));
+    let dir = std::env::temp_dir().join(format!("portensor-scripts-danger-{}", server.port()));
     std::fs::create_dir_all(&dir).expect("create script temp dir");
     let manifest = write_script_plugin(&dir, "intrusive");
 
-    let blocked = rayscan()
+    let blocked = portensor()
         .args([
             "scan",
             "--target",
@@ -1570,7 +1574,7 @@ fn intrusive_scripts_require_the_allow_flag() {
     let payload: Value = serde_json::from_slice(&blocked.stdout).expect("valid JSON output");
     assert!(payload["open"][0].get("findings").is_none());
 
-    let allowed = rayscan()
+    let allowed = portensor()
         .args([
             "scan",
             "--target",
@@ -1622,11 +1626,11 @@ timeout_ms = 3000
 fn script_identifies_service_and_min_severity_filters() {
     let server = banner_server_with(b"LABENGINE 1.2 ready\r\n\r\n");
     let port = server.port().to_string();
-    let dir = std::env::temp_dir().join(format!("rayscan-scripts-ident-{}", server.port()));
+    let dir = std::env::temp_dir().join(format!("portensor-scripts-ident-{}", server.port()));
     std::fs::create_dir_all(&dir).expect("create script temp dir");
     let manifest = write_identify_plugin(&dir);
 
-    let output = rayscan()
+    let output = portensor()
         .args([
             "scan",
             "--target",
@@ -1660,7 +1664,7 @@ fn script_identifies_service_and_min_severity_filters() {
     let stdout = String::from_utf8(output.stdout).expect("utf-8 output");
     assert!(stdout.contains("script:test-scripts/lab-identify"));
 
-    let filtered = rayscan()
+    let filtered = portensor()
         .args([
             "scan",
             "--target",
@@ -1683,5 +1687,199 @@ fn script_identifies_service_and_min_severity_filters() {
     assert_eq!(findings[0]["title"], "Serious issue");
 
     let _ = std::fs::remove_dir_all(&dir);
+    server.stop();
+}
+
+#[test]
+fn smart_dry_run_emits_a_machine_readable_plan_without_probing() {
+    let output = portensor()
+        .args([
+            "smart",
+            "--target",
+            "192.0.2.1",
+            "--ports",
+            "80",
+            "--dry-run",
+            "--plan-json",
+            "--no-db-update",
+            "--quiet",
+        ])
+        .output()
+        .expect("run smart dry-run");
+    assert!(
+        output.status.success(),
+        "smart dry-run failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let plan: Value = serde_json::from_slice(&output.stdout).expect("valid plan JSON");
+    assert_eq!(plan["schema"], 1);
+    assert_eq!(plan["targets"]["hosts"], 1);
+    assert_eq!(plan["ports"]["spec"], "80");
+    assert_eq!(plan["estimated_probes"], 1);
+    assert!(plan["required_privileges"].as_array().is_some());
+    assert!(plan["decisions"].as_array().is_some());
+}
+
+#[test]
+fn smart_plan_json_requires_dry_run() {
+    let output = portensor()
+        .args([
+            "smart",
+            "--target",
+            "192.0.2.1",
+            "--ports",
+            "80",
+            "--plan-json",
+        ])
+        .output()
+        .expect("run invalid smart");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--dry-run"), "{stderr}");
+}
+
+#[test]
+fn html_format_emits_a_self_contained_report() {
+    let server = banner_server();
+    let port = server.port();
+    let output = portensor()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port.to_string(),
+            "--format",
+            "html",
+            "--timeout",
+            "1",
+            "--no-db-update",
+            "--quiet",
+        ])
+        .output()
+        .expect("run html scan");
+    assert!(
+        output.status.success(),
+        "html scan failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let html = String::from_utf8(output.stdout).expect("utf-8 html");
+    assert!(html.starts_with("<!DOCTYPE html>"));
+    assert!(html.contains("Services and evidence"));
+    assert!(!html.contains("<script"));
+    assert!(!html.contains("https://"));
+    server.stop();
+}
+
+#[test]
+fn pipeline_host_port_output_feeds_an_httpx_style_url_list() {
+    let server = banner_server();
+    let port = server.port();
+    let output = portensor()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port.to_string(),
+            "--format",
+            "host-port",
+            "--timeout",
+            "1",
+            "--no-db-update",
+            "--quiet",
+        ])
+        .output()
+        .expect("run host-port scan");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 host-port output");
+    let hosts: Vec<&str> = stdout.lines().filter(|line| !line.is_empty()).collect();
+    assert_eq!(hosts, vec![format!("127.0.0.1:{port}")]);
+    let httpx_input = hosts
+        .iter()
+        .map(|host| format!("https://{host}"))
+        .collect::<Vec<_>>();
+    assert_eq!(httpx_input, vec![format!("https://127.0.0.1:{port}")]);
+    server.stop();
+}
+
+#[test]
+fn pipeline_jsonl_output_feeds_a_nuclei_style_target_list() {
+    let server = banner_server();
+    let port = server.port();
+    let output = portensor()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port.to_string(),
+            "--format",
+            "jsonl",
+            "--timeout",
+            "1",
+            "--no-db-update",
+            "--quiet",
+        ])
+        .output()
+        .expect("run jsonl scan");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 jsonl output");
+    let mut targets = Vec::new();
+    for line in stdout.lines().filter(|line| !line.is_empty()) {
+        let record: Value = serde_json::from_str(line).expect("jsonl record");
+        targets.push(format!(
+            "{}:{}",
+            record["host"].as_str().expect("host"),
+            record["port"].as_u64().expect("port")
+        ));
+    }
+    assert_eq!(targets, vec![format!("127.0.0.1:{port}")]);
+    server.stop();
+}
+
+#[test]
+fn pipeline_port_list_output_feeds_a_second_stage_scan() {
+    let server = banner_server();
+    let port = server.port();
+    let discovery = portensor()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            &port.to_string(),
+            "--format",
+            "port-list",
+            "--timeout",
+            "1",
+            "--no-db-update",
+            "--quiet",
+        ])
+        .output()
+        .expect("run port-list scan");
+    assert!(discovery.status.success());
+    let port_list = String::from_utf8(discovery.stdout).expect("utf-8 port list");
+    let port_list = port_list.trim();
+    assert_eq!(port_list, port.to_string());
+
+    let second = portensor()
+        .args([
+            "scan",
+            "--target",
+            "127.0.0.1",
+            "--ports",
+            port_list,
+            "--json",
+            "--timeout",
+            "1",
+            "--no-db-update",
+            "--quiet",
+        ])
+        .output()
+        .expect("run second-stage scan");
+    assert!(second.status.success());
+    let payload: Value = serde_json::from_slice(&second.stdout).expect("valid second-stage JSON");
+    assert_eq!(payload["open"][0]["port"], port);
     server.stop();
 }

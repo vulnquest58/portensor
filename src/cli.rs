@@ -16,10 +16,10 @@ use crate::tls::TlsMode;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "rayscan",
+    name = "portensor",
     version,
     about = "An accuracy-first TCP port scanner",
-    long_about = "An accuracy-first TCP/UDP scanner. Rayscan uses a bounded worker pool, \
+    long_about = "An accuracy-first TCP/UDP scanner. Portensor uses a bounded worker pool, \
                   adaptive per-host timeouts, a global rate limit, and a short \
                   service-verification read so a bare handshake from a tarpit or SYN \
                   proxy is not reported as an open service. Responsive services are \
@@ -30,14 +30,14 @@ use crate::tls::TlsMode;
                   detection on ports that accept UDP traffic.",
     arg_required_else_help = true,
     subcommand_required = true,
-    after_help = "Examples:\n  rayscan scan --target 127.0.0.1 --ports 1-1024\n  rayscan scan -t 10.0.0.0/24 -p 22,80,443 --json\n  rayscan scan -t 10.77.0.2 -p 1-10000 --profile careful --show all\n  rayscan scan -t 10.77.0.2 --scripts ./scripts --json\n  rayscan scripts list ./scripts --json\n  rayscan scripts install ./my-pack\n  rayscan scan -t 10.77.0.2 --scripts-library\n  rayscan db intel --force\n  sudo rayscan scan -6 -t fe80::/64 --ndp -p 22,80,443"
+    after_help = "Examples:\n  portensor scan --target 127.0.0.1 --ports 1-1024\n  portensor scan -t 10.0.0.0/24 -p 22,80,443 --json\n  portensor scan -t 10.77.0.2 -p 1-10000 --profile careful --show all\n  portensor scan -t 10.77.0.2 --scripts ./scripts --json\n  portensor scripts list ./scripts --json\n  portensor scripts install ./my-pack\n  portensor scan -t 10.77.0.2 --scripts-library\n  portensor db intel --force\n  sudo portensor scan -6 -t fe80::/64 --ndp -p 22,80,443"
 )]
 pub struct Cli {
     /// Color theme for tables, progress, and diagnostics.
     #[arg(long, global = true, value_enum, value_name = "THEME")]
     pub theme: Option<Theme>,
 
-    /// Structured diagnostic level for stderr (also RAYSCAN_LOG).
+    /// Structured diagnostic level for stderr (also PORTENSOR_LOG).
     #[arg(long, global = true, value_enum, value_name = "LEVEL")]
     pub log_level: Option<crate::diag::Level>,
 
@@ -74,6 +74,8 @@ pub enum Command {
     Scripts(ScriptsArgs),
     /// Set up and run a scan with guided prompts.
     Interactive,
+    /// Build an explainable scan plan, then execute it unless --dry-run is set.
+    Smart(SmartArgs),
 }
 
 #[derive(Debug, Args)]
@@ -115,6 +117,8 @@ pub enum ScriptsAction {
     Install(ScriptsInstallArgs),
     /// Remove an installed pack from the local script library.
     Uninstall(ScriptsUninstallArgs),
+    /// Update registry-installed packs using the digest-pinned lockfile.
+    Update(ScriptsUpdateArgs),
     /// Print the local script library location.
     Library(ScriptsLibraryArgs),
 }
@@ -137,7 +141,7 @@ pub struct ScriptsSearchArgs {
     #[arg(value_name = "QUERY")]
     pub query: Option<String>,
 
-    /// JSON registry index URL (or set RAYSCAN_SCRIPT_REGISTRY).
+    /// JSON registry index URL (or set PORTENSOR_SCRIPT_REGISTRY).
     #[arg(long, value_name = "URL")]
     pub registry: Option<String>,
 
@@ -153,7 +157,7 @@ pub struct ScriptsInstallArgs {
     pub source: String,
 
     /// Resolve SOURCE as a pack name from this registry index
-    /// (or set RAYSCAN_SCRIPT_REGISTRY).
+    /// (or set PORTENSOR_SCRIPT_REGISTRY).
     #[arg(long, value_name = "URL")]
     pub registry: Option<String>,
 
@@ -171,6 +175,21 @@ pub struct ScriptsUninstallArgs {
     /// Installed pack name (library subdirectory).
     #[arg(value_name = "NAME")]
     pub name: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ScriptsUpdateArgs {
+    /// Only update this installed pack.
+    #[arg(value_name = "NAME")]
+    pub name: Option<String>,
+
+    /// Use this registry index instead of the source recorded at install time.
+    #[arg(long, value_name = "URL")]
+    pub registry: Option<String>,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -235,11 +254,11 @@ pub struct DbIntelArgs {
 
 #[derive(Debug, Args)]
 pub struct DiffArgs {
-    /// Baseline report: rayscan JSON, state file, or Nmap XML.
+    /// Baseline report: portensor JSON, state file, or Nmap XML.
     #[arg(value_name = "BASELINE_FILE")]
     pub baseline: PathBuf,
 
-    /// Current report: rayscan JSON, state file, or Nmap XML.
+    /// Current report: portensor JSON, state file, or Nmap XML.
     #[arg(value_name = "CURRENT_FILE")]
     pub current: PathBuf,
 
@@ -326,7 +345,7 @@ pub struct DistributedServeArgs {
     #[arg(long, default_value = "127.0.0.1:9090", value_name = "ADDR")]
     pub listen: String,
 
-    /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
+    /// Bearer token (or PORTENSOR_DISTRIBUTED_TOKEN), at least 16 characters.
     #[arg(long, value_name = "TOKEN")]
     pub token: Option<String>,
 
@@ -351,8 +370,16 @@ pub struct DistributedServeArgs {
     pub shards: usize,
 
     /// Write the merged report to FILE.
-    #[arg(long, default_value = "rayscan-distributed.json", value_name = "FILE")]
+    #[arg(
+        long,
+        default_value = "portensor-distributed.json",
+        value_name = "FILE"
+    )]
     pub out: PathBuf,
+
+    /// Durable coordinator state file. Defaults to OUT.state.json.
+    #[arg(long, value_name = "FILE")]
+    pub state: Option<PathBuf>,
 
     /// Seconds a worker may hold a job without a heartbeat before it is requeued.
     #[arg(long, default_value_t = 300, value_name = "SECS")]
@@ -388,7 +415,7 @@ pub struct DistributedWorkerArgs {
     #[arg(long, value_name = "URL")]
     pub coordinator: String,
 
-    /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
+    /// Bearer token (or PORTENSOR_DISTRIBUTED_TOKEN), at least 16 characters.
     #[arg(long, value_name = "TOKEN")]
     pub token: Option<String>,
 
@@ -419,7 +446,7 @@ pub struct DistributedAgentArgs {
     #[arg(long, default_value = "127.0.0.1:9091", value_name = "ADDR")]
     pub listen: String,
 
-    /// Bearer token (or RAYSCAN_DISTRIBUTED_TOKEN), at least 16 characters.
+    /// Bearer token (or PORTENSOR_DISTRIBUTED_TOKEN), at least 16 characters.
     #[arg(long, value_name = "TOKEN")]
     pub token: Option<String>,
 
@@ -499,7 +526,7 @@ pub struct ScanArgs {
     #[arg(long)]
     pub stealth: bool,
 
-    /// Read settings from a TOML file. Defaults to rayscan.toml if present.
+    /// Read settings from a TOML file. Defaults to portensor.toml if present.
     #[arg(long, value_name = "FILE")]
     pub config: Option<PathBuf>,
 
@@ -606,6 +633,11 @@ pub struct ScanArgs {
     #[arg(long)]
     pub no_tls: bool,
 
+    /// Explicit DNS hostname for TLS SNI and certificate name validation.
+    /// Independent of the target IP; useful for virtual hosts sharing an IP.
+    #[arg(long, value_name = "HOST", conflicts_with = "no_tls")]
+    pub sni: Option<String>,
+
     /// Enable OS fingerprinting via TCP/IP stack analysis (Linux raw sockets; root/CAP_NET_RAW).
     /// Probes up to --os-probes open ports per host and classifies the SYN-ACK replies.
     #[arg(long)]
@@ -648,6 +680,7 @@ pub struct ScanArgs {
             "os",
             "udp",
             "tls",
+            "sni",
             "verify",
             "connect_only",
             "discover_only",
@@ -768,7 +801,7 @@ pub struct ScanArgs {
     #[arg(long, value_name = "PATH")]
     pub scripts: Vec<PathBuf>,
 
-    /// Load script packs installed in the local library (see `rayscan scripts`).
+    /// Load script packs installed in the local library (see `portensor scripts`).
     #[arg(long)]
     pub scripts_library: bool,
 
@@ -807,10 +840,38 @@ pub struct ScanArgs {
     /// Split targets into N deterministic shards for distributed scans. Requires --shard-index.
     #[arg(long, value_name = "N")]
     pub shard_count: Option<usize>,
+
+    /// Internal coordinator work-unit index. Partitions an already assigned shard.
+    #[arg(long = "work-part-index", hide = true, value_name = "N")]
+    pub work_part_index: Option<usize>,
+
+    /// Internal coordinator work-unit count. Used with --work-part-index.
+    #[arg(long = "work-part-count", hide = true, value_name = "N")]
+    pub work_part_count: Option<usize>,
+}
+
+#[derive(Debug, Args)]
+pub struct SmartArgs {
+    #[command(flatten)]
+    pub scan: ScanArgs,
+
+    /// Emit the plan without performing any network probes.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Emit the plan as JSON. Requires --dry-run so stdout stays parseable.
+    #[arg(long, requires = "dry_run")]
+    pub plan_json: bool,
+
+    /// Save the plan model as JSON at this path.
+    #[arg(long, value_name = "FILE")]
+    pub plan_output: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ResolvedConfig {
+    /// Selected configuration profile.
+    pub profile: Profile,
     pub timeout: Duration,
     pub probe_timeout: Duration,
     pub rate: u64,
@@ -895,8 +956,12 @@ pub struct ResolvedConfig {
     pub source_port_range: Option<(u16, u16)>,
     /// TLS inspection policy.
     pub tls_mode: TlsMode,
+    /// Explicit TLS SNI name, independent of the target IP.
+    pub sni: Option<String>,
     /// Optional `(index, count)` target shard selection.
     pub shard: Option<(usize, usize)>,
+    /// Optional `(index, count)` work-unit selection within a shard.
+    pub work_part: Option<(usize, usize)>,
     /// Authorized target boundary definition.
     pub scope: Option<PathBuf>,
     /// Bypass Scope Guard enforcement with warnings.
@@ -920,6 +985,7 @@ pub struct ResolvedConfig {
 impl ScanArgs {
     pub fn resolve(&self) -> Result<ResolvedConfig, AppError> {
         let shard = crate::shard::validate(self.shard_index, self.shard_count)?;
+        let work_part = crate::shard::validate(self.work_part_index, self.work_part_count)?;
         #[cfg(not(target_os = "linux"))]
         if self.os {
             return Err(AppError::usage(
@@ -1155,6 +1221,16 @@ impl ScanArgs {
         } else {
             TlsMode::Auto
         };
+        let sni = self.sni.clone().or(file.sni.clone());
+        let sni = match sni {
+            Some(value) => Some(crate::tls::validate_sni(&value).map_err(AppError::usage)?),
+            None => None,
+        };
+        if sni.is_some() && (self.ack || self.no_tls) {
+            return Err(AppError::usage(
+                "--sni cannot be combined with --ack or --no-tls",
+            ));
+        }
         let decoys = parse_decoy_addresses(self.decoys.as_deref())?;
         if let Some(size) = self.fragment_size
             && (!(8..=1480).contains(&size) || !size.is_multiple_of(8))
@@ -1176,6 +1252,7 @@ impl ScanArgs {
         };
 
         Ok(ResolvedConfig {
+            profile,
             timeout,
             probe_timeout: Duration::from_millis(probe_timeout_ms),
             rate,
@@ -1236,7 +1313,9 @@ impl ScanArgs {
             ttl,
             source_port_range,
             tls_mode,
+            sni,
             shard,
+            work_part,
             scope: self.scope.clone(),
             force_out_of_scope: self.force_out_of_scope,
             kev_only: self.kev_only,
@@ -1434,8 +1513,11 @@ mod tests {
             source_port_range: None,
             tls: false,
             no_tls: false,
+            sni: None,
             shard_index: None,
             shard_count: None,
+            work_part_index: None,
+            work_part_count: None,
             scope: None,
             force_out_of_scope: false,
             kev_only: false,
@@ -1660,6 +1742,23 @@ mod tests {
     }
 
     #[test]
+    fn sni_is_normalized_and_conflicts_with_tls_disabling() {
+        let mut with_sni = args();
+        with_sni.sni = Some(" STS.Airways.HTB. ".to_string());
+        let resolved = with_sni.resolve().unwrap();
+        assert_eq!(resolved.sni.as_deref(), Some("sts.airways.htb"));
+
+        let mut invalid = args();
+        invalid.sni = Some("not a hostname".to_string());
+        assert_eq!(invalid.resolve().unwrap_err().exit_code(), 2);
+
+        let mut with_no_tls = args();
+        with_no_tls.no_tls = true;
+        with_no_tls.sni = Some("sts.airways.htb".to_string());
+        assert_eq!(with_no_tls.resolve().unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
     fn ack_mode_rejects_incompatible_flags_and_formats() {
         let mut with_syn = args();
         with_syn.ack = true;
@@ -1763,7 +1862,7 @@ mod tests {
 
     #[test]
     fn db_subcommands_parse() {
-        let cli = Cli::try_parse_from(["rayscan", "db", "status", "--json"]).unwrap();
+        let cli = Cli::try_parse_from(["portensor", "db", "status", "--json"]).unwrap();
         match cli.command {
             Command::Db(DbArgs {
                 action: DbAction::Status(options),
@@ -1771,7 +1870,7 @@ mod tests {
             other => panic!("unexpected command: {other:?}"),
         }
 
-        let cli = Cli::try_parse_from(["rayscan", "db", "intel", "--force", "--json"]).unwrap();
+        let cli = Cli::try_parse_from(["portensor", "db", "intel", "--force", "--json"]).unwrap();
         match cli.command {
             Command::Db(DbArgs {
                 action: DbAction::Intel(options),
@@ -1783,9 +1882,9 @@ mod tests {
         }
 
         let cli = Cli::try_parse_from([
-            "rayscan",
+            "portensor",
             "--db-dir",
-            "/tmp/rayscan-db",
+            "/tmp/portensor-db",
             "db",
             "update",
             "--years",
@@ -1795,7 +1894,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             cli.db_dir.as_deref(),
-            Some(std::path::Path::new("/tmp/rayscan-db"))
+            Some(std::path::Path::new("/tmp/portensor-db"))
         );
         match cli.command {
             Command::Db(DbArgs {
@@ -1837,13 +1936,13 @@ mod tests {
     #[test]
     fn global_log_level_parses_before_or_after_subcommand() {
         for args in [
-            ["rayscan", "--log-level", "debug", "db", "status"],
-            ["rayscan", "db", "status", "--log-level", "debug"],
+            ["portensor", "--log-level", "debug", "db", "status"],
+            ["portensor", "db", "status", "--log-level", "debug"],
         ] {
             let cli = Cli::try_parse_from(args).unwrap();
             assert_eq!(cli.log_level, Some(crate::diag::Level::Debug));
         }
-        let error = Cli::try_parse_from(["rayscan", "--log-level", "verbose", "db", "status"])
+        let error = Cli::try_parse_from(["portensor", "--log-level", "verbose", "db", "status"])
             .expect_err("unknown diagnostic level must fail");
         assert!(error.to_string().contains("verbose"));
     }
@@ -1851,7 +1950,7 @@ mod tests {
     #[test]
     fn ndp_requires_ipv6_and_parses_timeout() {
         let cli = Cli::try_parse_from([
-            "rayscan",
+            "portensor",
             "scan",
             "-t",
             "fe80::/64",
@@ -1869,7 +1968,7 @@ mod tests {
             other => panic!("unexpected command: {other:?}"),
         }
 
-        let error = Cli::try_parse_from(["rayscan", "scan", "-t", "fe80::/64", "--ndp"])
+        let error = Cli::try_parse_from(["portensor", "scan", "-t", "fe80::/64", "--ndp"])
             .expect_err("--ndp without --ipv6 must fail");
         assert!(error.to_string().contains("--ipv6"));
     }
@@ -1902,7 +2001,7 @@ mod tests {
         assert_eq!(invalid.resolve().unwrap_err().exit_code(), 2);
 
         let cli = Cli::try_parse_from([
-            "rayscan",
+            "portensor",
             "scan",
             "-t",
             "192.0.2.1",
@@ -1930,12 +2029,13 @@ mod tests {
             other => panic!("unexpected command: {other:?}"),
         }
 
-        let error = Cli::try_parse_from(["rayscan", "scan", "-t", "192.0.2.1", "--fail-on-change"])
-            .expect_err("--fail-on-change requires --diff");
+        let error =
+            Cli::try_parse_from(["portensor", "scan", "-t", "192.0.2.1", "--fail-on-change"])
+                .expect_err("--fail-on-change requires --diff");
         assert!(error.to_string().contains("--diff"));
 
         let cli = Cli::try_parse_from([
-            "rayscan",
+            "portensor",
             "diff",
             "a.json",
             "b.json",
@@ -1959,7 +2059,7 @@ mod tests {
     #[test]
     fn distributed_tls_flags_are_paired_and_parse() {
         let cli = Cli::try_parse_from([
-            "rayscan",
+            "portensor",
             "distributed",
             "serve",
             "--tls-cert",
@@ -1991,13 +2091,18 @@ mod tests {
             other => panic!("unexpected command: {other:?}"),
         }
 
-        let error =
-            Cli::try_parse_from(["rayscan", "distributed", "agent", "--tls-cert", "agent.pem"])
-                .expect_err("--tls-cert without --tls-key must fail");
+        let error = Cli::try_parse_from([
+            "portensor",
+            "distributed",
+            "agent",
+            "--tls-cert",
+            "agent.pem",
+        ])
+        .expect_err("--tls-cert without --tls-key must fail");
         assert!(error.to_string().contains("tls-key"));
 
         let error = Cli::try_parse_from([
-            "rayscan",
+            "portensor",
             "distributed",
             "worker",
             "--coordinator",
@@ -2013,7 +2118,7 @@ mod tests {
     #[test]
     fn merge_subcommand_parses() {
         let cli = Cli::try_parse_from([
-            "rayscan",
+            "portensor",
             "merge",
             "shard-a.json",
             "shard-b.jsonl",

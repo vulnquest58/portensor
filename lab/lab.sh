@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create, verify, and destroy the isolated rayscan lab.
+# Create, verify, and destroy the isolated portensor lab.
 #
 # Requires Linux root because it creates a network namespace and veth pair.
 # The lab never touches the host's default route or public interfaces.
@@ -8,7 +8,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE="$ROOT/lab/state"
-NS="rayscan-srv"
+NS="portensor-srv"
 HOST_IF="rs-host"
 SRV_IF="rs-srv"
 HOST_IP="10.77.0.1"

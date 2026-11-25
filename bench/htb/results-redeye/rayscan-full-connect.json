@@ -1,0 +1,93 @@
+{
+  "target": "10.129.214.126",
+  "targets": 1,
+  "ports": 65535,
+  "jobs": 65535,
+  "workers": 512,
+  "open": [
+    {
+      "host": "10.129.214.126",
+      "port": 22,
+      "state": "open",
+      "latency_ms": 202.489,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:202.5ms(20%)"
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 202.748,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:202.7ms(20%)"
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 443,
+      "state": "open",
+      "latency_ms": 121.737,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:121.7ms(20%)"
+    },
+    {
+      "host": "10.129.214.126",
+      "port": 3000,
+      "state": "open",
+      "latency_ms": 87.35,
+      "banner": "TLS TLSv1.3 / TLS13_AES_256_GCM_SHA384",
+      "service": {
+        "name": "https",
+        "product": "nginx",
+        "confidence": 0.85
+      },
+      "detail": "tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:https/nginx(40%) stack:standard(15%) latency:87.4ms(20%)",
+      "tls": {
+        "version": "TLSv1.3",
+        "cipher": "TLS13_AES_256_GCM_SHA384",
+        "alpn": "http/1.1",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          "CN=chat.airways.htb"
+        ],
+        "subject": "CN=chat.airways.htb",
+        "issuer": "DC=htb, DC=airways, CN=AIRWAYS-DC01-CA",
+        "san": [
+          "chat.airways.htb"
+        ],
+        "serial": "3d:00:00:00:08:02:62:08:d4:f1:6a:2d:74:00:01:00:00:00:08",
+        "not_before": 1792508577,
+        "not_after": 1855580577,
+        "days_remaining": 698,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": false,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    }
+  ],
+  "defense": {
+    "10.129.214.126": {
+      "host": "10.129.214.126",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 4 open port(s) (with 1 identified services) responded with standard TCP semantics"
+      ]
+    }
+  },
+  "summary": {
+    "open": 4,
+    "closed": 0,
+    "filtered": 65531,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 141066.403
+}

@@ -1,0 +1,12 @@
+name = "sdk-wasm"
+description = "WASM metadata-only script template"
+
+[[script]]
+name = "metadata"
+description = "Demonstrates the WASM metadata contract"
+category = "discovery"
+danger = "safe"
+capabilities = ["metadata"]
+wasm = "check.wat"
+services = ["http"]
+timeout_ms = 3000

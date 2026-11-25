@@ -1,0 +1,518 @@
+{
+  "tls-certificate": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {
+          "version": "TLSv1.3",
+          "cipher": "TLS13_AES_256_GCM_SHA384",
+          "expired": true,
+          "not_yet_valid": false,
+          "self_signed": false,
+          "hostname_matches": true,
+          "chain_len": 2,
+          "days_remaining": -3,
+          "not_after": 1700000000,
+          "signature_algorithm": "sha256WithRSA"
+        }
+      },
+      "findings": ["tls-certificate-expired"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {
+          "version": "TLSv1.3",
+          "cipher": "TLS13_AES_256_GCM_SHA384",
+          "expired": false,
+          "not_yet_valid": false,
+          "self_signed": false,
+          "hostname_matches": true,
+          "chain_len": 2,
+          "days_remaining": 200,
+          "signature_algorithm": "sha256WithRSA"
+        }
+      },
+      "findings": []
+    }
+  },
+  "tls-weak-protocol": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {"version": "TLSv1.0", "cipher": "TLS_RSA_WITH_AES_128_CBC_SHA"}
+      },
+      "findings": ["tls-weak-protocol"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {"version": "TLSv1.3", "cipher": "TLS13_AES_256_GCM_SHA384"}
+      },
+      "findings": []
+    }
+  },
+  "tls-weak-cipher": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {"version": "TLSv1.2", "cipher": "TLS_RSA_WITH_3DES_EDE_CBC_SHA"}
+      },
+      "findings": ["tls-weak-cipher"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {"version": "TLSv1.3", "cipher": "TLS13_AES_256_GCM_SHA384"}
+      },
+      "findings": []
+    }
+  },
+  "tls-hostname-mismatch": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {"version": "TLSv1.3", "subject": "CN=wrong.example", "hostname_matches": false}
+      },
+      "findings": ["tls-hostname-mismatch"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "tls": {"version": "TLSv1.3", "subject": "CN=right.example", "hostname_matches": true}
+      },
+      "findings": []
+    }
+  },
+  "cleartext-ftp": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 21,
+        "service": {"name": "ftp", "product": "vsFTPd", "version": "2.3.4"}
+      },
+      "findings": ["cleartext-ftp"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 990,
+        "service": {"name": "ftp", "product": "vsFTPd"},
+        "tls": {"version": "TLSv1.2"}
+      },
+      "findings": []
+    }
+  },
+  "cleartext-telnet": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 23,
+        "service": {"name": "telnet"}
+      },
+      "findings": ["cleartext-telnet"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 22,
+        "service": {"name": "ssh", "product": "OpenSSH"}
+      },
+      "findings": []
+    }
+  },
+  "cleartext-http": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 80,
+        "service": {"name": "http", "product": "nginx", "version": "1.25.4"}
+      },
+      "findings": ["cleartext-http"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "service": {"name": "http", "product": "nginx"},
+        "tls": {"version": "TLSv1.3"}
+      },
+      "findings": []
+    }
+  },
+  "cleartext-smtp": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 25,
+        "service": {"name": "smtp", "product": "Postfix"}
+      },
+      "findings": ["cleartext-smtp"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 587,
+        "service": {"name": "smtp", "product": "Postfix"},
+        "tls": {"version": "TLSv1.2"}
+      },
+      "findings": []
+    }
+  },
+  "cleartext-pop3": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 110,
+        "service": {"name": "pop3", "product": "Dovecot"}
+      },
+      "findings": ["cleartext-pop3"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 995,
+        "service": {"name": "pop3", "product": "Dovecot"},
+        "tls": {"version": "TLSv1.2"}
+      },
+      "findings": []
+    }
+  },
+  "cleartext-imap": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 143,
+        "service": {"name": "imap", "product": "Dovecot"}
+      },
+      "findings": ["cleartext-imap"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 993,
+        "service": {"name": "imap", "product": "Dovecot"},
+        "tls": {"version": "TLSv1.2"}
+      },
+      "findings": []
+    }
+  },
+  "ssh-version-disclosure": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 22,
+        "service": {"name": "ssh", "product": "OpenSSH", "version": "8.9p1"}
+      },
+      "findings": ["ssh-version-disclosure"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 22,
+        "service": {"name": "ssh", "product": "OpenSSH"},
+        "banner": "SSH-2.0"
+      },
+      "findings": []
+    }
+  },
+  "http-version-disclosure": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 80,
+        "service": {"name": "http", "product": "nginx", "version": "1.25.4"}
+      },
+      "findings": ["http-version-disclosure"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 80,
+        "service": {"name": "http", "product": "nginx"}
+      },
+      "findings": []
+    }
+  },
+  "mysql-version-disclosure": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 3306,
+        "service": {"name": "mysql", "product": "MySQL", "version": "8.0.36"}
+      },
+      "findings": ["mysql-version-disclosure"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 3306,
+        "service": {"name": "mysql", "product": "MySQL"}
+      },
+      "findings": []
+    }
+  },
+  "postgresql-version-disclosure": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 5432,
+        "service": {"name": "postgresql", "product": "PostgreSQL", "version": "16.2"}
+      },
+      "findings": ["postgresql-version-disclosure"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 5432,
+        "service": {"name": "postgresql", "product": "PostgreSQL"}
+      },
+      "findings": []
+    }
+  },
+  "redis-version-disclosure": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 6379,
+        "service": {"name": "redis", "product": "Redis", "version": "7.2.4"}
+      },
+      "findings": ["redis-version-disclosure"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 6379,
+        "service": {"name": "redis", "product": "Redis"}
+      },
+      "findings": []
+    }
+  },
+  "mongodb-version-disclosure": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 27017,
+        "service": {"name": "mongodb", "product": "MongoDB", "version": "6.0.4"}
+      },
+      "findings": ["mongodb-version-disclosure"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 27017,
+        "service": {"name": "mongodb", "product": "MongoDB"}
+      },
+      "findings": []
+    }
+  },
+  "memcached-version-disclosure": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 11211,
+        "service": {"name": "memcached", "product": "memcached", "version": "1.6.21"}
+      },
+      "findings": ["memcached-version-disclosure"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 11211,
+        "service": {"name": "memcached", "product": "memcached"}
+      },
+      "findings": []
+    }
+  },
+  "smb-hardening": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 445,
+        "service": {"name": "smb", "info": {"smb_signing": "off", "smb_dialect": "3.1.1"}}
+      },
+      "findings": ["smb-signing-not-required"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 445,
+        "service": {"name": "smb", "info": {"smb_signing": "required", "smb_dialect": "3.1.1"}}
+      },
+      "findings": []
+    }
+  },
+  "redis-unauthenticated": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 6379,
+        "service": {
+          "name": "redis",
+          "product": "Redis",
+          "version": "7.2.4",
+          "info": {"mode": "standalone", "config_file": ""}
+        }
+      },
+      "findings": ["redis-unauthenticated"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 6379,
+        "service": {"name": "redis"}
+      },
+      "findings": []
+    }
+  },
+  "docker-unauthenticated": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 2376,
+        "service": {
+          "name": "docker-tls",
+          "product": "Docker Engine",
+          "info": {"api_version": "1.47", "min_api_version": "1.24"}
+        }
+      },
+      "findings": ["docker-api-unauthenticated"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 443,
+        "service": {"name": "https", "product": "nginx"}
+      },
+      "findings": []
+    }
+  },
+  "vnc-exposed": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 5900,
+        "service": {"name": "vnc", "product": "VNC", "version": "3.8"}
+      },
+      "findings": ["vnc-exposed"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 22,
+        "service": {"name": "ssh", "product": "OpenSSH"}
+      },
+      "findings": []
+    }
+  },
+  "rdp-exposed": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 3389,
+        "service": {"name": "rdp", "product": "Microsoft RDP"}
+      },
+      "findings": ["rdp-exposed"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 22,
+        "service": {"name": "ssh", "product": "OpenSSH"}
+      },
+      "findings": []
+    }
+  },
+  "mongodb-exposed": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 27017,
+        "service": {"name": "mongodb", "product": "MongoDB"}
+      },
+      "findings": ["mongodb-exposed"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 22,
+        "service": {"name": "ssh", "product": "OpenSSH"}
+      },
+      "findings": []
+    }
+  },
+  "elasticsearch-exposed": {
+    "positive": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 9200,
+        "service": {"name": "http", "product": "Elasticsearch", "version": "8.13.4"}
+      },
+      "findings": ["elasticsearch-exposed"]
+    },
+    "negative": {
+      "input": {
+        "api": 1,
+        "target": "192.0.2.10",
+        "port": 80,
+        "service": {"name": "http", "product": "nginx", "version": "1.25.4"}
+      },
+      "findings": []
+    }
+  }
+}

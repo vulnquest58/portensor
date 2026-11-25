@@ -1,0 +1,19 @@
+[scope] validated 1 target(s) against scope policy 'Hack The Box - authorized lab session (user-provided target)'
+[rdp] negotiating NLA against 1 endpoint(s) …
+[rdp] identified 1 endpoint(s)
+┌────────────────┬──────┬──────────┬────────────┬────────────────────────────────┬────────────┐
+│ HOST           ┆ PORT ┆ STATE    ┆ CONFIDENCE ┆ SERVICE                        ┆ LATENCY_MS │
+╞════════════════╪══════╪══════════╪════════════╪════════════════════════════════╪════════════╡
+│ 10.129.244.207 ┆ 445  ┆ open     ┆ 95%        ┆ smb SMB 3.0.2                  ┆ 189.08     │
+├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌┤
+│ 10.129.244.207 ┆ 3389 ┆ open     ┆ 95%        ┆ rdp Windows 10 / Server 2019/1 ┆ 86.51      │
+└────────────────┴──────┴──────────┴────────────┴────────────────────────────────┴────────────┘
+
+Network State Differential Analysis (vs bench/htb/results/htb-baseline.json):
+──────────────────────────────────────────────────────────────────────
+No network state changes detected (targets and services are identical).
+
+Diff Summary: 0 new | 0 closed/gone | 0 modified | 0 posture shifted (2 unchanged)
+
+open 2  closed 0  filtered 0  unfiltered 0  silent 0  unreachable 0  error 0  elapsed 0.57s
+  targets 1  ports 2  probes 2  workers 2

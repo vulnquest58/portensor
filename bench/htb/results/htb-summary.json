@@ -1,0 +1,362 @@
+{
+  "schema": 1,
+  "generated_at": "2026-11-21T11:45:42.082101+00:00",
+  "target": "10.129.244.207",
+  "reference": "https://0xdf.gitlab.io/2026/11/07/htb-garfield.html",
+  "authorization": "user-provided Hack The Box lab session; scope file allows this host only",
+  "confirmed_open_ports": [
+    53,
+    88,
+    135,
+    139,
+    389,
+    445,
+    464,
+    593,
+    636,
+    2179,
+    3268,
+    3269,
+    3389,
+    5985,
+    9389,
+    49668,
+    49676,
+    49677,
+    49679,
+    49680,
+    49906,
+    58166
+  ],
+  "confirmed_open_count": 22,
+  "scanner_metrics": [
+    {
+      "name": "nmap_all_tcp",
+      "open_ports": [
+        53,
+        88,
+        135,
+        139,
+        389,
+        445,
+        464,
+        593,
+        636,
+        2179,
+        3268,
+        3269,
+        3389,
+        5985,
+        9389,
+        49676,
+        49677,
+        49679,
+        49680,
+        49906
+      ],
+      "true_positives": 20,
+      "false_positives": [],
+      "false_negatives": [
+        49668,
+        58166
+      ],
+      "recall": 0.909091,
+      "precision": 1.0,
+      "exact": false
+    },
+    {
+      "name": "nmap_service_scan",
+      "open_ports": [
+        53,
+        88,
+        135,
+        139,
+        389,
+        445,
+        464,
+        593,
+        636,
+        2179,
+        3268,
+        3269,
+        3389,
+        5985,
+        9389,
+        49668,
+        49676,
+        49677,
+        49679,
+        49680,
+        49906,
+        58166
+      ],
+      "true_positives": 22,
+      "false_positives": [],
+      "false_negatives": [],
+      "recall": 1.0,
+      "precision": 1.0,
+      "exact": true
+    },
+    {
+      "name": "rayscan_full_connect",
+      "open_ports": [
+        53,
+        88,
+        135,
+        139,
+        389,
+        445,
+        464,
+        636,
+        2179,
+        3269,
+        3389,
+        5985,
+        9389,
+        49668,
+        49676,
+        49677,
+        49679,
+        49680,
+        49906,
+        58166
+      ],
+      "true_positives": 20,
+      "false_positives": [],
+      "false_negatives": [
+        593,
+        3268
+      ],
+      "recall": 0.909091,
+      "precision": 1.0,
+      "exact": false
+    },
+    {
+      "name": "rayscan_two_pass",
+      "open_ports": [
+        53,
+        88,
+        135,
+        139,
+        389,
+        445,
+        464,
+        593,
+        636,
+        2179,
+        3268,
+        3269,
+        3389,
+        5985,
+        9389,
+        49668,
+        49676,
+        49677,
+        49679,
+        49680,
+        49906,
+        58166
+      ],
+      "true_positives": 22,
+      "false_positives": [],
+      "false_negatives": [],
+      "recall": 1.0,
+      "precision": 1.0,
+      "exact": true
+    }
+  ],
+  "focus_recovery": {
+    "ports": [
+      593,
+      3268,
+      49668,
+      58166
+    ],
+    "missing_from_full_scan": [
+      593,
+      3268
+    ],
+    "not_found_in_full_scan": [
+      593,
+      3268
+    ],
+    "recovered_all": true
+  },
+  "q_preset": {
+    "open_ports": [
+      53,
+      88,
+      135,
+      139,
+      389,
+      445,
+      464,
+      593,
+      636,
+      2179,
+      3268,
+      3269,
+      3389,
+      5985
+    ],
+    "confirmed_open": 14,
+    "false_positives": [],
+    "filtered": 986,
+    "elapsed_ms": 7160.201,
+    "resources": {
+      "user_seconds": 0.04,
+      "system_seconds": 0.19,
+      "wall_seconds": 9.53,
+      "max_rss_kib": 16540.0
+    }
+  },
+  "verified_no_banner": {
+    "ports": [
+      53,
+      135
+    ],
+    "summary": {
+      "open": 0,
+      "closed": 0,
+      "filtered": 0,
+      "unfiltered": 0,
+      "silent": 2,
+      "unreachable": 0,
+      "error": 0
+    },
+    "false_negatives": [
+      53,
+      135
+    ]
+  },
+  "udp_53": {
+    "passive": {
+      "open": 0,
+      "closed": 0,
+      "filtered": 0,
+      "unfiltered": 0,
+      "silent": 1,
+      "unreachable": 0,
+      "error": 0
+    },
+    "active": {
+      "open": 0,
+      "closed": 0,
+      "filtered": 0,
+      "unfiltered": 0,
+      "silent": 1,
+      "unreachable": 0,
+      "error": 0
+    },
+    "note": "silent; UDP DNS state is not claimed from this result"
+  },
+  "raw_syn": {
+    "open_ports": [],
+    "summary": {
+      "open": 0,
+      "closed": 0,
+      "filtered": 6,
+      "unfiltered": 0,
+      "silent": 1,
+      "unreachable": 0,
+      "error": 0
+    },
+    "defense": {
+      "10.129.244.207": {
+        "host": "10.129.244.207",
+        "defense_type": "tarpit",
+        "confidence": 0.9,
+        "summary": "Target or perimeter firewall employs TCP Tarpits (`xt_TARPIT` or LaBrea style mute listeners).",
+        "indicators": [
+          "1 port(s) completed TCP handshakes but held connections mute without emitting application banners (tarpit behavior)"
+        ],
+        "recommended_action": "Filter out silent ports by showing only verified open services (`--show open`)."
+      }
+    },
+    "note": "WSL host-NAT path; native Windows Npcap was unavailable"
+  },
+  "os_fingerprints": {
+    "10.129.244.207": {
+      "family": "windows",
+      "role": "memberserver",
+      "detail": "Windows 10/11",
+      "confidence": 0.9148936,
+      "hops": 2,
+      "samples": 2,
+      "agreement": 1.0
+    }
+  },
+  "nmap_services": {
+    "53": {
+      "name": "domain"
+    },
+    "88": {
+      "name": "kerberos-sec",
+      "product": "Microsoft Windows Kerberos"
+    },
+    "135": {
+      "name": "msrpc",
+      "product": "Microsoft Windows RPC"
+    },
+    "139": {
+      "name": "netbios-ssn",
+      "product": "Microsoft Windows netbios-ssn"
+    },
+    "389": {
+      "name": "ldap",
+      "product": "Microsoft Windows Active Directory LDAP"
+    },
+    "445": {
+      "name": "microsoft-ds"
+    },
+    "464": {
+      "name": "kpasswd5"
+    },
+    "593": {
+      "name": "ncacn_http",
+      "product": "Microsoft Windows RPC over HTTP",
+      "version": "1.0"
+    },
+    "636": {
+      "name": "tcpwrapped"
+    },
+    "2179": {
+      "name": "vmrdp"
+    },
+    "3268": {
+      "name": "ldap",
+      "product": "Microsoft Windows Active Directory LDAP"
+    },
+    "3269": {
+      "name": "tcpwrapped"
+    },
+    "3389": {
+      "name": "ms-wbt-server",
+      "product": "Microsoft Terminal Services"
+    },
+    "5985": {
+      "name": "http",
+      "product": "Microsoft HTTPAPI httpd",
+      "version": "2.0"
+    },
+    "9389": {
+      "name": "adws"
+    },
+    "49668": {},
+    "49676": {
+      "name": "ncacn_http",
+      "product": "Microsoft Windows RPC over HTTP",
+      "version": "1.0"
+    },
+    "49677": {},
+    "49679": {},
+    "49680": {},
+    "49906": {},
+    "58166": {}
+  },
+  "limitations": [
+    "Rayscan banner verification treats no-banner AD services as silent; connect-only discovery is required for complete TCP inventory.",
+    "Nmap could not perform OS detection because the host exposed no closed TCP port.",
+    "UDP 53 remained silent to passive and active probing; no UDP service state is claimed."
+  ]
+}

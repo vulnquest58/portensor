@@ -1,0 +1,369 @@
+{
+  "target": "10.129.215.153",
+  "targets": 1,
+  "ports": 30,
+  "jobs": 30,
+  "workers": 10,
+  "open": [
+    {
+      "host": "10.129.215.153",
+      "port": 53,
+      "state": "open",
+      "latency_ms": 86.961,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:87.0ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 170.503,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:170.5ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 244.48,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:244.5ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 135,
+      "state": "open",
+      "latency_ms": 241.825,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:241.8ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 175.428,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:175.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 389,
+      "state": "open",
+      "latency_ms": 225.606,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:225.6ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 443,
+      "state": "open",
+      "latency_ms": 206.841,
+      "banner": "TLS TLSv1.3 / TLS13_AES_256_GCM_SHA384",
+      "service": {
+        "name": "https"
+      },
+      "detail": "tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:https(35%) stack:standard(15%) latency:206.8ms(20%)",
+      "tls": {
+        "version": "TLSv1.3",
+        "cipher": "TLS13_AES_256_GCM_SHA384",
+        "alpn": "h2",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          "CN=portal.scaffold.htb"
+        ],
+        "subject": "CN=portal.scaffold.htb",
+        "issuer": "CN=portal.scaffold.htb",
+        "san": [
+          "portal.scaffold.htb",
+          "DC01"
+        ],
+        "serial": "51:47:04:74:03:f5:de:bb:42:d7:73:8c:d1:4e:b1:50",
+        "not_before": 1779539516,
+        "not_after": 1874234516,
+        "days_remaining": 912,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": true,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 206.787,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:206.8ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 464,
+      "state": "open",
+      "latency_ms": 518.756,
+      "confidence": 0.78,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:518.8ms(15%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 593,
+      "state": "open",
+      "latency_ms": 191.808,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:191.8ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 636,
+      "state": "open",
+      "latency_ms": 351.325,
+      "banner": "TLS TLSv1.2 / TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "service": {
+        "name": "ldaps"
+      },
+      "detail": "tls:tls1.2 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:ldaps(35%) stack:standard(15%) latency:351.3ms(20%)",
+      "tls": {
+        "version": "TLSv1.2",
+        "cipher": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          ""
+        ],
+        "subject": "",
+        "issuer": "DC=htb, DC=scaffold, CN=scaffold-DC-CA",
+        "san": [
+          "dc.scaffold.htb",
+          "scaffold.htb",
+          "SCAFFOLD"
+        ],
+        "serial": "26:00:00:00:2a:e5:b5:1d:4d:48:86:49:87:00:01:00:00:00:2a",
+        "not_before": 1788306712,
+        "not_after": 4312828312,
+        "days_remaining": 29137,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": false,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 3268,
+      "state": "open",
+      "latency_ms": 256.495,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:256.5ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 3269,
+      "state": "open",
+      "latency_ms": 212.399,
+      "banner": "TLS TLSv1.2 / TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "service": {
+        "name": "tls"
+      },
+      "detail": "tls:tls1.2 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:tls(35%) stack:standard(15%) latency:212.4ms(20%)",
+      "tls": {
+        "version": "TLSv1.2",
+        "cipher": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          ""
+        ],
+        "subject": "",
+        "issuer": "DC=htb, DC=scaffold, CN=scaffold-DC-CA",
+        "san": [
+          "dc.scaffold.htb",
+          "scaffold.htb",
+          "SCAFFOLD"
+        ],
+        "serial": "26:00:00:00:2a:e5:b5:1d:4d:48:86:49:87:00:01:00:00:00:2a",
+        "not_before": 1788306712,
+        "not_after": 4312828312,
+        "days_remaining": 29137,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": false,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 5040,
+      "state": "open",
+      "latency_ms": 250.356,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:250.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 568.01,
+      "banner": "HTTP/1.1 401",
+      "service": {
+        "name": "winrm",
+        "product": "Microsoft WinRM",
+        "confidence": 0.9,
+        "cpe": "cpe:2.3:a:microsoft:windows_remote_management"
+      },
+      "detail": "plugin:remote/winrm-wsman",
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:winrm/Microsoft WinRM(40%) stack:standard(15%) latency:568.0ms(15%) | probe match plugin:remote/winrm-wsman (1 step(s): wsman-probe)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9389,
+      "state": "open",
+      "latency_ms": 194.118,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:194.1ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9800,
+      "state": "open",
+      "latency_ms": 302.411,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:302.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9801,
+      "state": "open",
+      "latency_ms": 618.057,
+      "confidence": 0.78,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:618.1ms(15%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 47001,
+      "state": "open",
+      "latency_ms": 501.33,
+      "confidence": 0.78,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:501.3ms(15%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 49664,
+      "state": "open",
+      "latency_ms": 451.617,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:451.6ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 49665,
+      "state": "open",
+      "latency_ms": 401.869,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:401.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 49666,
+      "state": "open",
+      "latency_ms": 550.801,
+      "confidence": 0.78,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:550.8ms(15%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 49667,
+      "state": "open",
+      "latency_ms": 359.089,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:359.1ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 52951,
+      "state": "open",
+      "latency_ms": 358.661,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:358.7ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 56384,
+      "state": "open",
+      "latency_ms": 308.558,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:308.6ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 56405,
+      "state": "open",
+      "latency_ms": 210.649,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:210.6ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 56408,
+      "state": "open",
+      "latency_ms": 244.657,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:244.7ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 61051,
+      "state": "open",
+      "latency_ms": 195.85,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:195.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 61055,
+      "state": "open",
+      "latency_ms": 345.685,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:345.7ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 64642,
+      "state": "open",
+      "latency_ms": 246.027,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:246.0ms(20%)"
+    }
+  ],
+  "defense": {
+    "10.129.215.153": {
+      "host": "10.129.215.153",
+      "defense_type": "rate_limiting",
+      "confidence": 0.8,
+      "summary": "Target network enforces probe rate-limiting or token-bucket traffic policing.",
+      "indicators": [
+        "23 port(s) required probe retries or backoff, suggesting packet loss or rate-limiting thresholds"
+      ],
+      "recommended_action": "Use `--rate 50` or `--profile careful` to stay below packet drop thresholds."
+    }
+  },
+  "summary": {
+    "open": 30,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 1719.099
+}

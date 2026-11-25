@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>portensor</id>
+    <version>@@VERSION@@</version>
+    <title>Portensor</title>
+    <authors>vulnquest58</authors>
+    <owners>vulnquest58</owners>
+    <projectUrl>https://github.com/@@REPO@@</projectUrl>
+    <packageSourceUrl>https://github.com/@@REPO@@</packageSourceUrl>
+    <docsUrl>https://github.com/@@REPO@@#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/@@REPO@@/issues</bugTrackerUrl>
+    <licenseUrl>https://github.com/@@REPO@@/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/@@REPO@@</projectSourceUrl>
+    <releaseNotes>https://github.com/@@REPO@@/blob/main/CHANGELOG.md</releaseNotes>
+    <description>Accuracy-first TCP/UDP port scanner with OS fingerprinting.</description>
+    <summary>Accuracy-first port scanner</summary>
+    <tags>portensor port-scanner security networking tcp udp</tags>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

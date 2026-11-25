@@ -142,12 +142,12 @@ fn tty_label(is_tty: bool) -> &'static str {
 }
 
 fn config_check() -> Check {
-    let path = Path::new("rayscan.toml");
+    let path = Path::new("portensor.toml");
     if !path.is_file() {
         return Check {
             name: "config",
             status: CheckStatus::Pass,
-            detail: "built-in defaults (no rayscan.toml)".to_string(),
+            detail: "built-in defaults (no portensor.toml)".to_string(),
         };
     }
     match config::load(Some(path)) {
@@ -292,7 +292,7 @@ fn print_report(report: &DoctorReport, theme: Theme) {
     }
 
     println!(
-        "rayscan {} doctor — {} ({})",
+        "portensor {} doctor — {} ({})",
         report.version, report.platform, report.theme
     );
     println!("{table}");

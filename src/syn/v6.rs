@@ -517,7 +517,7 @@ pub(super) fn scan_v6(
     let rx_cookie = cookie_key;
     let rx_mode = opts.mode;
     let rx_handle = std::thread::Builder::new()
-        .name("rayscan-rx6".to_string())
+        .name("portensor-rx6".to_string())
         .spawn(move || rx_loop(rx_fd, rx_running, rx_cookie, rx_mode, result_tx))
         .map_err(|error| AppError::runtime(format!("failed to spawn IPv6 RX thread: {error}")))?;
 

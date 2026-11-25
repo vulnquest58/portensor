@@ -1,0 +1,84 @@
+{
+  "target": "10.129.215.153",
+  "targets": 1,
+  "ports": 3,
+  "jobs": 3,
+  "workers": 3,
+  "open": [
+    {
+      "host": "10.129.215.153",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 286.78,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:286.8ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 443,
+      "state": "open",
+      "latency_ms": 199.685,
+      "banner": "TLS TLSv1.3 / TLS13_AES_256_GCM_SHA384",
+      "service": {
+        "name": "https"
+      },
+      "detail": "tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:https(35%) stack:standard(15%) latency:199.7ms(20%)",
+      "tls": {
+        "version": "TLSv1.3",
+        "cipher": "TLS13_AES_256_GCM_SHA384",
+        "alpn": "h2",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          "CN=portal.scaffold.htb"
+        ],
+        "subject": "CN=portal.scaffold.htb",
+        "issuer": "CN=portal.scaffold.htb",
+        "san": [
+          "portal.scaffold.htb",
+          "DC01"
+        ],
+        "serial": "51:47:04:74:03:f5:de:bb:42:d7:73:8c:d1:4e:b1:50",
+        "not_before": 1779539516,
+        "not_after": 1874234516,
+        "days_remaining": 912,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": true,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 110.38,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:110.4ms(20%)"
+    }
+  ],
+  "defense": {
+    "10.129.215.153": {
+      "host": "10.129.215.153",
+      "defense_type": "direct_host",
+      "confidence": 1.0,
+      "summary": "Target behaves as a clean, direct endpoint with no detectable middlebox or tarpit interference.",
+      "indicators": [
+        "All 3 open port(s) (with 1 identified services) responded with standard TCP semantics"
+      ]
+    }
+  },
+  "summary": {
+    "open": 3,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 295.745
+}

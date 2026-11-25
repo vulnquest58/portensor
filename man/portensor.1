@@ -1,0 +1,106 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH portensor 1  "portensor 0.7.1"
+.SH NAME
+portensor \- An accuracy\-first TCP port scanner
+.SH SYNOPSIS
+\fBportensor\fR [\fB\-\-theme\fR] [\fB\-\-log\-level\fR] [\fB\-\-db\-dir\fR] [\fB\-\-scripts\-dir\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+An accuracy\-first TCP/UDP scanner. Portensor uses a bounded worker pool, adaptive per\-host timeouts, a global rate limit, and a short service\-verification read so a bare handshake from a tarpit or SYN proxy is not reported as an open service. Responsive services are identified from their banners, including common products and versions. With raw\-socket support (Linux root/CAP_NET_RAW, or Windows with Npcap), \-\-syn performs raw SYN discovery and verifies responsive candidates over TCP. A UDP scanner is available for service detection on ports that accept UDP traffic.
+.SH OPTIONS
+.TP
+\fB\-\-theme\fR \fI<THEME>\fR
+Color theme for tables, progress, and diagnostics
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+dark
+.IP \(bu 2
+light
+.IP \(bu 2
+hacker
+.IP \(bu 2
+minimal
+.IP \(bu 2
+cyber
+.RE
+.TP
+\fB\-\-log\-level\fR \fI<LEVEL>\fR
+Structured diagnostic level for stderr (also PORTENSOR_LOG)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+off
+.IP \(bu 2
+error
+.IP \(bu 2
+warn
+.IP \(bu 2
+info
+.IP \(bu 2
+debug
+.IP \(bu 2
+trace
+.RE
+.TP
+\fB\-\-db\-dir\fR \fI<DIR>\fR
+Directory for the local NVD advisory database
+.TP
+\fB\-\-scripts\-dir\fR \fI<DIR>\fR
+Directory for the local script pack library
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+portensor\-scan(1)
+Scan TCP ports on one or more targets
+.TP
+portensor\-diff(1)
+Compare two previous scan reports or state files to display differences
+.TP
+portensor\-merge(1)
+Merge reports from distributed/sharded scans into one report
+.TP
+portensor\-distributed(1)
+Plan, coordinate, or execute distributed scans across multiple hosts
+.TP
+portensor\-doctor(1)
+Check permissions, terminal support, and scan capabilities
+.TP
+portensor\-db(1)
+Manage the local NVD CVE advisory database
+.TP
+portensor\-probes(1)
+List built\-in and custom probe packs
+.TP
+portensor\-scripts(1)
+List and validate script plugin manifests (sidecar or WASM)
+.TP
+portensor\-interactive(1)
+Set up and run a scan with guided prompts
+.TP
+portensor\-smart(1)
+Build an explainable scan plan, then execute it unless \-\-dry\-run is set
+.SH EXTRA
+Examples:
+  portensor scan \-\-target 127.0.0.1 \-\-ports 1\-1024
+  portensor scan \-t 10.0.0.0/24 \-p 22,80,443 \-\-json
+  portensor scan \-t 10.77.0.2 \-p 1\-10000 \-\-profile careful \-\-show all
+  portensor scan \-t 10.77.0.2 \-\-scripts ./scripts \-\-json
+  portensor scripts list ./scripts \-\-json
+  portensor scripts install ./my\-pack
+  portensor scan \-t 10.77.0.2 \-\-scripts\-library
+  portensor db intel \-\-force
+  sudo portensor scan \-6 \-t fe80::/64 \-\-ndp \-p 22,80,443
+.SH VERSION
+v0.7.1

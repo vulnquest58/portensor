@@ -1,0 +1,149 @@
+{
+  "target": "10.129.215.153",
+  "targets": 1,
+  "ports": 10,
+  "jobs": 10,
+  "workers": 10,
+  "open": [
+    {
+      "host": "10.129.215.153",
+      "port": 53,
+      "state": "open",
+      "latency_ms": 115.433,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:115.4ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 80,
+      "state": "open",
+      "latency_ms": 536.341,
+      "confidence": 0.78,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:536.3ms(15%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 203.502,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:203.5ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 135,
+      "state": "open",
+      "latency_ms": 289.987,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:290.0ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 389,
+      "state": "open",
+      "latency_ms": 289.86,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:289.9ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 443,
+      "state": "open",
+      "latency_ms": 290.163,
+      "banner": "TLS TLSv1.3 / TLS13_AES_256_GCM_SHA384",
+      "service": {
+        "name": "https"
+      },
+      "detail": "tls:tls1.3 TLS13_AES_256_GCM_SHA384",
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:https(35%) stack:standard(15%) latency:290.2ms(20%)",
+      "tls": {
+        "version": "TLSv1.3",
+        "cipher": "TLS13_AES_256_GCM_SHA384",
+        "alpn": "h2",
+        "key_algorithm": "RSA",
+        "signature_algorithm": "sha256WithRSA",
+        "chain": [
+          "CN=portal.scaffold.htb"
+        ],
+        "subject": "CN=portal.scaffold.htb",
+        "issuer": "CN=portal.scaffold.htb",
+        "san": [
+          "portal.scaffold.htb",
+          "DC01"
+        ],
+        "serial": "51:47:04:74:03:f5:de:bb:42:d7:73:8c:d1:4e:b1:50",
+        "not_before": 1779539516,
+        "not_after": 1874234516,
+        "days_remaining": 912,
+        "expired": false,
+        "not_yet_valid": false,
+        "self_signed": true,
+        "hostname_matches": false,
+        "chain_len": 1
+      }
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 289.829,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:289.8ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 5985,
+      "state": "open",
+      "latency_ms": 289.974,
+      "banner": "HTTP/1.1 401",
+      "service": {
+        "name": "winrm",
+        "product": "Microsoft WinRM",
+        "confidence": 0.9,
+        "cpe": "cpe:2.3:a:microsoft:windows_remote_management"
+      },
+      "detail": "plugin:remote/winrm-wsman",
+      "confidence": 0.95,
+      "evidence": "handshake:ok(20%) banner:winrm/Microsoft WinRM(40%) stack:standard(15%) latency:290.0ms(20%) | probe match plugin:remote/winrm-wsman (1 step(s): wsman-probe)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9800,
+      "state": "open",
+      "latency_ms": 289.486,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:289.5ms(20%)"
+    },
+    {
+      "host": "10.129.215.153",
+      "port": 9801,
+      "state": "open",
+      "latency_ms": 289.249,
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:289.2ms(20%)"
+    }
+  ],
+  "defense": {
+    "10.129.215.153": {
+      "host": "10.129.215.153",
+      "defense_type": "rate_limiting",
+      "confidence": 0.8,
+      "summary": "Target network enforces probe rate-limiting or token-bucket traffic policing.",
+      "indicators": [
+        "6 port(s) required probe retries or backoff, suggesting packet loss or rate-limiting thresholds"
+      ],
+      "recommended_action": "Use `--rate 50` or `--profile careful` to stay below packet drop thresholds."
+    }
+  },
+  "summary": {
+    "open": 10,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 0,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 1669.795
+}

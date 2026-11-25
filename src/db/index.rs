@@ -437,7 +437,7 @@ mod tests {
     impl TempDb {
         fn new(name: &str) -> Self {
             let root = std::env::temp_dir().join(format!(
-                "rayscan-db-{name}-{}-{}",
+                "portensor-db-{name}-{}-{}",
                 std::process::id(),
                 crate::db::now_unix()
             ));

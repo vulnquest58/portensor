@@ -230,7 +230,7 @@ fn negotiated_only(protocol: u32) -> RdpInfo {
 
 /// X.224 Connection Request requesting SSL, HYBRID, and HYBRID_EX.
 fn connection_request() -> Vec<u8> {
-    let cookie = b"Cookie: mstshash=rayscan\r\n";
+    let cookie = b"Cookie: mstshash=portensor\r\n";
     let mut body = Vec::with_capacity(8 + cookie.len() + 8);
     body.extend_from_slice(&[0, 0, 0, 0]); // destination and source reference
     body.push(0); // class options

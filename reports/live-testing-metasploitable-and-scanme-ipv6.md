@@ -127,9 +127,9 @@ Diff Summary: 2 new | 16 closed/gone | 0 modified | 0 posture shifted (0 unchang
 
 ## 5. Artifact Files Reference
 
-- **Full IPv4 Scan (JSON):** [`reports/metasploitable2-phase9-live.json`](file:///e:/VulnQuest_Pro/rayscan/reports/metasploitable2-phase9-live.json)
-- **Full IPv6 Scan (JSON):** [`reports/metasploitable2-ipv6-live.json`](file:///e:/VulnQuest_Pro/rayscan/reports/metasploitable2-ipv6-live.json)
-- **scanme.nmap.org IPv4 (JSON):** [`reports/scanme-ipv4.json`](file:///e:/VulnQuest_Pro/rayscan/reports/scanme-ipv4.json)
-- **scanme.nmap.org IPv6 (JSON):** [`reports/scanme-ipv6.json`](file:///e:/VulnQuest_Pro/rayscan/reports/scanme-ipv6.json)
-- **Native Windows Release Binary:** [`rayscan.exe`](file:///e:/VulnQuest_Pro/rayscan/rayscan.exe)
-- **Release Distribution Archives:** [`dist/`](file:///e:/VulnQuest_Pro/rayscan/dist)
+- **Full IPv4 Scan (JSON):** [`reports/metasploitable2-phase9-live.json`](file:///e:/VulnQuest_Pro/portensor/reports/metasploitable2-phase9-live.json)
+- **Full IPv6 Scan (JSON):** [`reports/metasploitable2-ipv6-live.json`](file:///e:/VulnQuest_Pro/portensor/reports/metasploitable2-ipv6-live.json)
+- **scanme.nmap.org IPv4 (JSON):** [`reports/scanme-ipv4.json`](file:///e:/VulnQuest_Pro/portensor/reports/scanme-ipv4.json)
+- **scanme.nmap.org IPv6 (JSON):** [`reports/scanme-ipv6.json`](file:///e:/VulnQuest_Pro/portensor/reports/scanme-ipv6.json)
+- **Native Windows Release Binary:** [`rayscan.exe`](file:///e:/VulnQuest_Pro/portensor/rayscan.exe)
+- **Release Distribution Archives:** [`dist/`](file:///e:/VulnQuest_Pro/portensor/dist)

@@ -10,7 +10,7 @@
 //! <root>/shards/<year>/<xx>.jsonl   product-bucketed lookup shards
 //! ```
 //!
-//! `rayscan db update` performs a full or incremental synchronization and
+//! `portensor db update` performs a full or incremental synchronization and
 //! every scan performs a lightweight check of the NVD `recent` feed so new
 //! changes are applied automatically.
 
@@ -185,11 +185,11 @@ pub struct DbPaths {
 
 impl DbPaths {
     /// Resolve the database directory using an explicit path, the
-    /// `RAYSCAN_DB_DIR` environment variable, or the platform data directory.
+    /// `PORTENSOR_DB_DIR` environment variable, or the platform data directory.
     pub fn resolve(explicit: Option<&Path>) -> Option<Self> {
         let root = if let Some(path) = explicit {
             path.to_path_buf()
-        } else if let Some(path) = std::env::var_os("RAYSCAN_DB_DIR") {
+        } else if let Some(path) = std::env::var_os("PORTENSOR_DB_DIR") {
             PathBuf::from(path)
         } else {
             default_root()?
@@ -251,7 +251,7 @@ pub(crate) fn default_data_root() -> Option<PathBuf> {
     std::env::var_os("APPDATA")
         .or_else(|| std::env::var_os("LOCALAPPDATA"))
         .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(|base| PathBuf::from(base).join("rayscan"))
+        .map(|base| PathBuf::from(base).join("portensor"))
 }
 
 #[cfg(windows)]
@@ -262,13 +262,13 @@ fn default_root() -> Option<PathBuf> {
 #[cfg(not(windows))]
 pub(crate) fn default_data_root() -> Option<PathBuf> {
     if let Some(base) = std::env::var_os("XDG_DATA_HOME") {
-        return Some(PathBuf::from(base).join("rayscan"));
+        return Some(PathBuf::from(base).join("portensor"));
     }
     std::env::var_os("HOME").map(|home| {
         PathBuf::from(home)
             .join(".local")
             .join("share")
-            .join("rayscan")
+            .join("portensor")
     })
 }
 
@@ -870,7 +870,7 @@ pub fn auto_update(paths: &DbPaths, quiet: bool, explain_skip: bool) {
     let Some(mut manifest) = load_manifest(paths) else {
         if explain_skip && !quiet {
             eprintln!(
-                "[rayscan] local advisory database not initialized; using bundled advisories (run `rayscan db update`)"
+                "[portensor] local advisory database not initialized; using bundled advisories (run `portensor db update`)"
             );
         }
         return;
@@ -882,7 +882,7 @@ pub fn auto_update(paths: &DbPaths, quiet: bool, explain_skip: bool) {
         Err(error) => {
             if explain_skip && !quiet {
                 eprintln!(
-                    "[rayscan] advisory database check failed ({error}); using local database"
+                    "[portensor] advisory database check failed ({error}); using local database"
                 );
             }
             return;
@@ -902,7 +902,7 @@ pub fn auto_update(paths: &DbPaths, quiet: bool, explain_skip: bool) {
             .unwrap_or(true);
         if stale && explain_skip && !quiet {
             eprintln!(
-                "[rayscan] advisory database may be stale; run `rayscan db update` for a full refresh"
+                "[portensor] advisory database may be stale; run `portensor db update` for a full refresh"
             );
         }
         return;
@@ -940,7 +940,7 @@ pub fn auto_update(paths: &DbPaths, quiet: bool, explain_skip: bool) {
     match result {
         Ok(()) if !quiet => {
             eprintln!(
-                "[rayscan] advisory database updated from NVD ({} CVEs indexed)",
+                "[portensor] advisory database updated from NVD ({} CVEs indexed)",
                 manifest.cve_count
             );
         }
@@ -948,7 +948,7 @@ pub fn auto_update(paths: &DbPaths, quiet: bool, explain_skip: bool) {
         Err(error) => {
             if explain_skip && !quiet {
                 eprintln!(
-                    "[rayscan] advisory database update failed ({error}); using local database"
+                    "[portensor] advisory database update failed ({error}); using local database"
                 );
             }
         }
@@ -1018,7 +1018,7 @@ pub fn run_cli(
     let _ = theme;
     let paths = DbPaths::resolve(db_dir).ok_or_else(|| {
         AppError::usage(
-            "cannot determine a database directory; set RAYSCAN_DB_DIR or pass --db-dir",
+            "cannot determine a database directory; set PORTENSOR_DB_DIR or pass --db-dir",
         )
     })?;
 
@@ -1091,7 +1091,7 @@ pub fn run_cli(
                 println!("Advisory database: {}", report.path);
                 if !report.initialized {
                     println!("  Status:          not initialized");
-                    println!("  Initialize with: rayscan db update");
+                    println!("  Initialize with: portensor db update");
                     return Ok(());
                 }
                 println!("  Schema:          {}", report.schema);
@@ -1113,7 +1113,7 @@ pub fn run_cli(
                 println!(
                     "  Recent changes:  {}",
                     if report.stale {
-                        "stale (run `rayscan db update`)".to_string()
+                        "stale (run `portensor db update`)".to_string()
                     } else {
                         format!(
                             "current ({})",
