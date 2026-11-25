@@ -457,6 +457,8 @@ fn create_private_dir(path: &Path) -> Result<(), AppError> {
 }
 
 fn sync_parent(path: &Path) {
+    #[cfg(not(unix))]
+    let _ = path;
     #[cfg(unix)]
     {
         if let Some(parent) = path.parent()
