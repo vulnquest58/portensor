@@ -202,6 +202,18 @@ bind the full 128-bit address. IPv4 decoys and fragmentation are not available
 for IPv6, and mixed-family target sets are partitioned and merged into a single
 report.
 
+**Non-ARP IPv4 (`AF_INET`):** When the egress interface has no usable
+Ethernet/ARP path (for example an OpenVPN `tun0`), the SYN engine uses
+`src/syn/v4raw.rs` instead of `AF_PACKET`. TX uses an `IPPROTO_RAW` socket with
+`IP_HDRINCL`; RX uses an `AF_INET` `IPPROTO_TCP` raw socket. The kernel selects
+the route and interface and computes the IPv4/TCP checksums; the scanner parses
+IPv4/TCP itself and validates the SYN cookie. Decoys, fragmentation, and other
+Ethernet-layer features are rejected on this path. After a valid SYN-ACK the
+scanner sends a RST to close the half-open connection, which prevents target
+state exhaustion and keeps consecutive scans stable. Verification may add
+evidence or confirm an open result, but an inconclusive timeout cannot replace
+a SYN-ACK-backed `open` with `filtered`.
+
 ## TCP ACK engine (`--ack`, Linux + CAP_NET_RAW)
 
 ACK mode reuses the SYN engine's sharding, pacing, retransmission, and RX

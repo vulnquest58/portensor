@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.93 scan initiated Thu Nov 26 22:02:23 2026 as: nmap -Pn -n -p- -&#45;min-rate 1000 -&#45;max-retries 2 -T4 -oN /root/portensor-evidence/nmap-full.txt -oX /root/portensor-evidence/nmap-full.xml 10.129.219.98 -->
+<nmaprun scanner="nmap" args="nmap -Pn -n -p- -&#45;min-rate 1000 -&#45;max-retries 2 -T4 -oN /root/portensor-evidence/nmap-full.txt -oX /root/portensor-evidence/nmap-full.xml 10.129.219.98" start="1795730543" startstr="Thu Nov 26 22:02:23 2026" version="7.93" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="65535" services="1-65535"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1795730543" endtime="1795730743"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="10.129.219.98" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="filtered" count="65516">
+<extrareasons reason="no-response" count="65516" proto="tcp" ports="1-52,54-87,89-134,136-138,140-388,390-444,446-463,465-635,637-2178,2180-3267,3270-9388,9390-49663,49665-49668,49670-49673,49675-55839,55841-55980,55982-55984,55986-56034,56036-65535"/>
+</extraports>
+<port protocol="tcp" portid="53"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="domain" method="table" conf="3"/></port>
+<port protocol="tcp" portid="88"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="kerberos-sec" method="table" conf="3"/></port>
+<port protocol="tcp" portid="135"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="msrpc" method="table" conf="3"/></port>
+<port protocol="tcp" portid="139"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="netbios-ssn" method="table" conf="3"/></port>
+<port protocol="tcp" portid="389"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="ldap" method="table" conf="3"/></port>
+<port protocol="tcp" portid="445"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="microsoft-ds" method="table" conf="3"/></port>
+<port protocol="tcp" portid="464"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="kpasswd5" method="table" conf="3"/></port>
+<port protocol="tcp" portid="636"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="ldapssl" method="table" conf="3"/></port>
+<port protocol="tcp" portid="2179"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="vmrdp" method="table" conf="3"/></port>
+<port protocol="tcp" portid="3268"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="globalcatLDAP" method="table" conf="3"/></port>
+<port protocol="tcp" portid="3269"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="globalcatLDAPssl" method="table" conf="3"/></port>
+<port protocol="tcp" portid="9389"><state state="open" reason="syn-ack" reason_ttl="127"/><service name="adws" method="table" conf="3"/></port>
+<port protocol="tcp" portid="49664"><state state="open" reason="syn-ack" reason_ttl="127"/></port>
+<port protocol="tcp" portid="49669"><state state="open" reason="syn-ack" reason_ttl="127"/></port>
+<port protocol="tcp" portid="49674"><state state="open" reason="syn-ack" reason_ttl="127"/></port>
+<port protocol="tcp" portid="55840"><state state="open" reason="syn-ack" reason_ttl="127"/></port>
+<port protocol="tcp" portid="55981"><state state="open" reason="syn-ack" reason_ttl="127"/></port>
+<port protocol="tcp" portid="55985"><state state="open" reason="syn-ack" reason_ttl="127"/></port>
+<port protocol="tcp" portid="56035"><state state="open" reason="syn-ack" reason_ttl="127"/></port>
+</ports>
+<times srtt="268540" rttvar="209630" to="1107060"/>
+</host>
+<runstats><finished time="1795730743" timestr="Thu Nov 26 22:05:43 2026" summary="Nmap done at Thu Nov 26 22:05:43 2026; 1 IP address (1 host up) scanned in 200.11 seconds" elapsed="200.11" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

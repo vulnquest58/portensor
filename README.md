@@ -1,7 +1,7 @@
 # Portensor
 
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](https://github.com/vulnquest58/portensor)
-[![Version](https://img.shields.io/badge/version-v0.7.2-blue.svg)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-v1.0.0--rc.1-blue.svg)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.99.1%20pinned-orange.svg)](rust-toolchain.toml)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20Static%20musl-informational.svg)](#cross-platform-binaries)
 [![Author](https://img.shields.io/badge/author-vulnquest58-blueviolet.svg)](https://github.com/vulnquest58)
@@ -10,7 +10,7 @@
 An accuracy-first TCP/UDP port scanner with passive OS fingerprinting, written in Rust.  
 Maintained by **vulnquest58** ([@vulnquest58](https://github.com/vulnquest58)).
 
-**Status: Production Ready (v0.7.2).** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `portensor` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
+**Status: Release Candidate (v1.0.0-rc.1).** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `portensor` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
 
 Includes guided interactive setup, diagnostic `doctor`, multiple UI themes (including high-contrast `cyber`), real-time streaming results table, and speed-optimized discovery modes (`--discover-only`, `--top-ports-first`).
 

@@ -1,0 +1,21 @@
+﻿{
+    "summary":  {
+                    "open":  1,
+                    "closed":  0,
+                    "filtered":  65534,
+                    "unfiltered":  0,
+                    "silent":  0,
+                    "unreachable":  0,
+                    "error":  0
+                },
+    "open":  [
+                 {
+                     "host":  "10.129.219.98",
+                     "port":  49669,
+                     "state":  "open",
+                     "latency_ms":  487.153,
+                     "confidence":  0.83,
+                     "evidence":  "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:487.2ms(20%)"
+                 }
+             ]
+}

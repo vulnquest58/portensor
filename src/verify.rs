@@ -57,12 +57,25 @@ fn merge_verification(report: &mut ScanReport, verified: Vec<PortResult>, option
             continue;
         };
 
-        report.counts.remove(PortState::Open);
-        report.counts.add(result.state);
-
+        let inconclusive = matches!(
+            result.state,
+            PortState::Filtered | PortState::Unreachable | PortState::Error
+        );
         if result.state != PortState::Open {
             report.defense_observations.push(result.clone());
         }
+        if inconclusive {
+            if let Some(existing) = report.results.get_mut(index) {
+                let detail = result.detail.as_deref().unwrap_or("no response");
+                existing.detail = Some(format!(
+                    "SYN-ACK observed; verification inconclusive: {detail}"
+                ));
+            }
+            continue;
+        }
+
+        report.counts.remove(PortState::Open);
+        report.counts.add(result.state);
 
         let retain = options.retains(&result);
         if retain {
@@ -325,6 +338,32 @@ mod tests {
                 .iter()
                 .any(|result| { result.port == 9000 && result.state == PortState::Silent })
         );
+    }
+
+    #[test]
+    fn inconclusive_verification_keeps_the_syn_ack_open_result() {
+        let mut report = report();
+        let verified = vec![
+            PortResult::new(host(), 9000, PortState::Filtered, Duration::from_secs(1))
+                .with_detail("connect timed out after 1000ms"),
+        ];
+
+        merge_verification(&mut report, verified, &options(StateSet::open()));
+
+        assert_eq!(report.counts.open, 3);
+        assert_eq!(report.counts.filtered, 0);
+        let kept = report
+            .results
+            .iter()
+            .find(|result| result.port == 9000)
+            .expect("SYN-ACK-backed open result is retained");
+        assert_eq!(kept.state, PortState::Open);
+        assert!(
+            kept.detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("verification inconclusive"))
+        );
+        assert_eq!(report.defense_observations.len(), 1);
     }
 
     #[test]

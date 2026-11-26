@@ -1169,7 +1169,22 @@ fn syn_scan_v4(
         })
         .collect();
 
-    // 3. Resolve routes and ARP for all targets
+    // 3. Point-to-point interfaces (OpenVPN tun, WireGuard) have no ARP.
+    //    Use the kernel-routed raw IPv4 engine instead of AF_PACKET.
+    for &target in &v4_targets {
+        let rt = route::route_for(target).map_err(|e| AppError::runtime(e.to_string()))?;
+        if !route::iface_is_arp_capable(&rt.iface) {
+            if !opts.decoys.is_empty() || opts.fragment_size.is_some() {
+                return Err(AppError::usage(
+                    "decoys and fragmentation require an Ethernet interface; \
+                     point-to-point interfaces use the raw IPv4 engine",
+                ));
+            }
+            return super::v4raw::scan_v4_raw(&v4_targets, &opts, progress.as_ref());
+        }
+    }
+
+    // 4. Resolve routes and ARP for all targets
     let mut route_cache = HashMap::new();
     for &target in &v4_targets {
         resolve_target_route(target, &mut route_cache)?;

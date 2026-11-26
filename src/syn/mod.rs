@@ -27,6 +27,8 @@ pub mod filter;
 #[cfg(target_os = "linux")]
 pub mod route;
 #[cfg(target_os = "linux")]
+pub(crate) mod v4raw;
+#[cfg(target_os = "linux")]
 pub(crate) mod v6;
 #[cfg(target_os = "windows")]
 mod win;

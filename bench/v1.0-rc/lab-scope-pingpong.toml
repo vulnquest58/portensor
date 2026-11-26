@@ -1,0 +1,4 @@
+[scope]
+program = "Hack The Box - authorized lab session (user-provided PingPong target)"
+allow = ["10.129.219.98/32"]
+deny = []

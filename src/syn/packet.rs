@@ -462,6 +462,158 @@ fn write_tcp_frame(
     frame[50..52].copy_from_slice(&tcp_ck.to_be_bytes());
 }
 
+/// Writes a 40-byte raw IPv4/TCP SYN packet (no Ethernet header) into a
+/// caller-provided buffer for `IPPROTO_RAW` sockets.
+pub fn write_ipv4_syn_packet_into(
+    packet: &mut [u8; 40],
+    src_ip: u32,
+    dst_ip: u32,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ttl: u8,
+) {
+    write_ipv4_tcp_packet_into(
+        packet, src_ip, dst_ip, src_port, dst_port, seq, 0, 0x02, ttl,
+    );
+}
+
+/// Writes a 40-byte raw IPv4/TCP ACK packet (no Ethernet header) into a
+/// caller-provided buffer for `IPPROTO_RAW` sockets.
+#[expect(clippy::too_many_arguments)]
+pub fn write_ipv4_ack_packet_into(
+    packet: &mut [u8; 40],
+    src_ip: u32,
+    dst_ip: u32,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    ttl: u8,
+) {
+    write_ipv4_tcp_packet_into(
+        packet, src_ip, dst_ip, src_port, dst_port, seq, ack, 0x10, ttl,
+    );
+}
+
+/// Writes a 40-byte raw IPv4/TCP RST packet (no Ethernet header) into a
+/// caller-provided buffer for `IPPROTO_RAW` sockets.
+pub fn write_ipv4_rst_packet_into(
+    packet: &mut [u8; 40],
+    src_ip: u32,
+    dst_ip: u32,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ttl: u8,
+) {
+    write_ipv4_tcp_packet_into(
+        packet, src_ip, dst_ip, src_port, dst_port, seq, 0, 0x04, ttl,
+    );
+}
+
+#[expect(clippy::too_many_arguments)]
+fn write_ipv4_tcp_packet_into(
+    packet: &mut [u8; 40],
+    src_ip: u32,
+    dst_ip: u32,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    flags: u8,
+    ttl: u8,
+) {
+    // 1. IPv4 Header (bytes 0..20)
+    packet[0] = 0x45;
+    packet[1] = 0x00;
+    packet[2..4].copy_from_slice(&40u16.to_be_bytes());
+    packet[4..6].copy_from_slice(&(seq as u16).to_be_bytes());
+    packet[6..8].copy_from_slice(&0x4000u16.to_be_bytes());
+    packet[8] = ttl;
+    packet[9] = 6;
+    packet[10..12].copy_from_slice(&[0, 0]);
+    packet[12..16].copy_from_slice(&src_ip.to_be_bytes());
+    packet[16..20].copy_from_slice(&dst_ip.to_be_bytes());
+
+    let ip_ck = ip_checksum(&packet[0..20]);
+    packet[10..12].copy_from_slice(&ip_ck.to_be_bytes());
+
+    // 2. TCP Header (bytes 20..40)
+    packet[20..22].copy_from_slice(&src_port.to_be_bytes());
+    packet[22..24].copy_from_slice(&dst_port.to_be_bytes());
+    packet[24..28].copy_from_slice(&seq.to_be_bytes());
+    packet[28..32].copy_from_slice(&ack.to_be_bytes());
+    packet[32] = 0x50;
+    packet[33] = flags;
+    packet[34..36].copy_from_slice(&1024u16.to_be_bytes());
+    packet[36..38].copy_from_slice(&[0, 0]);
+    packet[38..40].copy_from_slice(&[0, 0]);
+
+    let tcp_ck = tcp_checksum(src_ip, dst_ip, &packet[20..40]);
+    packet[36..38].copy_from_slice(&tcp_ck.to_be_bytes());
+}
+
+/// Parsed representation of a raw IPv4 packet received from an `AF_INET` raw socket.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParsedV4Frame {
+    SynAck {
+        src_ip: u32,
+        src_port: u16,
+        dst_port: u16,
+        ack: u32,
+    },
+    Rst {
+        src_ip: u32,
+        src_port: u16,
+        dst_port: u16,
+        seq: u32,
+    },
+    Other,
+}
+
+/// Parses a raw IPv4 packet (IP header included) for TCP SYN-ACK/RST responses.
+pub fn parse_ipv4_tcp(data: &[u8]) -> ParsedV4Frame {
+    if data.len() < 20 || (data[0] >> 4) != 4 {
+        return ParsedV4Frame::Other;
+    }
+
+    let ihl = ((data[0] & 0x0f) as usize) * 4;
+    if ihl < 20 || data.len() < ihl || data[9] != 6 {
+        return ParsedV4Frame::Other;
+    }
+
+    let tcp_data = &data[ihl..];
+    if tcp_data.len() < 20 {
+        return ParsedV4Frame::Other;
+    }
+
+    let src_ip = u32::from_be_bytes([data[12], data[13], data[14], data[15]]);
+    let src_port = u16::from_be_bytes([tcp_data[0], tcp_data[1]]);
+    let dst_port = u16::from_be_bytes([tcp_data[2], tcp_data[3]]);
+    let seq = u32::from_be_bytes([tcp_data[4], tcp_data[5], tcp_data[6], tcp_data[7]]);
+    let ack = u32::from_be_bytes([tcp_data[8], tcp_data[9], tcp_data[10], tcp_data[11]]);
+    let flags = tcp_data[13];
+
+    if (flags & 0x12) == 0x12 {
+        ParsedV4Frame::SynAck {
+            src_ip,
+            src_port,
+            dst_port,
+            ack,
+        }
+    } else if (flags & 0x04) != 0 {
+        ParsedV4Frame::Rst {
+            src_ip,
+            src_port,
+            dst_port,
+            seq,
+        }
+    } else {
+        ParsedV4Frame::Other
+    }
+}
+
 /// Split a raw Ethernet/IPv4/TCP SYN frame into IPv4 fragments.
 ///
 /// `fragment_size` is the maximum IP payload (TCP bytes) per fragment and must
@@ -677,6 +829,94 @@ mod tests {
         let mut written = [0u8; 60];
         write_ipv6_syn_packet_into(&mut written, &src, &dst, 61000, 443, 0x1234_5678, 64);
         assert_eq!(written.as_slice(), built.as_slice());
+    }
+
+    #[test]
+    fn raw_ipv4_syn_packet_has_valid_checksums_and_parses_syn_ack() {
+        let src_ip = 0x0a000001;
+        let dst_ip = 0x0a000002;
+        let src_port = 61234;
+        let dst_port = 445;
+        let seq = 0x1234_5678;
+
+        let mut packet = [0u8; 40];
+        write_ipv4_syn_packet_into(&mut packet, src_ip, dst_ip, src_port, dst_port, seq, 64);
+        assert_eq!(packet[0], 0x45);
+        assert_eq!(packet[8], 64);
+        assert_eq!(packet[9], 6);
+        assert_eq!(ip_checksum(&packet[0..20]), 0);
+        assert!(matches!(
+            tcp_checksum(src_ip, dst_ip, &packet[20..40]),
+            0 | 0xffff
+        ));
+
+        let mut reply = [0u8; 40];
+        reply[0] = 0x45;
+        reply[2..4].copy_from_slice(&40u16.to_be_bytes());
+        reply[8] = 64;
+        reply[9] = 6;
+        reply[12..16].copy_from_slice(&dst_ip.to_be_bytes());
+        reply[16..20].copy_from_slice(&src_ip.to_be_bytes());
+        reply[20..22].copy_from_slice(&dst_port.to_be_bytes());
+        reply[22..24].copy_from_slice(&src_port.to_be_bytes());
+        reply[24..28].copy_from_slice(&0x9988_7766u32.to_be_bytes());
+        reply[28..32].copy_from_slice(&(seq + 1).to_be_bytes());
+        reply[32] = 0x50;
+        reply[33] = 0x12;
+        let ip_ck = ip_checksum(&reply[0..20]);
+        reply[10..12].copy_from_slice(&ip_ck.to_be_bytes());
+        let tcp_ck = tcp_checksum(dst_ip, src_ip, &reply[20..40]);
+        reply[36..38].copy_from_slice(&tcp_ck.to_be_bytes());
+
+        match parse_ipv4_tcp(&reply) {
+            ParsedV4Frame::SynAck {
+                src_ip: sip,
+                src_port: sp,
+                dst_port: dp,
+                ack,
+            } => {
+                assert_eq!(sip, dst_ip);
+                assert_eq!(sp, dst_port);
+                assert_eq!(dp, src_port);
+                assert_eq!(ack, seq + 1);
+            }
+            other => panic!("Expected SynAck, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn raw_ipv4_ack_packet_uses_ack_flag() {
+        let mut packet = [0u8; 40];
+        write_ipv4_ack_packet_into(&mut packet, 1, 2, 40000, 443, 7, 9, 32);
+        assert_eq!(packet[8], 32);
+        assert_eq!(packet[33], 0x10);
+        assert_eq!(ip_checksum(&packet[0..20]), 0);
+        assert!(matches!(tcp_checksum(1, 2, &packet[20..40]), 0 | 0xffff));
+    }
+
+    #[test]
+    fn raw_ipv4_rst_packet_uses_rst_flag_and_parses() {
+        let mut packet = [0u8; 40];
+        write_ipv4_rst_packet_into(&mut packet, 1, 2, 40000, 443, 7, 32);
+        assert_eq!(packet[8], 32);
+        assert_eq!(packet[33], 0x04);
+        assert_eq!(ip_checksum(&packet[0..20]), 0);
+        assert!(matches!(tcp_checksum(1, 2, &packet[20..40]), 0 | 0xffff));
+
+        match parse_ipv4_tcp(&packet) {
+            ParsedV4Frame::Rst {
+                src_ip,
+                src_port,
+                dst_port,
+                seq,
+            } => {
+                assert_eq!(src_ip, 1);
+                assert_eq!(src_port, 40000);
+                assert_eq!(dst_port, 443);
+                assert_eq!(seq, 7);
+            }
+            other => panic!("expected IPv4 RST, got {other:?}"),
+        }
     }
 
     #[test]

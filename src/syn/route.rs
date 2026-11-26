@@ -280,6 +280,19 @@ pub fn iface_mac(iface: &str) -> Result<[u8; 6], SynError> {
     )))
 }
 
+/// Returns true when the interface uses Ethernet-style link-layer addressing
+/// and can therefore be scanned with the `AF_PACKET`/ARP engine.
+pub fn iface_is_arp_capable(iface: &str) -> bool {
+    if iface == "lo" {
+        return true;
+    }
+    let path = format!("/sys/class/net/{iface}/type");
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .is_some_and(|kind| kind == 1 || kind == 772)
+}
+
 /// Retrieve the kernel interface index for a given interface name.
 pub fn iface_index(iface: &str) -> Result<i32, SynError> {
     let c_iface = CString::new(iface)

@@ -1,0 +1,209 @@
+{
+  "target": "10.129.219.98",
+  "targets": 1,
+  "ports": 15,
+  "jobs": 15,
+  "workers": 2,
+  "open": [
+    {
+      "host": "10.129.219.98",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 183.107,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:183.1ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 4247.984,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.8,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:4248.0ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 593,
+      "state": "open",
+      "latency_ms": 452.108,
+      "detail": "SYN-ACK observed; verification inconclusive: connect timed out after 5000ms",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:452.1ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49669,
+      "state": "open",
+      "latency_ms": 451.755,
+      "detail": "SYN-ACK observed; verification inconclusive: connect timed out after 5000ms",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:451.8ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49674,
+      "state": "open",
+      "latency_ms": 258.157,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:258.2ms(20%)"
+    }
+  ],
+  "results": [
+    {
+      "host": "10.129.219.98",
+      "port": 53,
+      "state": "silent",
+      "latency_ms": 519.635,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.4,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:519.6ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 88,
+      "state": "silent",
+      "latency_ms": 352.857,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:352.9ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 135,
+      "state": "silent",
+      "latency_ms": 405.473,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:405.5ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 183.107,
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:183.1ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 4247.984,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.8,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:4248.0ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 464,
+      "state": "silent",
+      "latency_ms": 186.813,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:186.8ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 593,
+      "state": "open",
+      "latency_ms": 452.108,
+      "detail": "SYN-ACK observed; verification inconclusive: connect timed out after 5000ms",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:452.1ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 636,
+      "state": "silent",
+      "latency_ms": 778.407,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.4,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:778.4ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 3269,
+      "state": "silent",
+      "latency_ms": 223.864,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:223.9ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49664,
+      "state": "silent",
+      "latency_ms": 181.327,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:181.3ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49669,
+      "state": "open",
+      "latency_ms": 451.755,
+      "detail": "SYN-ACK observed; verification inconclusive: connect timed out after 5000ms",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:451.8ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49674,
+      "state": "open",
+      "latency_ms": 258.157,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.85,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:258.2ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 55840,
+      "state": "silent",
+      "latency_ms": 658.64,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.4,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:658.6ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 55981,
+      "state": "silent",
+      "latency_ms": 347.932,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:347.9ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 55985,
+      "state": "silent",
+      "latency_ms": 550.683,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.4,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:550.7ms(15%)"
+    }
+  ],
+  "summary": {
+    "open": 5,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 10,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 23592.248
+}

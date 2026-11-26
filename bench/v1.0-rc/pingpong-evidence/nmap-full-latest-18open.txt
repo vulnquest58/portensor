@@ -1,0 +1,26 @@
+# Nmap 7.93 scan initiated Thu Nov 26 22:02:23 2026 as: nmap -Pn -n -p- --min-rate 1000 --max-retries 2 -T4 -oN /root/portensor-evidence/nmap-full.txt -oX /root/portensor-evidence/nmap-full.xml 10.129.219.98
+Nmap scan report for 10.129.219.98
+Host is up (0.27s latency).
+Not shown: 65516 filtered tcp ports (no-response)
+PORT      STATE SERVICE
+53/tcp    open  domain
+88/tcp    open  kerberos-sec
+135/tcp   open  msrpc
+139/tcp   open  netbios-ssn
+389/tcp   open  ldap
+445/tcp   open  microsoft-ds
+464/tcp   open  kpasswd5
+636/tcp   open  ldapssl
+2179/tcp  open  vmrdp
+3268/tcp  open  globalcatLDAP
+3269/tcp  open  globalcatLDAPssl
+9389/tcp  open  adws
+49664/tcp open  unknown
+49669/tcp open  unknown
+49674/tcp open  unknown
+55840/tcp open  unknown
+55981/tcp open  unknown
+55985/tcp open  unknown
+56035/tcp open  unknown
+
+# Nmap done at Thu Nov 26 22:05:43 2026 -- 1 IP address (1 host up) scanned in 200.11 seconds

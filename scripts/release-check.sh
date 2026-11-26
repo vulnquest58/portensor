@@ -27,9 +27,9 @@ lock_version=$(awk '
     /^name = "portensor"$/ { getline; sub(/^version = "/, ""); sub(/"$/, ""); print; exit }
 ' Cargo.lock)
 make_version=$(sed -n 's/^VERSION[[:space:]]*?=[[:space:]]*\([^[:space:]]*\).*/\1/p' Makefile | head -n1)
-readme_version=$(sed -n 's/.*badge\/version-v\([0-9][0-9.]*\)-blue.*/\1/p' README.md | head -n1)
+readme_version=$(sed -n 's/.*badge\/version-v\([0-9][0-9.]*\(--[0-9A-Za-z.-]*\)\?\)-blue.*/\1/p' README.md | sed 's/--/-/g' | head -n1)
 changelog_version=$(awk '
-    /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
+    /^## \[[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\]/ {
         line = $0
         sub(/^## \[/, "", line)
         sub(/\].*/, "", line)
@@ -37,7 +37,7 @@ changelog_version=$(awk '
         exit
     }
 ' CHANGELOG.md)
-man_version=$(grep -m1 -oE 'portensor [0-9]+\.[0-9]+\.[0-9]+' man/portensor.1 | awk '{ print $2 }')
+man_version=$(grep -m1 -oE 'portensor [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' man/portensor.1 | awk '{ print $2 }')
 
 [ -n "$cargo_version" ] || fail "could not read Cargo.toml version"
 [ -n "$lock_version" ] || fail "could not read Cargo.lock portensor version"

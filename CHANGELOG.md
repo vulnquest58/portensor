@@ -2,13 +2,33 @@
 
 All notable changes to portensor are documented here.
 
-## [Unreleased]
+## [1.0.0-rc.1] - 2026-11-26
+
+### Added
+
+- Raw IPv4 SYN scanning over Linux `AF_INET` raw sockets for point-to-point
+  interfaces such as OpenVPN `tun` and WireGuard, including RST cleanup for
+  accepted SYN-ACKs so large scans do not leave half-open state on the target.
+- Reproducible PingPong lab validation scripts under `bench/v1.0-rc/`.
 
 ### Fixed
 
+- Preserve a SYN-ACK-backed open result when connect verification times out;
+  inconclusive verification no longer downgrades a raw SYN open to filtered.
 - Detect WASM fuel exhaustion through `wasmtime::Trap::OutOfFuel` instead of
   matching the rendered backtrace text, so runaway scripts reliably report the
   fuel budget error across Wasmtime builds.
+
+### Release candidate notes
+
+- Validated raw IPv4 SYN over OpenVPN `tun0` against an authorized HTB PingPong
+  lab target: 15/15 discovery on the RC binary after cooldown. Scripted
+  verification remained target-sensitive (6 open and 9 silent on the latest RC
+  run; an earlier run was 5 open and 10 silent). A latest full nmap run observed
+  18 open ports, so the target inventory is not static. Evidence is under
+  `bench/v1.0-rc/pingpong-evidence/`.
+- P4 external requirements remain open; this release candidate does not claim
+  P4 closure or replace the final v1.0.0 release gate.
 
 ## [0.7.2] - 2026-11-25
 

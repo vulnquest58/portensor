@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 CARGO ?= cargo
 ACTIONLINT ?= actionlint
 
-VERSION     ?= 0.7.2
+VERSION     ?= 1.0.0-rc.1
 MUSL_TARGET := x86_64-unknown-linux-musl
 PREFIX      ?= /usr/local
 DESTDIR     ?=

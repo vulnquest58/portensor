@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>portensor report</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:2rem;color:#17202a;background:#fbfcfd}h1,h2{margin:1.4rem 0 .5rem}table{border-collapse:collapse;width:100%;margin:.6rem 0 1.4rem}th,td{border:1px solid #ccd6e0;padding:.35rem .5rem;text-align:left;vertical-align:top}th{background:#eef3f8}tr:nth-child(even){background:#f7f9fb}code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}pre{white-space:pre-wrap;word-break:break-word}.badge{display:inline-block;padding:.1rem .4rem;border-radius:.25rem;font-size:.8rem;font-weight:600}.open{background:#d9f2e3;color:#14532d}.filtered{background:#fff1c2;color:#713f12}.silent,.unreachable{background:#e5e7eb;color:#374151}.error{background:#fee2e2;color:#7f1d1d}.muted{color:#52616f}.critical{color:#991b1b;font-weight:700}.high{color:#b45309;font-weight:700}details{margin:.2rem 0}summary{cursor:pointer;color:#1d4ed8}</style>
+</head>
+<body>
+<h1>portensor report</h1>
+<p><strong>Target:</strong> 10.129.219.98<br><strong>Targets:</strong> 1 &middot; <strong>Ports:</strong> 15 &middot; <strong>Jobs:</strong> 15 &middot; <strong>Elapsed:</strong> 25.44s</p>
+<p class="muted">Open 6 &middot; Closed 0 &middot; Filtered 0 &middot; Unfiltered 0 &middot; Silent 9 &middot; Unreachable 0 &middot; Error 0</p>
+<h2>Services and evidence</h2>
+<table>
+<thead><tr><th>Host</th><th>Port</th><th>State</th><th>Latency</th><th>Service</th><th>Confidence</th><th>Evidence</th><th>TLS</th></tr></thead>
+<tbody>
+<tr><td>10.129.219.98</td><td>53</td><td><span class="badge silent">silent</span></td><td>292.03 ms</td><td></td><td>45%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:292.0ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>88</td><td><span class="badge open">open</span></td><td>516.79 ms</td><td></td><td>78%</td><td><details><summary>Show</summary><pre>port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))
+handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:516.8ms(15%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>135</td><td><span class="badge silent">silent</span></td><td>191.98 ms</td><td></td><td>45%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:192.0ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>139</td><td><span class="badge open">open</span></td><td>371.55 ms</td><td></td><td>85%</td><td><details><summary>Show</summary><pre>handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:371.6ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>445</td><td><span class="badge open">open</span></td><td>3278.41 ms</td><td>smb / SMB 3.0.2</td><td>80%</td><td><details><summary>Show</summary><pre>Banner: SMB 3.0.2 (Microsoft-DS)
+handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:3278.4ms(5%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>464</td><td><span class="badge open">open</span></td><td>378.56 ms</td><td></td><td>83%</td><td><details><summary>Show</summary><pre>port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))
+handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:378.6ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>593</td><td><span class="badge open">open</span></td><td>2399.00 ms</td><td></td><td>75%</td><td><details><summary>Show</summary><pre>Banner: ncacn_http/1.0
+handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:2399.0ms(10%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>636</td><td><span class="badge silent">silent</span></td><td>289.37 ms</td><td></td><td>45%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:289.4ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>3269</td><td><span class="badge silent">silent</span></td><td>292.03 ms</td><td></td><td>45%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:292.0ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>49664</td><td><span class="badge silent">silent</span></td><td>274.79 ms</td><td></td><td>45%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:274.8ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>49669</td><td><span class="badge silent">silent</span></td><td>731.59 ms</td><td></td><td>40%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:731.6ms(15%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>49674</td><td><span class="badge open">open</span></td><td>3649.89 ms</td><td></td><td>70%</td><td><details><summary>Show</summary><pre>Banner: ncacn_http/1.0
+handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:3649.9ms(5%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>55840</td><td><span class="badge silent">silent</span></td><td>279.69 ms</td><td></td><td>45%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:279.7ms(20%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>55981</td><td><span class="badge silent">silent</span></td><td>631.74 ms</td><td></td><td>40%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:631.7ms(15%)</pre></details></td><td>-</td></tr>
+<tr><td>10.129.219.98</td><td>55985</td><td><span class="badge silent">silent</span></td><td>302.82 ms</td><td></td><td>45%</td><td><details><summary>Show</summary><pre>handshake succeeded but no banner arrived within 750ms
+handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:302.8ms(20%)</pre></details></td><td>-</td></tr>
+</tbody>
+</table>
+<p class="muted">Generated by portensor 1.0.0-rc.1. This report is self-contained.</p>
+</body>
+</html>

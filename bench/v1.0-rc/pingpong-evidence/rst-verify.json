@@ -1,0 +1,218 @@
+{
+  "target": "10.129.219.98",
+  "targets": 1,
+  "ports": 15,
+  "jobs": 15,
+  "workers": 2,
+  "open": [
+    {
+      "host": "10.129.219.98",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 4232.531,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.68,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:4232.5ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 842.614,
+      "confidence": 0.8,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:842.6ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 1163.072,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:1163.1ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 464,
+      "state": "open",
+      "latency_ms": 363.856,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:363.9ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 593,
+      "state": "open",
+      "latency_ms": 1122.021,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.8,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:1122.0ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49674,
+      "state": "open",
+      "latency_ms": 3930.547,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.7,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:3930.5ms(5%)"
+    }
+  ],
+  "results": [
+    {
+      "host": "10.129.219.98",
+      "port": 53,
+      "state": "silent",
+      "latency_ms": 212.724,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:212.7ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 88,
+      "state": "open",
+      "latency_ms": 4232.531,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.68,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:4232.5ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 135,
+      "state": "silent",
+      "latency_ms": 211.295,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.45,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:211.3ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 139,
+      "state": "open",
+      "latency_ms": 842.614,
+      "confidence": 0.8,
+      "evidence": "handshake:ok(20%) banner:binary-protocol(30%) stack:standard(15%) latency:842.6ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 445,
+      "state": "open",
+      "latency_ms": 1163.072,
+      "banner": "SMB 3.0.2 (Microsoft-DS)",
+      "service": {
+        "name": "smb",
+        "product": "SMB 3.0.2",
+        "confidence": 0.85
+      },
+      "confidence": 0.9,
+      "evidence": "handshake:ok(20%) banner:smb/SMB 3.0.2(40%) stack:standard(15%) latency:1163.1ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 464,
+      "state": "open",
+      "latency_ms": 363.856,
+      "detail": "port accepted connection; probe rejected by listener or upstream filter (Connection reset by peer (os error 104))",
+      "confidence": 0.83,
+      "evidence": "handshake:ok(20%) banner:listener-verified(28%) stack:standard(15%) latency:363.9ms(20%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 593,
+      "state": "open",
+      "latency_ms": 1122.021,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.8,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:1122.0ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 636,
+      "state": "silent",
+      "latency_ms": 519.032,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.4,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:519.0ms(15%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 3269,
+      "state": "silent",
+      "latency_ms": 3226.985,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.3,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:3227.0ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49664,
+      "state": "silent",
+      "latency_ms": 3143.755,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.3,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:3143.8ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49669,
+      "state": "silent",
+      "latency_ms": 3340.01,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.3,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:3340.0ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 49674,
+      "state": "open",
+      "latency_ms": 3930.547,
+      "banner": "ncacn_http/1.0",
+      "confidence": 0.7,
+      "evidence": "handshake:ok(20%) banner:raw-text(30%) stack:standard(15%) latency:3930.5ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 55840,
+      "state": "silent",
+      "latency_ms": 3219.687,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.3,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:3219.7ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 55981,
+      "state": "silent",
+      "latency_ms": 3156.039,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.3,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:3156.0ms(5%)"
+    },
+    {
+      "host": "10.129.219.98",
+      "port": 55985,
+      "state": "silent",
+      "latency_ms": 511.115,
+      "detail": "handshake succeeded but no banner arrived within 750ms",
+      "confidence": 0.4,
+      "evidence": "handshake:mute(15%) banner:none(0%) stack:standard(10%) latency:511.1ms(15%)"
+    }
+  ],
+  "summary": {
+    "open": 6,
+    "closed": 0,
+    "filtered": 0,
+    "unfiltered": 0,
+    "silent": 9,
+    "unreachable": 0,
+    "error": 0
+  },
+  "elapsed_ms": 18766.129
+}

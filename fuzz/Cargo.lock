@@ -1561,7 +1561,7 @@ checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
 
 [[package]]
 name = "portensor"
-version = "0.7.2"
+version = "1.0.0-rc.1"
 dependencies = [
  "async-channel",
  "axum",
