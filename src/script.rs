@@ -1790,6 +1790,19 @@ fn wasm_engine() -> &'static wasmtime::Engine {
     })
 }
 
+/// Maps a WASM call failure to a stable message, preferring structured trap
+/// detection over matching Wasmtime's rendered backtrace text.
+fn wasm_call_error(action: &str, error: wasmtime::Error) -> String {
+    if matches!(
+        error.downcast_ref::<wasmtime::Trap>(),
+        Some(wasmtime::Trap::OutOfFuel)
+    ) {
+        format!("{action} exhausted its fuel budget (possible runaway loop)")
+    } else {
+        format!("{action} failed: {error}")
+    }
+}
+
 /// WASM module execution on a blocking thread. Fuel metering plus the store
 /// limiter bound any runaway work; the wall-clock timeout is enforced by the
 /// async wrapper.
@@ -1886,7 +1899,7 @@ fn wasm_execute(
 
     let ptr = alloc
         .call(&mut store, input.len() as i32)
-        .map_err(|error| format!("alloc failed: {error}"))?;
+        .map_err(|error| wasm_call_error("alloc", error))?;
     if ptr < 0 {
         return Err("alloc returned a negative pointer".to_string());
     }
@@ -1896,14 +1909,7 @@ fn wasm_execute(
 
     let packed = run
         .call(&mut store, (ptr, input.len() as i32))
-        .map_err(|error| {
-            let message = error.to_string();
-            if message.contains("fuel") {
-                "run exhausted its fuel budget (possible runaway loop)".to_string()
-            } else {
-                format!("run failed: {message}")
-            }
-        })?;
+        .map_err(|error| wasm_call_error("run", error))?;
 
     let out_ptr = ((packed as u64) >> 32) as usize;
     let out_len = (packed as u64 & 0xFFFF_FFFF) as usize;
@@ -3476,7 +3482,7 @@ timeout_ms = 100
         let outcome = run_script(script, &result, None).await;
         let error = outcome.expect_err("runaway module must fail");
         assert!(
-            error.contains("timed out") || error.contains("fuel"),
+            error.contains("timed out") || error.contains("exhausted its fuel budget"),
             "unexpected error: {error}"
         );
         let _ = std::fs::remove_dir_all(&dir);

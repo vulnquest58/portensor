@@ -4,6 +4,12 @@ All notable changes to portensor are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Detect WASM fuel exhaustion through `wasmtime::Trap::OutOfFuel` instead of
+  matching the rendered backtrace text, so runaway scripts reliably report the
+  fuel budget error across Wasmtime builds.
+
 ## [0.7.2] - 2026-11-25
 
 ### Portensor 0.7.2
