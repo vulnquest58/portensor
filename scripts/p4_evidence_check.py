@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_PATH = ROOT / "docs" / "p4-closure-evidence.json"
 CHECKLIST_PATH = ROOT / "docs" / "p4-closure-checklist.md"
 READINESS_PATH = ROOT / "docs" / "p4-release-readiness.md"
+CARGO_TOML = ROOT / "Cargo.toml"
 LOCAL_CHECK_PATH = ROOT / "bench" / "p4" / "p4-local-check.txt"
 SUMS_PATH = ROOT / "dist" / "SHA256SUMS"
 DIST_DIR = ROOT / "dist"
@@ -91,6 +92,21 @@ def read_text(path: Path, audit: Audit) -> str:
     except OSError as error:
         audit.error(f"cannot read {display_path(path)}: {error}")
         return ""
+
+
+def package_version(audit: Audit) -> str:
+    text = read_text(CARGO_TOML, audit)
+    if not text:
+        return ""
+    package = re.search(
+        r"^\[package\]\s*$.*?^version\s*=\s*\"([^\"]+)\"",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if package is None:
+        audit.error("Cargo.toml package version is missing")
+        return ""
+    return package.group(1)
 
 
 def load_json(path: Path, audit: Audit) -> dict:
@@ -417,31 +433,43 @@ def check_local_evidence(audit: Audit, requirements: list[dict]) -> None:
             if fields.get(key) != "not verified":
                 audit.error(f"local P4 evidence must record {key}=not verified")
 
-    version = "0.7.0"
-    sbom_path = ROOT / "bench" / "p4" / f"rayscan-{version}.cdx.json"
-    dist_sbom = DIST_DIR / f"rayscan-{version}.cdx.json"
-    sbom = validate_sbom(sbom_path, audit, "CycloneDX SBOM")
+    version = package_version(audit)
+    if not version:
+        return
+
+    sbom_path = DIST_DIR / f"portensor-{version}.cdx.json"
+    sbom = validate_sbom(sbom_path, audit, "release CycloneDX SBOM")
     if sbom is not None:
         metadata_version = (
             sbom.get("metadata", {}).get("component", {}).get("version")
             if isinstance(sbom.get("metadata"), dict)
             else None
         )
-        if metadata_version and metadata_version != version:
-            audit.warning(f"SBOM metadata version is {metadata_version}, expected {version}")
-        if dist_sbom.is_file() and sbom_path.read_bytes() != dist_sbom.read_bytes():
-            audit.error("dist SBOM does not match the evidence SBOM")
+        if metadata_version != version:
+            audit.error(
+                f"release SBOM metadata version is {metadata_version}, expected {version}"
+            )
 
-    check_checksum_manifest(SUMS_PATH, DIST_DIR, dist_sbom, audit)
+    check_checksum_manifest(SUMS_PATH, DIST_DIR, sbom_path, audit)
 
+    historical_sbom = ROOT / "bench" / "p4" / "rayscan-0.7.0.cdx.json"
+    if historical_sbom.is_file():
+        audit.note(
+            "historical 0.7.0 local tooling SBOM retained; not current RC evidence"
+        )
+
+    expected_sbom = f"dist/portensor-{version}.cdx.json"
     sbom_evidence = None
     for item in requirements:
         if item.get("id") == "P4-4":
             for evidence in item.get("evidence", []):
-                if evidence.get("kind") == "sbom":
+                if (
+                    evidence.get("kind") == "sbom"
+                    and evidence.get("path") == expected_sbom
+                ):
                     sbom_evidence = evidence
     if sbom_evidence is None:
-        audit.error("P4-4 has no SBOM evidence entry")
+        audit.error(f"P4-4 has no current release SBOM evidence entry: {expected_sbom}")
     elif sbom is not None:
         status = sbom_evidence.get("status", "")
         match = re.search(r"(\d+)-components", status)

@@ -13,6 +13,14 @@ and advisories. No exploitation or credential access was performed.
 
 See `environment.txt` for the captured environment and scope.
 
+## Release candidate record
+
+- Version: `1.0.0-rc.1`
+- Commit: `b543303da8923d0ba259a919c038a6bb2880380b`
+- Record: [1.0.0-rc.1 attestation record](../../../docs/releases/1.0.0-rc.1-attestation.md)
+- Status: local validation only; not tagged, published, production-signed, or
+  covered by GitHub OIDC attestations.
+
 ## Results
 
 - nmap full TCP inventory: 15 open ports and 65520 filtered in the initial
@@ -54,9 +62,11 @@ achieved on this target. The full-range output is summarized in
 ## P4 status
 
 These results validate scanner behavior in an authorized lab. They do not close
-the P4 external requirements: package-channel ownership, key custody, clean-host
-verification, independent review/OT assessment, Windows Npcap raw-SYN
-verification, and signed risk acceptance remain open.
+the P4 external requirements: P4-1, P4-3, and P4-4 remain `external-pending`;
+P4-2 and P4-5 remain `blocked`; P4-6 remains `local-ready` pending review and
+sign-off. Package-channel ownership, key custody, clean-host verification,
+independent review/OT assessment, Windows Npcap raw-SYN verification, and signed
+risk acceptance remain open. Final `1.0.0` promotion is blocked.
 
 ## Files
 

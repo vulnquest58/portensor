@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "phase": "P4",
-  "as_of": "2026-11-21",
+  "as_of": "2026-11-26",
   "overall_status": "not_closed",
   "approved": false,
   "reviewed_by": null,
   "reviewed_at": null,
   "checklist": "docs/p4-closure-checklist.md",
+  "release_candidate": {
+    "version": "1.0.0-rc.1",
+    "commit": "b543303da8923d0ba259a919c038a6bb2880380b",
+    "date": "2026-11-26",
+    "tag": null,
+    "published": false,
+    "attestation_record": "docs/releases/1.0.0-rc.1-attestation.md",
+    "status": "release-candidate-p4-open",
+    "final_promotion": "blocked-until-p4-closed-or-risk-accepted",
+    "production_signatures": "not-created",
+    "github_oidc_attestations": "not-created"
+  },
   "requirements": [
     {
       "id": "P4-1",
@@ -79,7 +91,7 @@
         {
           "path": "bench/p4/p4-local-check.txt",
           "kind": "local-evidence",
-          "status": "ephemeral-key-only"
+          "status": "historical-0.7.0-ephemeral-key-only"
         }
       ],
       "remaining_evidence": [
@@ -260,9 +272,24 @@
       ],
       "evidence": [
         {
-          "path": "bench/p4/rayscan-0.7.0.cdx.json",
+          "path": "dist/portensor-1.0.0-rc.1.cdx.json",
           "kind": "sbom",
-          "status": "local-cyclonedx-1.5-280-components"
+          "status": "release-candidate-cyclonedx-1.5-280-components"
+        },
+        {
+          "path": "dist/SHA256SUMS",
+          "kind": "checksum-manifest",
+          "status": "release-candidate-archives-plus-sbom"
+        },
+        {
+          "path": "docs/releases/1.0.0-rc.1-attestation.md",
+          "kind": "attestation-record",
+          "status": "no-production-signatures-or-oidc-attestations"
+        },
+        {
+          "path": "bench/p4/rayscan-0.7.0.cdx.json",
+          "kind": "historical-local-sbom",
+          "status": "legacy-0.7.0-local-tooling-only"
         },
         {
           "path": "docs/sbom.md",
@@ -277,7 +304,7 @@
         {
           "path": "bench/p4/p4-local-check.txt",
           "kind": "local-evidence",
-          "status": "ephemeral-key-only"
+          "status": "historical-0.7.0-ephemeral-key-only"
         },
         {
           "path": ".github/workflows/release.yml",
@@ -412,6 +439,17 @@
       "notes": "Must be verified or explicitly waived before v1.0; raw Windows features and limitations must be called out."
     },
     {
+      "item": "Release candidate 1.0.0-rc.1",
+      "status": "local-ready",
+      "evidence": [
+        "docs/releases/1.0.0-rc.1-attestation.md",
+        "bench/v1.0-rc/pingpong-evidence/README.md",
+        "dist/SHA256SUMS",
+        "dist/portensor-1.0.0-rc.1.cdx.json"
+      ],
+      "notes": "Prepared at commit b543303da8923d0ba259a919c038a6bb2880380b. Not tagged, published, production-signed, or covered by GitHub OIDC attestations. Local validation only; P4 remains open and final 1.0.0 promotion is blocked."
+    },
+    {
       "item": "Local P4 tooling",
       "status": "local-ready",
       "evidence": [
@@ -419,7 +457,7 @@
         "bench/p4/rayscan-0.7.0.cdx.json",
         "docs/p4-evidence-audit.md"
       ],
-      "notes": "Ephemeral keys only; not production key custody evidence. SBOM included in the local checksum manifest. The local evidence audit reports 0 errors and 0 warnings."
+      "notes": "Ephemeral keys only; not production key custody evidence. The retained SBOM and local-check output are historical 0.7.0 tooling evidence; the current RC release SBOM is dist/portensor-1.0.0-rc.1.cdx.json. The local evidence audit reports 0 errors and 0 warnings."
     },
     {
       "item": "Local P4 package metadata",
@@ -461,7 +499,7 @@
     "No unresolved critical or high-severity release blocker remains, or exceptions are approved with owner and expiry",
     "Windows Npcap raw runtime is verified or explicitly waived",
     "A named reviewer approves P4",
-    "No commit, tag, publication, or release occurs before approval"
+    "No final 1.0.0 tag, publication, or release occurs before approval; 1.0.0-rc.1 remains validation-only"
   ],
   "approvals": {
     "p4_reviewer": null,

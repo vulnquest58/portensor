@@ -14,6 +14,30 @@ Maintained by **vulnquest58** ([@vulnquest58](https://github.com/vulnquest58)).
 
 Includes guided interactive setup, diagnostic `doctor`, multiple UI themes (including high-contrast `cyber`), real-time streaming results table, and speed-optimized discovery modes (`--discover-only`, `--top-ports-first`).
 
+## Release status and limitations
+
+`1.0.0-rc.1` is a release candidate at commit
+`b543303da8923d0ba259a919c038a6bb2880380b`. It is not tagged, published,
+production-signed, or covered by GitHub OIDC attestations. Final `1.0.0`
+promotion is conditional on closing P4-1 through P4-6 or formally accepting the
+associated risks: P4-1, P4-3, and P4-4 are `external-pending`; P4-2 and P4-5 are
+`blocked`; P4-6 is `local-ready`. See the
+[P4 closure checklist](docs/p4-closure-checklist.md) and
+[RC attestation record](docs/releases/1.0.0-rc.1-attestation.md).
+
+Known RC limitations:
+
+- No production GPG/cosign signature or published build-provenance/SBOM
+  attestations exist for this candidate.
+- Windows Npcap raw-SYN runtime is unverified or requires an explicit waiver.
+- Full-range raw SYN parity on PingPong is not established. A 1-65535 scan at
+  `--rate 500` found only `49669` of the 15 known-open ports; target state also
+  varies between runs. See the
+  [PingPong evidence](bench/v1.0-rc/pingpong-evidence/README.md).
+- P4 external evidence is absent. Local checks do not establish key custody,
+  registry ownership, clean-runner isolation, independent OT/ICS assessment, or
+  formal sign-off.
+
 ---
 
 ## What Makes Portensor Different

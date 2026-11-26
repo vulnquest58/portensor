@@ -29,6 +29,24 @@ recorded in the [P4-1 acceptance report](p4-1-acceptance-report.md).
 This local evidence does not establish production identity, key custody,
 rotation, revocation, or independent release verification.
 
+## Release candidate local record
+
+| Field | Value |
+|---|---|
+| Requirement ID | P4-1 |
+| Evidence identifier | P4-1-RC1 |
+| Description | `1.0.0-rc.1` local artifact, checksum, SBOM, and attestation record; no production signature |
+| Issuing organization or responsible owner | Local project validation |
+| Date obtained | 2026-11-26 |
+| Verification method | `scripts/release-check.sh`; `sha256sum -c dist/SHA256SUMS`; review of the RC attestation record |
+| Verification result | Local artifacts verified; no production GPG/cosign signature and no clean-host verification |
+| Evidence storage reference | `docs/releases/1.0.0-rc.1-attestation.md`; `dist/SHA256SUMS` |
+| Reviewer and approval status | Not applicable to production custody; no approval |
+
+The RC record is local validation evidence only. It does not establish a
+production signer, key custody, public fingerprint, clean-host verification, or
+formal approval. P4-1 remains `external-pending`.
+
 ## Required external evidence
 
 | ID | Requirement | Description | Responsible owner | Date obtained | Verification method | Result | Storage reference | Reviewer / approval |

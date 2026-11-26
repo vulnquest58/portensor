@@ -4,6 +4,12 @@ Status: **P4 remains NOT CLOSED.** No external evidence has been obtained in
 this environment. The local evidence audit passes with zero errors and zero
 warnings, but that does not satisfy any external requirement.
 
+Release candidate context: `1.0.0-rc.1` at commit
+`b543303da8923d0ba259a919c038a6bb2880380b` is a local validation artifact. It
+is not tagged, published, production-signed, or covered by GitHub OIDC
+attestations. The [RC attestation record](releases/1.0.0-rc.1-attestation.md)
+documents that status; it does not change any requirement below.
+
 ## Summary
 
 | ID | Current status | External blocker | Missing evidence | Unblock action | Risk if unverified |
@@ -12,12 +18,12 @@ warnings, but that does not satisfy any external requirement.
 | P4-2 | `blocked` | Registry ownership and maintainer authority are unconfirmed | Owner confirmations, 2FA/recovery/least-privilege confirmation, approved token plan, channel review/publication approvals, clean-install results, published container digest | Obtain approved owner attestations and verify publishing permissions without exposing credentials; local package metadata, blank intake packet, and acceptance validator are prepared | Unauthorized or broken package distribution remains possible |
 | P4-3 | `external-pending` | No clean-run release evidence has been produced | Workflow run URL and logs, resolved runner image versions, commands, artifact hashes, isolation evidence, independent verification | Run an authorized release dry run on a clean runner and retain the complete verification record | Build reproducibility and runner isolation remain unproven |
 | P4-4 | `external-pending` | No published production attestations exist | Production SBOM, signer identity, build-provenance and SBOM attestations, artifact-to-SBOM association, verification output | Publish a signed release with OIDC attestations and verify them from published material | Artifact provenance and SBOM trust remain unproven |
+| P4-5 | `blocked` | No independent OT/ICS assessment has been authorized or performed | Partner agreement, scope/ROE, legal authorization, budget, plan, final report, remediation closure | Approve an assessor, scope, legal basis, budget, and schedule; complete and review the assessment | OT/ICS security claims lack independent validation |
+| P4-6 | `local-ready` | Documentation review and formal sign-off have not occurred | Named reviewer decisions, resolution of findings, completed approval fields and evidence review | Review all evidence and documentation, resolve findings, and record formal approval | P4 cannot be formally closed |
 
 P4-3 has not been started. Its only acceptable evidence is an authorized
 clean-run release dry run with retained logs, resolved runner images, artifact
 hashes, and separate-host verification; no local substitute is accepted.
-| P4-5 | `blocked` | No independent OT/ICS assessment has been authorized or performed | Partner agreement, scope/ROE, legal authorization, budget, plan, final report, remediation closure | Approve an assessor, scope, legal basis, budget, and schedule; complete and review the assessment | OT/ICS security claims lack independent validation |
-| P4-6 | `local-ready` | Documentation review and formal sign-off have not occurred | Named reviewer decisions, resolution of findings, completed approval fields and evidence review | Review all evidence and documentation, resolve findings, and record formal approval | P4 cannot be formally closed |
 
 ## Cross-cutting blockers
 
@@ -31,7 +37,8 @@ hashes, and separate-host verification; no local substitute is accepted.
 - The formal P4/security/release review has not been completed.
 
 These are external trust dependencies. They cannot be replaced with local test
-keys, synthetic records, fabricated attestations, or unverified statements.
+keys, synthetic records, fabricated attestations, or unverified statements. The
+`1.0.0-rc.1` record is local validation evidence only.
 
 ## Local status that must be preserved
 
@@ -45,7 +52,7 @@ keys, synthetic records, fabricated attestations, or unverified statements.
   reproducibility limits are documented.
 - Local signatures and attestation controls are tooling validation only, not
   production evidence.
-- `make release-check` must be run from a clean worktree when one exists.
+- `make release-check` passes from the clean `b543303` worktree.
 
 ## Required evidence acceptance
 
@@ -66,12 +73,14 @@ keys, synthetic records, fabricated attestations, or unverified statements.
 - Do not expose or request private signing keys, registry credentials, recovery
   codes, or other secrets.
 - Do not promote local ephemeral evidence to external status.
-- Do not tag, publish, release, commit, or start v1.0 work while these blockers
-  remain.
+- Do not tag, publish, or promote final `1.0.0`, or represent `1.0.0-rc.1` as
+  externally evidenced or production-approved. RC commits may be prepared for
+  validation only.
 
 ## Exit condition
 
 P4 closes only when all six requirements are independently verified, the
 checklist and JSON statuses agree, all evidence links resolve, the Windows Npcap
 runtime is verified or explicitly waived, and named reviewers record formal
-approval. Until then, P4 remains **NOT CLOSED**.
+approval. Until then, P4 remains **NOT CLOSED** and final `1.0.0` promotion is
+blocked.

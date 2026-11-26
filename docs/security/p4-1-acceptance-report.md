@@ -11,7 +11,14 @@ custody attestation, public fingerprint, production-signed release, clean-host
 transcript, or formal approval is recorded.
 
 No external party was contacted, no production credential was created, and no
-status was promoted. P4-2 was not started.
+status was promoted. P4-2 external evidence was not started; local package
+preparation exists but P4-2 remains `blocked`.
+
+Release candidate context: `1.0.0-rc.1` at commit
+`b543303da8923d0ba259a919c038a6bb2880380b` has a local
+[attestation record](../releases/1.0.0-rc.1-attestation.md). It is not tagged,
+published, production-signed, or covered by GitHub OIDC attestations. The
+verdict below is unchanged.
 
 ## Acceptance criteria
 
@@ -39,6 +46,13 @@ status was promoted. P4-2 was not started.
 The local checksum manifest and ephemeral signatures demonstrate workflow
 mechanics only. They do not establish production custody, signer identity, or
 release authenticity.
+
+## Release candidate record
+
+The `1.0.0-rc.1` record documents local artifact hashes, the current SBOM, and
+the explicit absence of production signatures and OIDC attestations. It is
+local tooling evidence only and does not satisfy P4-1 or P4-4. P4-1 remains
+`external-pending`.
 
 ## Exact missing inputs from the project owner
 
@@ -94,5 +108,6 @@ sign-off.
 ## Resume condition
 
 P4-1 execution may resume only when the project owner supplies the inputs above
-or authorizes their collection through an approved channel. P4-2 must not begin
-until P4-1 is formally accepted.
+or authorizes their collection through an approved channel. P4-2 external
+evidence must not begin until P4-1 is formally accepted; local P4-2 preparation
+does not change its `blocked` status.

@@ -4,6 +4,12 @@ Status: **coordination record only; P4 remains not closed.** This document does
 not record external evidence, ownership confirmations, approvals, or sign-off.
 All external requirement statuses remain unchanged.
 
+Release candidate context: `1.0.0-rc.1` at commit
+`b543303da8923d0ba259a919c038a6bb2880380b` is documented in the
+[RC attestation record](releases/1.0.0-rc.1-attestation.md). The record is local
+validation evidence only and does not assign an owner, supply external evidence,
+or change any requirement status.
+
 No private signing keys, registry passwords, API tokens, recovery codes, VPN
 credentials, or other secrets may be submitted as evidence. Redact account
 identifiers and security settings before storing evidence outside the repository.

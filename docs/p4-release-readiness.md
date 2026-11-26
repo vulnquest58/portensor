@@ -5,6 +5,13 @@ not a code milestone. The local controls are implemented and reproducible, but
 production key custody, registry ownership, clean-runner execution, and the
 external OT/ICS assessment cannot be verified from this development host.
 
+Release candidate context: `1.0.0-rc.1` at commit
+`b543303da8923d0ba259a919c038a6bb2880380b` is prepared for validation only. It
+is not tagged, published, production-signed, or attested. The
+[RC attestation record](releases/1.0.0-rc.1-attestation.md) records that status.
+P4-1 through P4-6 remain open; final `1.0.0` promotion is conditional on closure
+or formal risk acceptance.
+
 No private keys, registry tokens, VPN credentials, or account secrets are stored
 in the repository.
 
@@ -22,13 +29,14 @@ document provides the supporting implementation detail.
 
 | Requirement | Local implementation | Verified evidence | Remaining external evidence | Status |
 |---|---|---|---|---|
-| Release signing keys | GPG and cosign signing/verification workflows; unsigned releases now fail | Ephemeral GPG and cosign test keys signed and verified a copy of `dist/SHA256SUMS` locally; public key derivation checked | Production key generation, custody, public fingerprint, rotation/revocation, and signing from controlled environments | blocked |
+| Release signing keys | GPG and cosign signing/verification workflows; unsigned releases now fail | Historical 0.7.0 local tooling: ephemeral GPG and cosign test keys signed and verified a copy of `dist/SHA256SUMS`; public key derivation checked | Production key generation, custody, public fingerprint, rotation/revocation, and signing from controlled environments | blocked |
 | Registry ownership | Ownership checklist below; local Homebrew/Scoop/Chocolatey/AUR/Compose templates, `make package-check`, blank machine-readable evidence packet, and `make p4-external-evidence-check` | Metadata is generated only from checksum-verified local archives; JSON/XML/YAML parsing and PKGBUILD bash syntax pass; Chocolatey pack and archive extraction pass; external evidence validator and tests pass locally; no account control is asserted | Owner confirmation and 2FA/account control for every distribution channel, channel approvals, and clean-environment install results | blocked |
 | Clean runners | GitHub-hosted `ubuntu-24.04` and `windows-2022` release jobs; actions pinned to commit SHAs; runner limits in [`release-runners.md`](release-runners.md) | Workflow lint passes; release jobs log `ImageOS` and `ImageVersion` | A clean release run recording resolved `ImageVersion` values and producing and verifying signed assets, SBOM, and attestations | blocked |
-| SBOM and provenance | CycloneDX generation, checksum coverage, artifact attestations, and SBOM attestation in the release workflow; procedure in [`sbom.md`](sbom.md) | Local CycloneDX 1.5 SBOM with 280 components; local `SHA256SUMS` covers both archives and the SBOM; signing and workflow checks pass | Actual GitHub OIDC attestation and external verification from a clean environment | in progress |
+| SBOM and provenance | CycloneDX generation, checksum coverage, artifact attestations, and SBOM attestation in the release workflow; procedure in [`sbom.md`](sbom.md) | RC CycloneDX 1.5 SBOM with 280 components in `dist/portensor-1.0.0-rc.1.cdx.json`; historical 0.7.0 local tooling SBOM retained; `SHA256SUMS` covers both archives and the RC SBOM | Actual GitHub OIDC attestation and external verification from a clean environment | in progress |
 | OT/ICS assessment | Assessment inputs documented; no local substitute for the external review | Not applicable | Approved partner, legal scope, budget, schedule, and final report | blocked |
 | v1.0 security and documentation | Private reporting/disclosure policy, ADRs, security model, compatibility policy, and release policy | `SECURITY.md`, ADRs 0001–0005, [`compatibility-policy.md`](compatibility-policy.md), and [`release-process.md`](release-process.md) are present | Documentation/security review sign-off and resolution of findings | in progress |
 | Authorized live validation | Scope-guarded HTB Garfield, RedEye, Unclaimed, and Scaffold runs | Garfield: 22/22 confirmed TCP ports via two-pass connect discovery. RedEye v2: 4/4 exact nmap/rayscan match with explicit SNI and endpoint-aware mixed OS. Unclaimed: 13/13 via two-pass recovery with HTTP/WinRM/SMB evidence. Scaffold: 30/30 discovered ports confirmed on a Windows domain controller with anonymous LDAP rootDSE, SMB signing, and certificate evidence; high-rate nmap yielded an invalid all-filtered result and a slower pass timed out. See [`bench/htb/README.md`](../bench/htb/README.md), [`redeye.md`](../bench/htb/redeye.md), [`unclaimed.md`](../bench/htb/unclaimed.md), and [`scaffold.md`](../bench/htb/scaffold.md) | Additional machines if required; native Windows Npcap raw runtime | in progress |
+| PingPong RC validation | Raw IPv4 SYN over OpenVPN `tun0`, RST cleanup, and cooldown-safe validation script | 15/15 cooldown inventory; latest scripted run 6 open + 9 silent; latest nmap full run 18 open; full-range raw SYN still 1/15 known-open. See [PingPong evidence](../bench/v1.0-rc/pingpong-evidence/README.md) | Native Windows Npcap raw-SYN verification or explicit waiver; further target-state validation if required | local-ready |
 | Windows Npcap raw runtime | Native raw path not installable here | WSL host-NAT raw SYN failed and produced a false tarpit classification | Install Npcap on a controlled Windows runner and repeat raw SYN/OS checks | blocked |
 
 ## Registry ownership
@@ -104,11 +112,15 @@ and verifies both signatures. It writes:
 
 - `bench/p4/p4-local-check.txt` — fingerprints, checksum coverage, and
   verification results only.
-- `bench/p4/rayscan-0.7.0.cdx.json` — generated SBOM.
+- `bench/p4/portensor-<version>.cdx.json` — generated SBOM when
+  `make p4-local-check` is run.
 
-The ephemeral private keys are deleted before the check exits. The recorded GPG
-fingerprint belongs to a throwaway key and must not be used for a release. See
-[`sbom.md`](sbom.md) for SBOM generation and verification details.
+The historical `bench/p4/rayscan-0.7.0.cdx.json` is retained as local tooling
+evidence. The current RC release SBOM is
+`dist/portensor-1.0.0-rc.1.cdx.json`. The ephemeral private keys are deleted
+before the check exits. The recorded GPG fingerprint belongs to a throwaway key
+and must not be used for a release. See [`sbom.md`](sbom.md) for SBOM generation
+and verification details.
 
 `make package-check` writes local package definitions under `dist/packages/`
 and records static validation in `bench/p4/p4-package-check.txt`. Chocolatey
@@ -149,5 +161,6 @@ state in [`p4-signoff-readiness.md`](p4-signoff-readiness.md). These are
 coordination records only; no external evidence has been obtained and no status
 has changed.
 
-Until all six are evidenced, P4 and v1.0 remain blocked. Local tooling tests
-must not be represented as production key custody or registry ownership.
+Until all six are evidenced, P4 remains open and final `1.0.0` promotion is
+blocked. The `1.0.0-rc.1` candidate is validation-only. Local tooling tests must
+not be represented as production key custody or registry ownership.

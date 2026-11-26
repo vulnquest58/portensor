@@ -10,8 +10,10 @@ independent verification.
 - CycloneDX JSON, specification version 1.5.
 - Filename: `portensor-<version>.cdx.json`.
 - The document includes all Cargo targets and must contain at least 100
-  components; the current 0.7.0 SBOM contains 280.
-- The local evidence copy is `bench/p4/portensor-<version>.cdx.json`.
+  components; the current `1.0.0-rc.1` SBOM contains 280.
+- The current release SBOM is `dist/portensor-1.0.0-rc.1.cdx.json`. The
+  historical `bench/p4/rayscan-0.7.0.cdx.json` remains local 0.7.0 tooling
+  evidence and is not an RC signature or attestation.
 
 ## Generation
 
@@ -73,3 +75,7 @@ invalid CycloneDX documents fail `make p4-local-check`,
 `scripts/release-check.sh`, and the release workflow. Local checks passing do
 not close P4-4; published attestations and independent verification remain
 external evidence.
+
+The `1.0.0-rc.1` SBOM is covered by the local `dist/SHA256SUMS` and documented in
+the [RC attestation record](releases/1.0.0-rc.1-attestation.md). It is not
+published or attested; P4-4 remains `external-pending`.

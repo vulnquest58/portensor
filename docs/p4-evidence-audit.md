@@ -2,6 +2,8 @@
 
 Audit date: 2026-11-22
 
+Latest RC addendum: 2026-11-26
+
 ## Result
 
 P4 is **NOT CLOSED**. The repository evidence package is internally consistent,
@@ -74,6 +76,38 @@ attestations, clean-runner isolation, or an independent assessment.
 The `make p4-local-check` output uses ephemeral test keys and records
 `external_key_custody=not verified`. It is local tooling evidence, not production
 custody, signing, or attestation evidence.
+
+## RC addendum (2026-11-26)
+
+The `1.0.0-rc.1` candidate was committed as
+`b543303da8923d0ba259a919c038a6bb2880380b`; the worktree was clean and
+`scripts/release-check.sh` passed. The RC record
+[`docs/releases/1.0.0-rc.1-attestation.md`](releases/1.0.0-rc.1-attestation.md)
+documents local artifact hashes and explicitly records that no tag, publication,
+production signature, or GitHub OIDC attestation exists.
+
+The P4 validator was updated to validate the current release SBOM at
+`dist/portensor-1.0.0-rc.1.cdx.json` (CycloneDX 1.5, 280 components) and its
+`dist/SHA256SUMS` entry instead of the historical 0.7.0 tooling SBOM. The
+historical `bench/p4/rayscan-0.7.0.cdx.json` and
+`bench/p4/p4-local-check.txt` remain local 0.7.0 tooling evidence and are not
+represented as RC signatures or attestations.
+
+RC validation results:
+
+| Check | Result |
+|---|---|
+| `python3 scripts/p4_evidence_check.py` | Pass: 0 errors, 0 warnings; P4 NOT CLOSED |
+| `scripts/release-check.sh` | Pass from clean commit `b543303` |
+| Rust tests | Pass: 444 lib, 43 CLI, 3 official |
+| RC SBOM | CycloneDX 1.5, 280 components, covered by `dist/SHA256SUMS` |
+| Production signatures | None |
+| GitHub OIDC attestations | None |
+| PingPong evidence | 15/15 cooldown inventory; latest scripted 6 open + 9 silent; latest nmap 18 open |
+
+This addendum does not close P4. P4-1, P4-3, and P4-4 remain
+`external-pending`; P4-2 and P4-5 remain `blocked`; P4-6 remains `local-ready`
+pending review and sign-off. Final `1.0.0` promotion remains blocked.
 
 ## Findings
 
@@ -221,12 +255,15 @@ contain external evidence, named approvals, credentials, or status changes.
   is supporting scanner evidence only.
 
 No requirement was marked closed or approved. No external approval, registry,
-account-control, or release action was performed. No commit, push, tag,
-publication, or release was created.
+account-control, or release action was performed. The historical audit predates
+the `1.0.0-rc.1` commit; see the RC addendum for the current commit and local
+release record. No tag, push, publication, production signature, attestation,
+or release was created.
 
 ## Closure decision
 
-P4 remains **NOT CLOSED** and v1.0 implementation must not start.
+P4 remains **NOT CLOSED** and final `1.0.0` promotion is blocked. The
+`1.0.0-rc.1` candidate is validation-only.
 
 Closure requires all external records listed in
 `docs/p4-closure-checklist.md`, plus formal sign-off. After the external records

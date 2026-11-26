@@ -1,35 +1,43 @@
 # P4 formal sign-off readiness report
 
-Status: **NOT READY FOR FORMAL SIGN-OFF.** P4 remains **NOT CLOSED**, and v1.0
-implementation must not start.
+Status: **NOT READY FOR FORMAL SIGN-OFF.** P4 remains **NOT CLOSED**, and final
+`1.0.0` promotion is blocked.
 
 This report separates completed local validation from the external evidence
 that is still required. It does not approve P4 and contains no invented names,
 dates, signatures, or external records.
+
+Release candidate context: `1.0.0-rc.1` at commit
+`b543303da8923d0ba259a919c038a6bb2880380b` is prepared for validation only. It
+is not tagged, published, production-signed, or attested. The
+[RC attestation record](releases/1.0.0-rc.1-attestation.md) records that status.
 
 ## Local readiness
 
 | Check | Result | Evidence |
 |---|---|---|
 | P4 evidence audit | Pass: 0 errors, 0 warnings | `make p4-evidence-check` |
-| Local signing and SBOM check | Pass with ephemeral keys | `make p4-local-check` |
-| SBOM | CycloneDX 1.5, 280 components | `bench/p4/rayscan-0.7.0.cdx.json` |
-| Checksum coverage | Both archives and SBOM | `dist/SHA256SUMS`, `bench/p4/p4-local-check.txt` |
+| Local signing and SBOM check | Historical 0.7.0 tooling pass with ephemeral keys; RC local-check not rerun in this environment | `bench/p4/p4-local-check.txt` |
+| SBOM | RC CycloneDX 1.5, 280 components; historical 0.7.0 tooling SBOM retained | `dist/portensor-1.0.0-rc.1.cdx.json`, `bench/p4/rayscan-0.7.0.cdx.json` |
+| Checksum coverage | Both RC archives and RC SBOM | `dist/SHA256SUMS`, `dist/portensor-1.0.0-rc.1.cdx.json` |
+| RC attestation record | Present; explicitly no production signatures or OIDC attestations | `docs/releases/1.0.0-rc.1-attestation.md` |
 | Workflow lint | Pass | `actionlint` |
 | Rust formatting | Pass | `cargo fmt --all -- --check` |
 | Rust lint | Pass | `cargo clippy --all-targets --all-features -- -D warnings` |
-| Rust tests | Pass: 440 lib, 43 CLI, 3 official | `cargo test --all-targets --all-features` |
+| Rust tests | Pass: 444 lib, 43 CLI, 3 official | `cargo test --all-targets --all-features` |
 | Python tests | Pass: 63 | `python3 -m unittest discover -s bench/tests -t . -v` |
 | Package metadata checks | Pass: static checks and 10 packaging tests; installs not executed | `make package-check` |
 | External evidence validator | Pass: structural checks and 7 validator tests; template reports incomplete | `make p4-external-evidence-status` |
 | Evidence references | Automated link and status checks pass; human review not performed | `make p4-evidence-check` |
 | Documentation/security review | Not performed | P4-6 approval outstanding |
 | Whitespace validation | Pass | `git diff --check` |
-| Release preflight | Not run: worktree is intentionally dirty | `make release-check` |
+| Release preflight | Pass from clean commit `b543303` | `make release-check` |
 
 Local results do not establish production custody, registry ownership,
 clean-runner isolation, published provenance, independent assessment, or formal
 approval. The local SBOM and signatures are evidence of tooling behavior only.
+The RC artifacts are local build outputs; their presence is not a release,
+publication, signature, or attestation.
 
 ## External readiness
 
@@ -90,5 +98,7 @@ No approval is recorded. The fields below remain intentionally incomplete.
 ## Decision
 
 **Do not close P4.** The local pipeline is auditable and passes, but external
-trust evidence is absent. No commit, push, tag, publication, release, or v1.0
-implementation is authorized by this report.
+trust evidence is absent. The `1.0.0-rc.1` commit and local record are
+validation artifacts only. No tag, push, publication, production signature,
+attestation, final release, or final `1.0.0` promotion is authorized by this
+report.

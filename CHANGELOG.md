@@ -27,8 +27,14 @@ All notable changes to portensor are documented here.
   run; an earlier run was 5 open and 10 silent). A latest full nmap run observed
   18 open ports, so the target inventory is not static. Evidence is under
   `bench/v1.0-rc/pingpong-evidence/`.
-- P4 external requirements remain open; this release candidate does not claim
-  P4 closure or replace the final v1.0.0 release gate.
+- Release candidate record: commit
+  `b543303da8923d0ba259a919c038a6bb2880380b`; no tag, publication, production
+  GPG/cosign signature, or GitHub OIDC build-provenance/SBOM attestation. See
+  `docs/releases/1.0.0-rc.1-attestation.md`.
+- P4 external requirements remain open: P4-1, P4-3, and P4-4 are
+  `external-pending`; P4-2 and P4-5 are `blocked`; P4-6 is `local-ready`. This
+  release candidate does not claim P4 closure or replace the final v1.0.0
+  release gate.
 
 ## [0.7.2] - 2026-11-25
 
