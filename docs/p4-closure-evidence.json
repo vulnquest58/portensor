@@ -29,7 +29,7 @@
     "risk_acceptance": "docs/releases/1.0.0-risk-acceptance.md",
     "risk_acceptance_status": "approved-risk-accepted-p4-open",
     "preflight": "pass",
-    "status": "risk-accepted-publication-authorized-p4-open",
+    "status": "risk-accepted-rc-workflow-verified-final-pending-p4-open",
     "production_signatures": "not-created",
     "github_oidc_attestations": "not-created"
   },

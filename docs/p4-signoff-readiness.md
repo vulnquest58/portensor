@@ -27,7 +27,7 @@ publication status. P4 formal sign-off remains outstanding.
 | Local signing and SBOM check | Historical 0.7.0 tooling pass with ephemeral keys; RC local-check not rerun in this environment | `bench/p4/p4-local-check.txt` |
 | SBOM | Final CycloneDX 1.5, 280 components; RC and historical 0.7.0 tooling SBOMs retained | `dist/portensor-1.0.0.cdx.json`, `dist/portensor-1.0.0-rc.1.cdx.json`, `bench/p4/rayscan-0.7.0.cdx.json` |
 | Checksum coverage | Both final archives and final SBOM | `dist/SHA256SUMS`, `dist/portensor-1.0.0.cdx.json` |
-| Final attestation record | Present; explicitly no production signatures or OIDC attestations | `docs/releases/1.0.0-attestation.md` |
+| Final attestation record | Present; records risk-accepted publication and `v1.0.0-rc.3` signed-workflow verification; final release evidence pending | `docs/releases/1.0.0-attestation.md` |
 | Risk acceptance | Approved within recorded scope and expiry; not P4 closure | `docs/releases/1.0.0-risk-acceptance.md` |
 | Workflow lint | Pass | `actionlint` |
 | Rust formatting | Pass | `cargo fmt --all -- --check` |

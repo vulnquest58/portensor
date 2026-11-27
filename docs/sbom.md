@@ -77,8 +77,11 @@ invalid CycloneDX documents fail `make p4-local-check`,
 not close P4-4; published attestations and independent verification remain
 external evidence.
 
-The `1.0.0` SBOM is covered by the local `dist/SHA256SUMS` and documented in the
-[1.0.0 attestation record](releases/1.0.0-attestation.md). It is not published
-or attested; P4-4 remains `external-pending`. The historical
+The local `1.0.0` SBOM is covered by `dist/SHA256SUMS` and documented in the
+[1.0.0 attestation record](releases/1.0.0-attestation.md). The tag-triggered
+release workflow generates and attests the published SBOM; `v1.0.0-rc.3`
+produced a clean 321-component SBOM and passed checksum, GPG, and attestation
+verification. P4-4 remains `external-pending` until the final release evidence is
+verified and recorded. The historical
 [RC attestation record](releases/1.0.0-rc.1-attestation.md) is retained for the
 `1.0.0-rc.1` candidate.
