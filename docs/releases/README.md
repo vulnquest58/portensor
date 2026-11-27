@@ -9,6 +9,7 @@ that does not exist.
 
 | Version | Commit | Status | Record |
 |---|---|---|---|
+| `1.0.0` | Finalization commit | Local finalization; not tagged, published, production-signed, or attested; P4 open; risk acceptance draft not approved | [1.0.0 record](1.0.0-attestation.md), [risk acceptance draft](1.0.0-risk-acceptance.md) |
 | `1.0.0-rc.1` | `b543303da8923d0ba259a919c038a6bb2880380b` | Release candidate; not tagged, published, production-signed, or attested; P4 open | [1.0.0-rc.1 record](1.0.0-rc.1-attestation.md) |
 
 ## Recording rules

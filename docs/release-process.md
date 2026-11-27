@@ -58,10 +58,13 @@ floating action tags and missing runner documentation.
 7. Run `make release-check`. It requires the current SBOM and fails on a missing
    SBOM, missing checksum entry, invalid CycloneDX document, or digest mismatch.
 8. Commit the release changes. The worktree must be clean before tagging.
-9. For a release candidate, create or update
+9. For every release, create or update
    `docs/releases/<version>-attestation.md` with the commit, artifact hashes,
-   and explicit tag/signature/attestation status; do not tag or publish it. For
-   a final release, continue to the next step.
+   and explicit tag/signature/attestation status. For a release candidate or a
+   final release that is not yet published, record the local finalization and
+   the publication blocker; do not tag or publish it. A final release may
+   continue to the next step only after the P4 gate is closed or a risk
+   acceptance is signed and approved.
 10. Create an annotated tag: `git tag -a vX.Y.Z -m "portensor vX.Y.Z"`.
 11. Push the commit and tag only after the release gate and any phase-specific
     checks have passed. Pushing a tag triggers the release workflow.
@@ -124,12 +127,15 @@ P4 can complete.
 
 ## Release candidate records
 
-Local release candidate records live under `docs/releases/`. The
+Local release records live under `docs/releases/`. The
 [`1.0.0-rc.1` record](releases/1.0.0-rc.1-attestation.md) documents the source
 commit `b543303da8923d0ba259a919c038a6bb2880380b`, local artifact digests, and
 the absence of a tag, publication, production signature, or GitHub OIDC
-attestation. An RC record is a validation artifact only: it does not close P4,
-replace production signing, or authorize final `1.0.0` promotion.
+attestation. The [`1.0.0` record](releases/1.0.0-attestation.md) documents the
+local finalization artifacts and the same absence of publication and production
+attestations. The [`1.0.0` risk acceptance](releases/1.0.0-risk-acceptance.md) is
+an unapproved draft. These records are validation artifacts only: they do not
+close P4, replace production signing, or authorize final `1.0.0` promotion.
 
 ## v0.7.0 workflow incident
 

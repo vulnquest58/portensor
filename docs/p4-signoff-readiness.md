@@ -12,15 +12,21 @@ Release candidate context: `1.0.0-rc.1` at commit
 is not tagged, published, production-signed, or attested. The
 [RC attestation record](releases/1.0.0-rc.1-attestation.md) records that status.
 
+Final `1.0.0` context: local artifacts and the final SBOM were prepared on
+2026-11-27. They are not tagged, published, production-signed, or attested. The
+[1.0.0 attestation record](releases/1.0.0-attestation.md) records that state; the
+[risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft.
+
 ## Local readiness
 
 | Check | Result | Evidence |
 |---|---|---|
 | P4 evidence audit | Pass: 0 errors, 0 warnings | `make p4-evidence-check` |
 | Local signing and SBOM check | Historical 0.7.0 tooling pass with ephemeral keys; RC local-check not rerun in this environment | `bench/p4/p4-local-check.txt` |
-| SBOM | RC CycloneDX 1.5, 280 components; historical 0.7.0 tooling SBOM retained | `dist/portensor-1.0.0-rc.1.cdx.json`, `bench/p4/rayscan-0.7.0.cdx.json` |
-| Checksum coverage | Both RC archives and RC SBOM | `dist/SHA256SUMS`, `dist/portensor-1.0.0-rc.1.cdx.json` |
-| RC attestation record | Present; explicitly no production signatures or OIDC attestations | `docs/releases/1.0.0-rc.1-attestation.md` |
+| SBOM | Final CycloneDX 1.5, 280 components; RC and historical 0.7.0 tooling SBOMs retained | `dist/portensor-1.0.0.cdx.json`, `dist/portensor-1.0.0-rc.1.cdx.json`, `bench/p4/rayscan-0.7.0.cdx.json` |
+| Checksum coverage | Both final archives and final SBOM | `dist/SHA256SUMS`, `dist/portensor-1.0.0.cdx.json` |
+| Final attestation record | Present; explicitly no production signatures or OIDC attestations | `docs/releases/1.0.0-attestation.md` |
+| Risk acceptance | Draft only; not approved | `docs/releases/1.0.0-risk-acceptance.md` |
 | Workflow lint | Pass | `actionlint` |
 | Rust formatting | Pass | `cargo fmt --all -- --check` |
 | Rust lint | Pass | `cargo clippy --all-targets --all-features -- -D warnings` |
@@ -31,13 +37,13 @@ is not tagged, published, production-signed, or attested. The
 | Evidence references | Automated link and status checks pass; human review not performed | `make p4-evidence-check` |
 | Documentation/security review | Not performed | P4-6 approval outstanding |
 | Whitespace validation | Pass | `git diff --check` |
-| Release preflight | Pass from clean commit `b543303` | `make release-check` |
+| Release preflight | Historical RC pass from clean `b543303`; final `1.0.0` preflight pending | `make release-check` |
 
 Local results do not establish production custody, registry ownership,
 clean-runner isolation, published provenance, independent assessment, or formal
 approval. The local SBOM and signatures are evidence of tooling behavior only.
-The RC artifacts are local build outputs; their presence is not a release,
-publication, signature, or attestation.
+The RC and final artifacts are local build outputs; their presence is not a
+release, publication, signature, or attestation.
 
 ## External readiness
 

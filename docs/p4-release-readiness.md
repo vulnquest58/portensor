@@ -12,6 +12,12 @@ is not tagged, published, production-signed, or attested. The
 P4-1 through P4-6 remain open; final `1.0.0` promotion is conditional on closure
 or formal risk acceptance.
 
+Final `1.0.0` local artifacts and the final CycloneDX SBOM were prepared on
+2026-11-27. They are not tagged, published, production-signed, or attested. The
+[1.0.0 attestation record](releases/1.0.0-attestation.md) records that state, and
+the [risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft.
+This finalization does not change any P4 status.
+
 No private keys, registry tokens, VPN credentials, or account secrets are stored
 in the repository.
 

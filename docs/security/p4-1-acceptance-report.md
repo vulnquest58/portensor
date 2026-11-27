@@ -20,6 +20,12 @@ Release candidate context: `1.0.0-rc.1` at commit
 published, production-signed, or covered by GitHub OIDC attestations. The
 verdict below is unchanged.
 
+Final `1.0.0` context: local artifacts and the final SBOM were prepared on
+2026-11-27. The [1.0.0 attestation record](../releases/1.0.0-attestation.md)
+records that they are unsigned and unpublished. The
+[risk acceptance](../releases/1.0.0-risk-acceptance.md) is an unapproved draft.
+The verdict below is unchanged.
+
 ## Acceptance criteria
 
 | Criterion | Result | Basis |
@@ -47,11 +53,11 @@ The local checksum manifest and ephemeral signatures demonstrate workflow
 mechanics only. They do not establish production custody, signer identity, or
 release authenticity.
 
-## Release candidate record
+## Release records
 
-The `1.0.0-rc.1` record documents local artifact hashes, the current SBOM, and
-the explicit absence of production signatures and OIDC attestations. It is
-local tooling evidence only and does not satisfy P4-1 or P4-4. P4-1 remains
+The `1.0.0-rc.1` and `1.0.0` records document local artifact hashes, the SBOMs,
+and the explicit absence of production signatures and OIDC attestations. They
+are local tooling evidence only and do not satisfy P4-1 or P4-4. P4-1 remains
 `external-pending`.
 
 ## Exact missing inputs from the project owner

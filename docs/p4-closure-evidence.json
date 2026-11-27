@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "phase": "P4",
-  "as_of": "2026-11-26",
+  "as_of": "2026-11-27",
   "overall_status": "not_closed",
   "approved": false,
   "reviewed_by": null,
@@ -16,6 +16,19 @@
     "attestation_record": "docs/releases/1.0.0-rc.1-attestation.md",
     "status": "release-candidate-p4-open",
     "final_promotion": "blocked-until-p4-closed-or-risk-accepted",
+    "production_signatures": "not-created",
+    "github_oidc_attestations": "not-created"
+  },
+  "final_release": {
+    "version": "1.0.0",
+    "source_commit": null,
+    "date": "2026-11-27",
+    "tag": null,
+    "published": false,
+    "attestation_record": "docs/releases/1.0.0-attestation.md",
+    "risk_acceptance": "docs/releases/1.0.0-risk-acceptance.md",
+    "risk_acceptance_status": "draft-not-approved",
+    "status": "local-finalization-p4-open",
     "production_signatures": "not-created",
     "github_oidc_attestations": "not-created"
   },
@@ -272,19 +285,29 @@
       ],
       "evidence": [
         {
-          "path": "dist/portensor-1.0.0-rc.1.cdx.json",
+          "path": "dist/portensor-1.0.0.cdx.json",
           "kind": "sbom",
+          "status": "final-local-cyclonedx-1.5-280-components"
+        },
+        {
+          "path": "dist/portensor-1.0.0-rc.1.cdx.json",
+          "kind": "historical-sbom",
           "status": "release-candidate-cyclonedx-1.5-280-components"
         },
         {
           "path": "dist/SHA256SUMS",
           "kind": "checksum-manifest",
-          "status": "release-candidate-archives-plus-sbom"
+          "status": "final-local-archives-plus-sbom"
+        },
+        {
+          "path": "docs/releases/1.0.0-attestation.md",
+          "kind": "attestation-record",
+          "status": "local-finalization-no-production-signatures-or-oidc-attestations"
         },
         {
           "path": "docs/releases/1.0.0-rc.1-attestation.md",
-          "kind": "attestation-record",
-          "status": "no-production-signatures-or-oidc-attestations"
+          "kind": "historical-attestation-record",
+          "status": "release-candidate-no-production-signatures-or-oidc-attestations"
         },
         {
           "path": "bench/p4/rayscan-0.7.0.cdx.json",
@@ -450,6 +473,18 @@
       "notes": "Prepared at commit b543303da8923d0ba259a919c038a6bb2880380b. Not tagged, published, production-signed, or covered by GitHub OIDC attestations. Local validation only; P4 remains open and final 1.0.0 promotion is blocked."
     },
     {
+      "item": "Final 1.0.0 local finalization",
+      "status": "local-ready",
+      "evidence": [
+        "docs/releases/1.0.0-attestation.md",
+        "docs/releases/1.0.0-risk-acceptance.md",
+        "dist/portensor-1.0.0.cdx.json",
+        "dist/SHA256SUMS",
+        "bench/v1.0-rc/pingpong-evidence/README.md"
+      ],
+      "notes": "Local Linux glibc, static-musl, Windows GNU, and CycloneDX SBOM artifacts prepared on 2026-11-27. Not tagged, published, production-signed, or covered by GitHub OIDC attestations. The risk acceptance is an unapproved draft; P4 remains open and publication is blocked."
+    },
+    {
       "item": "Local P4 tooling",
       "status": "local-ready",
       "evidence": [
@@ -499,7 +534,7 @@
     "No unresolved critical or high-severity release blocker remains, or exceptions are approved with owner and expiry",
     "Windows Npcap raw runtime is verified or explicitly waived",
     "A named reviewer approves P4",
-    "No final 1.0.0 tag, publication, or release occurs before approval; 1.0.0-rc.1 remains validation-only"
+    "No final 1.0.0 tag, publication, or release occurs before approval; the 1.0.0 finalization and 1.0.0-rc.1 remain unpublished validation artifacts"
   ],
   "approvals": {
     "p4_reviewer": null,

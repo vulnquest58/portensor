@@ -21,6 +21,14 @@ See `environment.txt` for the captured environment and scope.
 - Status: local validation only; not tagged, published, production-signed, or
   covered by GitHub OIDC attestations.
 
+## Final 1.0.0 record
+
+The `1.0.0` artifacts were rebuilt from the same source changes with a version
+bump; no new PingPong scans were run for this version-only finalization. The
+PingPong evidence remains the RC evidence recorded above. See the
+[1.0.0 attestation record](../../../docs/releases/1.0.0-attestation.md). The
+target-state and full-range limitations are unchanged.
+
 ## Results
 
 - nmap full TCP inventory: 15 open ports and 65520 filtered in the initial

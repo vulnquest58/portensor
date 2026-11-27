@@ -455,7 +455,7 @@ def check_local_evidence(audit: Audit, requirements: list[dict]) -> None:
     historical_sbom = ROOT / "bench" / "p4" / "rayscan-0.7.0.cdx.json"
     if historical_sbom.is_file():
         audit.note(
-            "historical 0.7.0 local tooling SBOM retained; not current RC evidence"
+            "historical 0.7.0 local tooling SBOM retained; not current release evidence"
         )
 
     expected_sbom = f"dist/portensor-{version}.cdx.json"

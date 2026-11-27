@@ -10,6 +10,11 @@ Release candidate context: `1.0.0-rc.1` at commit
 validation evidence only and does not assign an owner, supply external evidence,
 or change any requirement status.
 
+Final `1.0.0` local finalization is documented in the
+[1.0.0 attestation record](releases/1.0.0-attestation.md). Its
+[risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft and
+does not assign an owner or change any requirement status.
+
 No private signing keys, registry passwords, API tokens, recovery codes, VPN
 credentials, or other secrets may be submitted as evidence. Redact account
 identifiers and security settings before storing evidence outside the repository.

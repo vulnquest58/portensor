@@ -2,6 +2,23 @@
 
 All notable changes to portensor are documented here.
 
+## [1.0.0] - 2026-11-27
+
+### Portensor 1.0.0
+
+- Finalizes the raw IPv4 SYN support for point-to-point interfaces, RST cleanup,
+  and SYN-ACK-backed verification fix validated in `1.0.0-rc.1`.
+- Prepares local Linux glibc, Linux static-musl, and Windows GNU artifacts with
+  a CycloneDX SBOM and SHA-256 checksums.
+- This entry records local finalization only. The artifacts are not tagged,
+  published, production-signed, or covered by published build-provenance/SBOM
+  attestations.
+- P4-1, P4-3, and P4-4 remain `external-pending`; P4-2 and P4-5 remain
+  `blocked`; P4-6 remains `local-ready`. Publication requires closure of
+  P4-1 through P4-6 or the signed risk acceptance. This entry does not claim P4
+  closure or publication. See `docs/releases/1.0.0-attestation.md` and
+  `docs/releases/1.0.0-risk-acceptance.md`.
+
 ## [1.0.0-rc.1] - 2026-11-26
 
 ### Added

@@ -1,7 +1,7 @@
 # Portensor
 
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](https://github.com/vulnquest58/portensor)
-[![Version](https://img.shields.io/badge/version-v1.0.0--rc.1-blue.svg)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-v1.0.0-blue.svg)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.99.1%20pinned-orange.svg)](rust-toolchain.toml)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20Static%20musl-informational.svg)](#cross-platform-binaries)
 [![Author](https://img.shields.io/badge/author-vulnquest58-blueviolet.svg)](https://github.com/vulnquest58)
@@ -10,25 +10,26 @@
 An accuracy-first TCP/UDP port scanner with passive OS fingerprinting, written in Rust.  
 Maintained by **vulnquest58** ([@vulnquest58](https://github.com/vulnquest58)).
 
-**Status: Release Candidate (v1.0.0-rc.1).** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `portensor` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
+**Status: v1.0.0 prepared for final publication.** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `portensor` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
 
 Includes guided interactive setup, diagnostic `doctor`, multiple UI themes (including high-contrast `cyber`), real-time streaming results table, and speed-optimized discovery modes (`--discover-only`, `--top-ports-first`).
 
 ## Release status and limitations
 
-`1.0.0-rc.1` is a release candidate at commit
-`b543303da8923d0ba259a919c038a6bb2880380b`. It is not tagged, published,
-production-signed, or covered by GitHub OIDC attestations. Final `1.0.0`
-promotion is conditional on closing P4-1 through P4-6 or formally accepting the
-associated risks: P4-1, P4-3, and P4-4 are `external-pending`; P4-2 and P4-5 are
-`blocked`; P4-6 is `local-ready`. See the
-[P4 closure checklist](docs/p4-closure-checklist.md) and
-[RC attestation record](docs/releases/1.0.0-rc.1-attestation.md).
+The `1.0.0` artifacts are prepared locally but are not tagged, published,
+production-signed, or covered by published build-provenance/SBOM attestations.
+P4-1, P4-3, and P4-4 are `external-pending`; P4-2 and P4-5 are `blocked`;
+P4-6 is `local-ready`. Publication requires the
+[signed risk acceptance](docs/releases/1.0.0-risk-acceptance.md) or closure of
+P4-1 through P4-6. See the
+[P4 closure checklist](docs/p4-closure-checklist.md) and the
+[1.0.0 attestation record](docs/releases/1.0.0-attestation.md).
 
-Known RC limitations:
+Known 1.0.0 limitations:
 
-- No production GPG/cosign signature or published build-provenance/SBOM
-  attestations exist for this candidate.
+- No production-approved GPG/cosign signature or published build-provenance/SBOM
+  attestations exist for this candidate. Any local release-key signature is not
+  custody-approved.
 - Windows Npcap raw-SYN runtime is unverified or requires an explicit waiver.
 - Full-range raw SYN parity on PingPong is not established. A 1-65535 scan at
   `--rate 500` found only `49669` of the 15 known-open ports; target state also

@@ -10,6 +10,12 @@ is not tagged, published, production-signed, or covered by GitHub OIDC
 attestations. The [RC attestation record](releases/1.0.0-rc.1-attestation.md)
 documents that status; it does not change any requirement below.
 
+Final `1.0.0` context: local artifacts and the final SBOM were prepared on
+2026-11-27. They are not tagged, published, production-signed, or attested. The
+[1.0.0 attestation record](releases/1.0.0-attestation.md) documents that state;
+the [risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft
+and does not change any requirement below.
+
 ## Summary
 
 | ID | Current status | External blocker | Missing evidence | Unblock action | Risk if unverified |
@@ -38,7 +44,7 @@ hashes, and separate-host verification; no local substitute is accepted.
 
 These are external trust dependencies. They cannot be replaced with local test
 keys, synthetic records, fabricated attestations, or unverified statements. The
-`1.0.0-rc.1` record is local validation evidence only.
+`1.0.0-rc.1` and `1.0.0` records are local validation evidence only.
 
 ## Local status that must be preserved
 
@@ -52,7 +58,8 @@ keys, synthetic records, fabricated attestations, or unverified statements. The
   reproducibility limits are documented.
 - Local signatures and attestation controls are tooling validation only, not
   production evidence.
-- `make release-check` passes from the clean `b543303` worktree.
+- `make release-check` passed from the clean `b543303` RC worktree; the final
+  `1.0.0` clean-tree preflight is pending.
 
 ## Required evidence acceptance
 
@@ -74,8 +81,10 @@ keys, synthetic records, fabricated attestations, or unverified statements. The
   codes, or other secrets.
 - Do not promote local ephemeral evidence to external status.
 - Do not tag, publish, or promote final `1.0.0`, or represent `1.0.0-rc.1` as
-  externally evidenced or production-approved. RC commits may be prepared for
-  validation only.
+  externally evidenced or production-approved. RC and final artifacts may be
+  prepared locally for validation only.
+- Do not treat the `1.0.0` risk acceptance draft as approval. It requires named
+  approvers, scope, date, and expiry before it can authorize anything.
 
 ## Exit condition
 
