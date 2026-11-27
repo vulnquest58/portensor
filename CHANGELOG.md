@@ -29,6 +29,15 @@ OT/ICS environments.**
 - Risk acceptance: `docs/releases/1.0.0-risk-acceptance.md`. Attestation:
   `docs/releases/1.0.0-attestation.md`.
 
+## [1.0.0-rc.3] - 2026-11-27
+
+### Clean release asset verification pre-release
+
+- Re-runs the signed release workflow with a clean `dist` directory so only the
+  SBOM generated for this tag is published.
+- This is not the final release. P4 remains open; see the recorded `1.0.0` risk
+  acceptance.
+
 ## [1.0.0-rc.2] - 2026-11-27
 
 ### Release workflow verification pre-release
