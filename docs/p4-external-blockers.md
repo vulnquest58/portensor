@@ -4,7 +4,8 @@ Status: **P4 remains NOT CLOSED.** The signed `v1.0.0` workflow produced
 checksums, a GPG signature, SBOM, and OIDC provenance/SBOM attestations that were
 verified from downloaded release assets. P4-1 custody approval, P4-2 registry
 evidence, P4-5 OT/ICS assessment, and P4-6 formal sign-off remain absent;
-P4-3/P4-4 still require the remaining independent clean-host verification.
+P4-3/P4-4 still require independent verification; the operator-run clean-host
+checks are not an independent reviewer transcript.
 
 Release candidate context: `1.0.0-rc.1` at commit
 `b543303da8923d0ba259a919c038a6bb2880380b` is a local validation artifact. It
@@ -22,10 +23,10 @@ acceptance and signed workflow do not change any requirement status below.
 
 | ID | Current status | External blocker | Missing evidence | Unblock action | Risk if unverified |
 |---|---|---|---|---|---|
-| P4-1 | `external-pending` | Production signing custody is not established on this host | Custody attestation, public fingerprint, signer identity, approved custody/backup/rotation/revocation procedure, clean-host signature verification | Approve a signer and custody process; approve and exercise the draft key custody procedure; publish public verification material; verify from a separate clean host | Release identity and artifact authenticity cannot be trusted |
+| P4-1 | `external-pending` | Production signing custody is not established on this host | Custody attestation, independent public-fingerprint confirmation, approved signer identity, approved custody/backup/rotation/revocation procedure, independent clean-host verification | Approve a signer and custody process; approve and exercise the draft key custody procedure; confirm the published fingerprint out of band; verify independently from a separate clean host | Release identity and artifact authenticity cannot be trusted |
 | P4-2 | `blocked` | Registry ownership and maintainer authority are unconfirmed | Owner confirmations, 2FA/recovery/least-privilege confirmation, approved token plan, channel review/publication approvals, clean-install results, published container digest | Obtain approved owner attestations and verify publishing permissions without exposing credentials; local package metadata, blank intake packet, and acceptance validator are prepared | Unauthorized or broken package distribution remains possible |
-| P4-3 | `external-pending` | No clean-run release evidence has been produced | Workflow run URL and logs, resolved runner image versions, commands, artifact hashes, isolation evidence, independent verification | Run an authorized release dry run on a clean runner and retain the complete verification record | Build reproducibility and runner isolation remain unproven |
-| P4-4 | `external-pending` | No published production attestations exist | Production SBOM, signer identity, build-provenance and SBOM attestations, artifact-to-SBOM association, verification output | Publish a signed release with OIDC attestations and verify them from published material | Artifact provenance and SBOM trust remain unproven |
+| P4-3 | `external-pending` | Signed workflow evidence exists, but no independent clean-run verification has been produced | Independent review of workflow logs, resolved runner images, commands, artifact hashes, isolation evidence, and clean-host transcript | Have an independent verifier review the signed workflow record and reproduce the checks | Build reproducibility and runner isolation remain unproven |
+| P4-4 | `external-pending` | Published provenance/SBOM attestations exist, but no independent verification has been recorded | Independent verification of the OIDC attestations against the expected repository, workflow, source commit, and artifact digests, plus reviewer acceptance | Have an independent verifier validate the published attestations and retain the output | Artifact provenance and SBOM trust remain unproven |
 | P4-5 | `blocked` | No independent OT/ICS assessment has been authorized or performed | Partner agreement, scope/ROE, legal authorization, budget, plan, final report, remediation closure | Approve an assessor, scope, legal basis, budget, and schedule; complete and review the assessment | OT/ICS security claims lack independent validation |
 | P4-6 | `local-ready` | Documentation review and formal sign-off have not occurred | Named reviewer decisions, resolution of findings, completed approval fields and evidence review | Review all evidence and documentation, resolve findings, and record formal approval | P4 cannot be formally closed |
 

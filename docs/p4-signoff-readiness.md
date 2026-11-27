@@ -27,7 +27,7 @@ outstanding.
 | Local signing and SBOM check | Historical 0.7.0 tooling pass with ephemeral keys; RC local-check not rerun in this environment | `bench/p4/p4-local-check.txt` |
 | SBOM | Local final CycloneDX 1.5, 280 components; published workflow SBOM 321 components; RC and historical 0.7.0 tooling SBOMs retained | `dist/portensor-1.0.0.cdx.json`, published `portensor-1.0.0.cdx.json`, `dist/portensor-1.0.0-rc.1.cdx.json`, `bench/p4/rayscan-0.7.0.cdx.json` |
 | Checksum coverage | Both final archives and final SBOM | `dist/SHA256SUMS`, `dist/portensor-1.0.0.cdx.json` |
-| Final attestation record | Present; records published `v1.0.0` assets, signed workflow, and checksum/GPG/attestation verification; clean-host verification pending | `docs/releases/1.0.0-attestation.md` |
+| Final attestation record | Present; records published `v1.0.0` assets, signed workflow, checksum/GPG/attestation verification, and operator-run clean Debian checks; independent verification pending | `docs/releases/1.0.0-attestation.md`, `docs/releases/1.0.0-clean-host-verification.txt` |
 | Risk acceptance | Approved within recorded scope and expiry; not P4 closure | `docs/releases/1.0.0-risk-acceptance.md` |
 | Workflow lint | Pass | `actionlint` |
 | Rust formatting | Pass | `cargo fmt --all -- --check` |

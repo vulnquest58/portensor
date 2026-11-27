@@ -9,7 +9,7 @@ that does not exist.
 
 | Version | Commit | Status | Record |
 |---|---|---|---|
-| `1.0.0` | `180b93dc9b9052e3e4d2643eaac37fc7a75316a7` | Published risk-accepted release; P4 open; signed workflow, checksums, GPG signature, and OIDC attestations verified | [1.0.0 record](1.0.0-attestation.md), [approved risk acceptance](1.0.0-risk-acceptance.md), [release](https://github.com/vulnquest58/portensor/releases/tag/v1.0.0) |
+| `1.0.0` | `180b93dc9b9052e3e4d2643eaac37fc7a75316a7` | Published risk-accepted release; P4 open; signed workflow, checksums, GPG signature, and OIDC attestations verified; operator clean-host checks passed, independent verification pending | [1.0.0 record](1.0.0-attestation.md), [clean-host transcript](1.0.0-clean-host-verification.txt), [approved risk acceptance](1.0.0-risk-acceptance.md), [release](https://github.com/vulnquest58/portensor/releases/tag/v1.0.0) |
 | `1.0.0-rc.1` | `b543303da8923d0ba259a919c038a6bb2880380b` | Release candidate; not tagged, published, production-signed, or attested; P4 open | [1.0.0-rc.1 record](1.0.0-rc.1-attestation.md) |
 
 ## Recording rules

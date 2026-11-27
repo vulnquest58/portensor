@@ -33,7 +33,9 @@
     "preflight": "pass",
     "status": "published-risk-accepted-p4-open",
     "production_signatures": "published-gpg-signed-verified",
-    "github_oidc_attestations": "published-provenance-and-sbom-verified"
+    "github_oidc_attestations": "published-provenance-and-sbom-verified",
+    "clean_host_verification": "operator-run-pass-independent-pending",
+    "clean_host_transcript": "docs/releases/1.0.0-clean-host-verification.txt"
   },
   "requirements": [
     {
@@ -82,7 +84,17 @@
         {
           "path": "docs/security/p4-1-clean-host-verification.md",
           "kind": "verification-procedure",
-          "status": "procedure-ready-not-executed"
+          "status": "procedure-ready-formal-execution-not-performed"
+        },
+        {
+          "path": "docs/releases/1.0.0-attestation.md",
+          "kind": "release-attestation",
+          "status": "published-verified-operator-clean-host"
+        },
+        {
+          "path": "docs/releases/1.0.0-clean-host-verification.txt",
+          "kind": "clean-host-transcript",
+          "status": "operator-run-pass-independent-pending"
         },
         {
           "path": "docs/security/p4-1-acceptance-report.md",
@@ -112,9 +124,9 @@
       ],
       "remaining_evidence": [
         "Production key ceremony record",
-        "Public key and production fingerprint",
-        "Approved custody, rotation, revocation, and emergency-replacement evidence",
-        "Clean-host signature verification transcript",
+        "Approved production signer identity and custody evidence",
+        "Independent public-fingerprint confirmation",
+        "Independent clean-host signature verification transcript",
         "Independent reviewer acceptance and project-owner/security-lead approval"
       ]
     },
@@ -263,16 +275,24 @@
           "path": ".github/actionlint.yaml",
           "kind": "workflow-lint-config",
           "status": "present"
+        },
+        {
+          "path": "docs/releases/1.0.0-attestation.md",
+          "kind": "release-attestation",
+          "status": "published-signed-workflow-verified"
+        },
+        {
+          "path": "docs/releases/1.0.0-clean-host-verification.txt",
+          "kind": "clean-host-transcript",
+          "status": "operator-run-pass-independent-pending"
         }
       ],
       "remaining_evidence": [
-        "Clean-run workflow URL and logs",
         "Resolved ubuntu-24.04 and windows-2022 ImageVersion values",
-        "Artifact hashes from the clean run",
-        "Separate-host verification transcript",
-        "Runner isolation and reproducibility notes"
+        "Independent review of clean-run logs, artifact hashes, and isolation evidence",
+        "Independent clean-host verification transcript"
       ],
-      "notes": "Not started. No clean-run workflow evidence exists; local workflow controls are not a substitute."
+      "notes": "Signed v1.0.0 workflow run 46033605325 completed; artifact hashes and operator clean-host checks are recorded. Resolved runner image versions and independent review remain outstanding."
     },
     {
       "id": "P4-4",
@@ -305,7 +325,12 @@
         {
           "path": "docs/releases/1.0.0-attestation.md",
           "kind": "attestation-record",
-          "status": "local-finalization-no-production-signatures-or-oidc-attestations"
+          "status": "published-gpg-signed-provenance-and-sbom-verified"
+        },
+        {
+          "path": "docs/releases/1.0.0-clean-host-verification.txt",
+          "kind": "clean-host-transcript",
+          "status": "operator-run-pass-independent-pending"
         },
         {
           "path": "docs/releases/1.0.0-rc.1-attestation.md",
@@ -344,9 +369,8 @@
         }
       ],
       "remaining_evidence": [
-        "GitHub OIDC build-provenance attestation URL",
-        "GitHub OIDC SBOM attestation URL",
-        "Independent verification transcript from published material"
+        "Independent verification transcript from published material",
+        "Independent reviewer acceptance of provenance and SBOM attestations"
       ]
     },
     {

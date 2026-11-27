@@ -54,16 +54,16 @@ formal approval. P4-1 remains `external-pending`.
 | Requirement ID | P4-1 |
 | Evidence identifier | P4-1-FINAL |
 | Description | `1.0.0` published release, checksums, SBOM, GPG signature, and OIDC attestations; release key not custody-approved |
-| Issuing organization or responsible owner | Local project validation and GitHub Actions release workflow |
+| Issuing organization or responsible owner | Local project validation, operator-run Debian VM, and GitHub Actions release workflow |
 | Date obtained | 2026-11-27 |
-| Verification method | Final release preflight; downloaded release assets; `sha256sum -c SHA256SUMS`; isolated-keyring GPG verification; attestation API checks |
-| Verification result | Published artifacts and signature verified on this host; no approved custody and no clean-host verification |
-| Evidence storage reference | `docs/releases/1.0.0-attestation.md`; `https://github.com/vulnquest58/portensor/releases/tag/v1.0.0` |
+| Verification method | Final release preflight; downloaded release assets; `sha256sum -c SHA256SUMS`; isolated-keyring GPG verification; attestation API checks; operator-run Debian 12.5 checks |
+| Verification result | Published artifacts and signature verified on this host and a separate Debian VM; no approved custody or independent verification |
+| Evidence storage reference | `docs/releases/1.0.0-attestation.md`; `docs/releases/1.0.0-clean-host-verification.txt`; `https://github.com/vulnquest58/portensor/releases/tag/v1.0.0` |
 | Reviewer and approval status | Not applicable to production custody; no approval |
 
 The final record is release evidence only. It does not establish an approved
-production signer, key custody, clean-host verification, or formal approval.
-P4-1 remains `external-pending`.
+production signer, key custody, independent clean-host verification, or formal
+approval. P4-1 remains `external-pending`.
 
 ## Required external evidence
 
@@ -71,7 +71,7 @@ P4-1 remains `external-pending`.
 |---|---|---|---|---|---|---|---|---|
 | P4-1-E1 | Signing architecture and identity | Approved production signing technology, identity, and ownership | Not assigned | Not obtained | Review of signed approval record and public identity | Not verified | Not recorded | Not reviewed / not approved |
 | P4-1-E2 | Key custody | Custody, access-control, and separation-of-duties attestation | Not assigned | Not obtained | Review of custody attestation and access record | Not verified | Not recorded | Not reviewed / not approved |
-| P4-1-E3 | Public verification material | Public key, fingerprint, and verification commands published through an approved channel | Not assigned | Not obtained | Fingerprint comparison and clean-host verification | Not verified | Not recorded | Not reviewed / not approved |
+| P4-1-E3 | Public verification material | Public key, fingerprint, and verification commands published through an approved channel | Not assigned | Published with `v1.0.0`; channel not approved | Independent fingerprint comparison and clean-host verification | Not verified | Not recorded | Not reviewed / not approved |
 | P4-1-E4 | Backup and recovery | Approved backup/recovery design and successful restoration test | Not assigned | Not obtained | Review of test transcript and custody approval | Not verified | Not recorded | Not reviewed / not approved |
 | P4-1-E5 | Rotation and revocation | Approved rotation/revocation procedure and drill or rehearsal record | Not assigned | Not obtained | Review of approval and redacted drill record | Not verified | Not recorded | Not reviewed / not approved |
 | P4-1-E6 | Independent verification | Clean-host signature, checksum, SBOM, and attestation verification transcript | Not assigned | Not obtained | Re-run published verification procedure on separate host | Not verified | Not recorded | Not reviewed / not approved |

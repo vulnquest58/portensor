@@ -1,7 +1,11 @@
 # P4-1 clean-host verification procedure
 
-Status: **procedure ready; not executed.** No production-signed release or
-approved public fingerprint has been supplied. P4-1 remains `external-pending`.
+Status: **procedure ready; formal P4-1 execution not performed.** A
+production-signed `v1.0.0` release and public fingerprint are published, but no
+approved public fingerprint or independent verifier has been supplied. An
+operator-run clean Debian smoke verification is recorded in the
+[1.0.0 transcript](../releases/1.0.0-clean-host-verification.txt); it does not
+satisfy this procedure's preconditions. P4-1 remains `external-pending`.
 
 This procedure defines the independent verification required to close P4-1. The
 verifier must use a clean host that was not used to build, sign, or publish the
@@ -184,12 +188,12 @@ Report a suspected compromise through the private channel in `SECURITY.md`.
 
 | Item | Current state |
 |---|---|
-| Production-signed release supplied | No |
+| Production-signed release supplied | Yes: `v1.0.0`; signer/custody not P4-1 approved |
 | Approved public fingerprint supplied | No |
-| Clean host authorized | No |
-| Verification executed | No |
-| Transcript reference | Not available |
+| Clean host authorized | No: operator-run smoke check only |
+| Verification executed | No: formal procedure not executed |
+| Transcript reference | Operator-run transcript: [1.0.0-clean-host-verification.txt](../releases/1.0.0-clean-host-verification.txt) |
 | Verifier and reviewer approval | Not recorded |
 
-This procedure remains unexecuted until the exact inputs in the
-[P4-1 acceptance report](p4-1-acceptance-report.md) are supplied.
+This procedure remains unexecuted for P4-1 acceptance until the exact inputs in
+the [P4-1 acceptance report](p4-1-acceptance-report.md) are supplied.

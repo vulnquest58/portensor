@@ -22,7 +22,8 @@ are `external-pending`; P4-2 and P4-5 are `blocked`; P4-6 is `local-ready`. The
 [recorded risk acceptance](docs/releases/1.0.0-risk-acceptance.md) authorizes
 risk-accepted publication within its scope and expiry. The signed release
 workflow completed successfully and its checksums, GPG signature, and OIDC
-attestations were verified. See the
+attestations were verified; operator-run checks on a separate Debian VM also
+passed, while independent verification remains pending. See the
 [P4 closure checklist](docs/p4-closure-checklist.md) and the
 [1.0.0 attestation record](docs/releases/1.0.0-attestation.md).
 

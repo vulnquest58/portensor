@@ -26,9 +26,9 @@ workflow label.
 
 This means the repository can pin action code, Rust, signing tools, and SBOM
 generation, but it cannot make the hosted runner image itself fully reproducible.
-P4-3 therefore remains external-pending until a clean release run records the
-resolved image versions, commands, toolchain versions, artifact hashes, and
-separate-host verification.
+The signed `v1.0.0` run recorded artifact hashes and passed operator-run
+clean-host checks, but the resolved image versions and independent review remain
+outstanding. P4-3 therefore remains external-pending.
 
 The self-hosted `portensor-lab` runner is used only for isolated lab tests and is
 not a release builder.

@@ -121,13 +121,14 @@ Local `1.0.0` artifacts were built from commit `180b93d` with Rust `1.99.1` and
 published artifact digests and verification results. The
 [risk acceptance](releases/1.0.0-risk-acceptance.md) is approved within its
 recorded scope and expiry. The signed `v1.0.0` workflow evidence was verified
-from downloaded release assets; clean-host verification remains pending.
+from downloaded release assets; operator-run clean-host checks passed, while
+independent verification remains pending.
 
 Final validation results:
 
 | Check | Result |
 |---|---|
-| `python3 scripts/p4_evidence_check.py` | Pass: 0 errors, 0 warnings, 9 notes; P4 NOT CLOSED |
+| `python3 scripts/p4_evidence_check.py` | Pass: 0 errors, 0 warnings, 11 notes; P4 NOT CLOSED |
 | P4 evidence and packaging tests | Pass: 24 tests |
 | Final local SBOM | CycloneDX 1.5, 280 components, covered by `dist/SHA256SUMS` |
 | Published SBOM | CycloneDX 1.5, 321 components, digest `af3667f3e9150fc0fb4d7ec923efaca6b7b76f589182c97b9cf44c7e0fcf4a7b` |
@@ -137,6 +138,7 @@ Final validation results:
 | `make release-check` | Pass from clean `180b93d` and clean `067ee5e` |
 | Production signatures | Published GPG signature verified from downloaded assets |
 | GitHub OIDC attestations | Published provenance and SBOM attestations verified via GitHub API |
+| Clean-host checks | Operator-run pass on separate Debian 12.5 VM; independent verification pending; transcript `docs/releases/1.0.0-clean-host-verification.txt` |
 
 This addendum does not close P4. P4-1, P4-3, and P4-4 remain `external-pending`;
 P4-2 and P4-5 remain `blocked`; P4-6 remains `local-ready`. The release was
@@ -188,7 +190,7 @@ signer identity, custody, rotation, revocation, or published verification.
 
 The following cannot be closed from this host:
 
-- P4-1: production key ceremony, public fingerprint, custody approval, and clean-host verification
+- P4-1: production key ceremony, approved public fingerprint, custody approval, and independent clean-host verification
 - P4-2: Homebrew, Scoop, Chocolatey, AUR, GHCR, and Docker Compose ownership and clean-install evidence
 - P4-3: clean-runner release execution, logs, and resolved runner versions
 - P4-4: published OIDC build-provenance and SBOM attestations with independent verification
@@ -237,7 +239,7 @@ contain external evidence, named approvals, credentials, or status changes.
 
 | ID | Checklist and JSON status | Local evidence | Audit conclusion |
 |---|---|---|---|
-| P4-1 | `external-pending` | ADR, production signing policy, key custody procedure, signature verification procedure, evidence register, secure submission procedure, clean-host verification procedure, blocked acceptance report, release process, release workflow, local signing script/output | Open: production identity, custody, public fingerprint, and clean-host verification absent; evidence register contains no external claims |
+| P4-1 | `external-pending` | ADR, production signing policy, key custody procedure, signature verification procedure, evidence register, secure submission procedure, clean-host verification procedure, blocked acceptance report, release process, release workflow, local signing script/output | Open: approved production identity, custody, and independent public-fingerprint/clean-host verification absent; evidence register contains no external approval claims |
 | P4-2 | `blocked` | Readiness table, registry ownership requirements, maintenance policy, clean-install procedure, package templates/generator, 10 packaging tests, local metadata/archive evidence, external evidence packet and validator, Makefile, Dockerfile, release workflow | Open: registry ownership, account control, channel approvals, container digest, and clean-install evidence absent |
 | P4-3 | `external-pending` | CI and release workflows, SHA-pinned actions, versioned runner labels, runner documentation, pinned toolchain, workflow lint | Open: clean-runner logs and resolved image versions absent |
 | P4-4 | `external-pending` | CycloneDX SBOM with 280 components, locally signed checksum copy covering archives and SBOM, signing/attestation controls, SBOM procedure | Open: published attestations and independent verification absent |

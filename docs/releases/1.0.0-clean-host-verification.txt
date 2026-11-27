@@ -1,0 +1,99 @@
+Portensor 1.0.0 clean-host verification
+=======================================
+
+Date: 2026-11-27T16:47:09Z
+Host: Debian GNU/Linux 12.5 (bookworm)
+Kernel: Linux vbox 6.1.0-18-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.76-1 (2024-02-01) x86_64 GNU/Linux
+Verifier: project operator (root) on a separate VirtualBox VM
+Scope: operator-run clean-host checksum, signature, SBOM, and binary checks
+Limitation: not an independent P4-1 verifier; no out-of-band fingerprint
+approval and no formal reviewer sign-off. The P4-1 clean-host procedure remains
+unexecuted for acceptance purposes.
+
+Tool versions
+-------------
+gpg (GnuPG) 2.2.40
+libgcrypt 1.10.1
+Python 3.11.2
+sha256sum (GNU coreutils) 9.1
+curl 7.88.1
+
+Source
+------
+https://github.com/vulnquest58/portensor/releases/download/v1.0.0/
+
+Downloaded files
+----------------
+383263  portensor-1.0.0.cdx.json
+7824409 portensor-1.0.0-linux-x86_64.tar.gz
+7713373 portensor-1.0.0-windows-x86_64.zip
+294     SHA256SUMS
+228     SHA256SUMS.asc
+449     SHA256SUMS.gpg.pub
+
+Checksum verification
+---------------------
+portensor-1.0.0-linux-x86_64.tar.gz: OK
+portensor-1.0.0-windows-x86_64.zip: OK
+portensor-1.0.0.cdx.json: OK
+
+Published digests
+-----------------
+3bc40e960929a45891850cd2c4efcc20f65f32ba486f4c6e5d436e3a7b6ad17a  portensor-1.0.0-linux-x86_64.tar.gz
+4d1bd38468082d252001a3ee247dfb7cb6974c7f9ef115a6ce373cb0d40f7fc6  portensor-1.0.0-windows-x86_64.zip
+af3667f3e9150fc0fb4d7ec923efaca6b7b76f589182c97b9cf44c7e0fcf4a7b  portensor-1.0.0.cdx.json
+fd3cffe7f11e69ab07833b3957bb92a74dd07a8b3aa16f8bd84621da481cef64  SHA256SUMS
+af0a0fcf55cd38b5bda73c8f328f03e167f2e08518e1016fa4bfc7dfbca0b4a1  SHA256SUMS.asc
+cac68d37f5690ca036decf964b505029992810a53ba86a450cd975461b535d2e  SHA256SUMS.gpg.pub
+
+GPG verification
+----------------
+Imported SHA256SUMS.gpg.pub into a temporary GNUPGHOME.
+Observed fingerprint:
+C68AF24B462F0B2F067D462E27E35C516A186541
+
+gpg: Signature made Fri 27 Nov 2026 04:32:22 PM UTC
+gpg:                using EDDSA key C68AF24B462F0B2F067D462E27E35C516A186541
+gpg: Good signature from "Portensor Release Signing <vulnquest58@users.noreply.github.com>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: C68A F24B 462F 0B2F 067D  462E 27E3 5C51 6A18 6541
+
+Status lines:
+[GNUPG:] GOODSIG 27E35C516A186541 Portensor Release Signing <vulnquest58@users.noreply.github.com>
+[GNUPG:] VALIDSIG C68AF24B462F0B2F067D462E27E35C516A186541 2026-11-27 1795797142 0 4 0 22 10 00 C68AF24B462F0B2F067D462E27E35C516A186541
+
+SBOM
+----
+bomFormat: CycloneDX
+specVersion: 1.5
+components: 321
+
+Linux archive
+-------------
+Archive contains bin/portensor plus README.md, CHANGELOG.md, LICENSE, man pages,
+and packs/official-baseline.
+Extracted binary output: portensor 1.0.0
+
+Windows archive
+---------------
+Archive contains 7 files:
+bin/portensor.exe
+packs/official-baseline/checks.py
+packs/official-baseline/fixtures.json
+packs/official-baseline/pack.toml
+CHANGELOG.md
+LICENSE
+README.md
+
+Attestations
+------------
+GitHub OIDC provenance and SBOM attestations were checked from the operator host
+through the GitHub API before this clean-host run. They were not re-verified on
+this VM because gh/cosign are not installed. Independent attestation verification
+remains pending.
+
+Result
+------
+PASS for operator-run clean-host checksum, GPG signature, SBOM, and Linux binary
+checks. This is not independent P4-1 acceptance evidence.
