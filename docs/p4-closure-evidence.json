@@ -21,14 +21,15 @@
   },
   "final_release": {
     "version": "1.0.0",
-    "source_commit": null,
+    "source_commit": "180b93dc9b9052e3e4d2643eaac37fc7a75316a7",
     "date": "2026-11-27",
     "tag": null,
     "published": false,
     "attestation_record": "docs/releases/1.0.0-attestation.md",
     "risk_acceptance": "docs/releases/1.0.0-risk-acceptance.md",
     "risk_acceptance_status": "draft-not-approved",
-    "status": "local-finalization-p4-open",
+    "preflight": "pass",
+    "status": "local-finalization-preflight-pass-p4-open",
     "production_signatures": "not-created",
     "github_oidc_attestations": "not-created"
   },

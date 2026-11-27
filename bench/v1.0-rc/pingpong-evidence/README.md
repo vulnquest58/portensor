@@ -25,7 +25,8 @@ See `environment.txt` for the captured environment and scope.
 
 The `1.0.0` artifacts were rebuilt from the same source changes with a version
 bump; no new PingPong scans were run for this version-only finalization. The
-PingPong evidence remains the RC evidence recorded above. See the
+full release preflight passed from clean commit `180b93d`. The PingPong evidence
+remains the RC evidence recorded above. See the
 [1.0.0 attestation record](../../../docs/releases/1.0.0-attestation.md). The
 target-state and full-range limitations are unchanged.
 

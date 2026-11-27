@@ -113,8 +113,8 @@ pending review and sign-off. Final `1.0.0` promotion remains blocked.
 
 ## Finalization addendum (2026-11-27)
 
-Local `1.0.0` artifacts were built with Rust `1.99.1` and `--locked` for Linux
-glibc, Linux static-musl, and Windows GNU. The final CycloneDX 1.5 SBOM contains
+Local `1.0.0` artifacts were built from commit `180b93d` with Rust `1.99.1` and
+`--locked` for Linux glibc, Linux static-musl, and Windows GNU. The final CycloneDX 1.5 SBOM contains
 280 components and is covered by `dist/SHA256SUMS`. The
 [1.0.0 attestation record](releases/1.0.0-attestation.md) records the artifact
 digests and explicitly states that no tag, publication, production signature, or
@@ -129,9 +129,11 @@ Final validation results:
 | P4 evidence and packaging tests | Pass: 24 tests |
 | Final SBOM | CycloneDX 1.5, 280 components, covered by `dist/SHA256SUMS` |
 | Final archives | Linux and Windows archives present; digests recorded in the attestation record |
+| Rust tests | Pass: 444 lib, 43 CLI, 3 official |
+| Python tests | Pass: 63 |
+| `make release-check` | Pass from clean `180b93d` |
 | Production signatures | None |
 | GitHub OIDC attestations | None |
-| `make release-check` | Pending final clean-tree preflight |
 
 This addendum does not close P4 or approve the risk acceptance. P4-1, P4-3, and
 P4-4 remain `external-pending`; P4-2 and P4-5 remain `blocked`; P4-6 remains

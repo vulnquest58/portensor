@@ -58,8 +58,8 @@ keys, synthetic records, fabricated attestations, or unverified statements. The
   reproducibility limits are documented.
 - Local signatures and attestation controls are tooling validation only, not
   production evidence.
-- `make release-check` passed from the clean `b543303` RC worktree; the final
-  `1.0.0` clean-tree preflight is pending.
+- `make release-check` passed from the clean `180b93d` final `1.0.0` worktree;
+  it also passed from the clean `b543303` RC worktree.
 
 ## Required evidence acceptance
 

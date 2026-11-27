@@ -37,7 +37,7 @@ Final `1.0.0` context: local artifacts and the final SBOM were prepared on
 | Evidence references | Automated link and status checks pass; human review not performed | `make p4-evidence-check` |
 | Documentation/security review | Not performed | P4-6 approval outstanding |
 | Whitespace validation | Pass | `git diff --check` |
-| Release preflight | Historical RC pass from clean `b543303`; final `1.0.0` preflight pending | `make release-check` |
+| Release preflight | Pass from clean `180b93d` for final `1.0.0`; historical RC pass from `b543303` | `make release-check` |
 
 Local results do not establish production custody, registry ownership,
 clean-runner isolation, published provenance, independent assessment, or formal
