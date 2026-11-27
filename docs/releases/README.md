@@ -9,7 +9,7 @@ that does not exist.
 
 | Version | Commit | Status | Record |
 |---|---|---|---|
-| `1.0.0` | `180b93dc9b9052e3e4d2643eaac37fc7a75316a7` | Local finalization; not tagged, published, production-signed, or attested; P4 open; risk acceptance draft not approved | [1.0.0 record](1.0.0-attestation.md), [risk acceptance draft](1.0.0-risk-acceptance.md) |
+| `1.0.0` | `180b93dc9b9052e3e4d2643eaac37fc7a75316a7` | Risk-accepted release; approved for publication; P4 open; signed workflow verification pending | [1.0.0 record](1.0.0-attestation.md), [approved risk acceptance](1.0.0-risk-acceptance.md) |
 | `1.0.0-rc.1` | `b543303da8923d0ba259a919c038a6bb2880380b` | Release candidate; not tagged, published, production-signed, or attested; P4 open | [1.0.0-rc.1 record](1.0.0-rc.1-attestation.md) |
 
 ## Recording rules
@@ -19,7 +19,8 @@ that does not exist.
    attestation exist. Absence must be explicit.
 3. Link the authoritative P4 status. A release record is not a P4 closure or
    risk acceptance.
-4. Final `1.0.0` promotion requires P4 closure with formal approval or a signed
-   risk acceptance naming the owner, scope, affected artifacts, and expiry.
+4. Final `1.0.0` promotion requires P4 closure with formal approval or a
+   recorded risk acceptance naming the owner, scope, affected artifacts, and
+   expiry.
 5. Never record private keys, registry credentials, recovery codes, or other
    secrets in a release record.

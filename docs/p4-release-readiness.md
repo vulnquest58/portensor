@@ -9,14 +9,14 @@ Release candidate context: `1.0.0-rc.1` at commit
 `b543303da8923d0ba259a919c038a6bb2880380b` is prepared for validation only. It
 is not tagged, published, production-signed, or attested. The
 [RC attestation record](releases/1.0.0-rc.1-attestation.md) records that status.
-P4-1 through P4-6 remain open; final `1.0.0` promotion is conditional on closure
-or formal risk acceptance.
+P4-1 through P4-6 remain open; final `1.0.0` publication proceeds under the
+recorded risk acceptance, not P4 closure.
 
 Final `1.0.0` local artifacts and the final CycloneDX SBOM were prepared on
-2026-11-27. They are not tagged, published, production-signed, or attested. The
-[1.0.0 attestation record](releases/1.0.0-attestation.md) records that state, and
-the [risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft.
-This finalization does not change any P4 status.
+2026-11-27. The [risk acceptance](releases/1.0.0-risk-acceptance.md) is approved
+within its recorded scope and expiry, and the
+[1.0.0 attestation record](releases/1.0.0-attestation.md) records the local and
+publication status. This finalization does not change any P4 status.
 
 No private keys, registry tokens, VPN credentials, or account secrets are stored
 in the repository.

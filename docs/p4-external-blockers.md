@@ -11,10 +11,11 @@ attestations. The [RC attestation record](releases/1.0.0-rc.1-attestation.md)
 documents that status; it does not change any requirement below.
 
 Final `1.0.0` context: local artifacts and the final SBOM were prepared on
-2026-11-27. They are not tagged, published, production-signed, or attested. The
-[1.0.0 attestation record](releases/1.0.0-attestation.md) documents that state;
-the [risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft
-and does not change any requirement below.
+2026-11-27. The [risk acceptance](releases/1.0.0-risk-acceptance.md) is approved
+within its recorded scope and expiry and authorizes risk-accepted publication.
+The [1.0.0 attestation record](releases/1.0.0-attestation.md) documents the
+local and publication status. The risk acceptance does not change any
+requirement below.
 
 ## Summary
 
@@ -80,11 +81,11 @@ keys, synthetic records, fabricated attestations, or unverified statements. The
 - Do not expose or request private signing keys, registry credentials, recovery
   codes, or other secrets.
 - Do not promote local ephemeral evidence to external status.
-- Do not tag, publish, or promote final `1.0.0`, or represent `1.0.0-rc.1` as
-  externally evidenced or production-approved. RC and final artifacts may be
-  prepared locally for validation only.
-- Do not treat the `1.0.0` risk acceptance draft as approval. It requires named
-  approvers, scope, date, and expiry before it can authorize anything.
+- Do not represent `1.0.0-rc.1` as externally evidenced or production-approved.
+  Final `1.0.0` publication is authorized only under the recorded risk
+  acceptance, with the required label and limitations.
+- Do not treat the risk acceptance as P4 closure. P4-1, P4-3, and P4-4 require
+  verified signed-workflow evidence before they can be described as satisfied.
 
 ## Exit condition
 

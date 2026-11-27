@@ -279,3 +279,5 @@ jobs:
           files: dist/*
           body_path: release-notes.md
           fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}
+          make_latest: ${{ contains(github.ref_name, '-rc.') && 'false' || 'true' }}

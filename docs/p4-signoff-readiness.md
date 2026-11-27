@@ -1,7 +1,8 @@
 # P4 formal sign-off readiness report
 
-Status: **NOT READY FOR FORMAL SIGN-OFF.** P4 remains **NOT CLOSED**, and final
-`1.0.0` promotion is blocked.
+Status: **NOT READY FOR FORMAL P4 SIGN-OFF.** P4 remains **NOT CLOSED**. Final
+`1.0.0` publication proceeds only under the recorded risk acceptance, not P4
+closure.
 
 This report separates completed local validation from the external evidence
 that is still required. It does not approve P4 and contains no invented names,
@@ -13,9 +14,10 @@ is not tagged, published, production-signed, or attested. The
 [RC attestation record](releases/1.0.0-rc.1-attestation.md) records that status.
 
 Final `1.0.0` context: local artifacts and the final SBOM were prepared on
-2026-11-27. They are not tagged, published, production-signed, or attested. The
-[1.0.0 attestation record](releases/1.0.0-attestation.md) records that state; the
-[risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft.
+2026-11-27. The [risk acceptance](releases/1.0.0-risk-acceptance.md) is approved
+within its recorded scope and expiry; the
+[1.0.0 attestation record](releases/1.0.0-attestation.md) records the local and
+publication status. P4 formal sign-off remains outstanding.
 
 ## Local readiness
 
@@ -26,7 +28,7 @@ Final `1.0.0` context: local artifacts and the final SBOM were prepared on
 | SBOM | Final CycloneDX 1.5, 280 components; RC and historical 0.7.0 tooling SBOMs retained | `dist/portensor-1.0.0.cdx.json`, `dist/portensor-1.0.0-rc.1.cdx.json`, `bench/p4/rayscan-0.7.0.cdx.json` |
 | Checksum coverage | Both final archives and final SBOM | `dist/SHA256SUMS`, `dist/portensor-1.0.0.cdx.json` |
 | Final attestation record | Present; explicitly no production signatures or OIDC attestations | `docs/releases/1.0.0-attestation.md` |
-| Risk acceptance | Draft only; not approved | `docs/releases/1.0.0-risk-acceptance.md` |
+| Risk acceptance | Approved within recorded scope and expiry; not P4 closure | `docs/releases/1.0.0-risk-acceptance.md` |
 | Workflow lint | Pass | `actionlint` |
 | Rust formatting | Pass | `cargo fmt --all -- --check` |
 | Rust lint | Pass | `cargo clippy --all-targets --all-features -- -D warnings` |

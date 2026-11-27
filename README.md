@@ -10,26 +10,27 @@
 An accuracy-first TCP/UDP port scanner with passive OS fingerprinting, written in Rust.  
 Maintained by **vulnquest58** ([@vulnquest58](https://github.com/vulnquest58)).
 
-**Status: v1.0.0 prepared for final publication.** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `portensor` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
+**Status: v1.0.0 risk-accepted release. P4 is not closed. Not independently assessed for OT/ICS environments.** High-speed scanners without evidence-based verification produce thousands of false positives when encountering real-world enterprise defenses (TCP tarpits, SYN-proxies, and middlebox drop rules). `portensor` solves this with a two-phase architecture: high-speed raw SYN discovery combined with rigorous semantic handshake verification, banner grabbing, passive TCP/IP stack fingerprinting, and offensive operations features for bug bounty hunters (Scope Guard boundary enforcement, CISA KEV and EPSS prioritization, real-time unbuffered JSONL streaming, IPv6 Neighbor Discovery, and the v0.6.0 cross-language script plugin engine — sidecar and sandboxed WASM plugins, a local pack library, and a digest-verified remote marketplace).
 
 Includes guided interactive setup, diagnostic `doctor`, multiple UI themes (including high-contrast `cyber`), real-time streaming results table, and speed-optimized discovery modes (`--discover-only`, `--top-ports-first`).
 
 ## Release status and limitations
 
-The `1.0.0` artifacts are prepared locally but are not tagged, published,
-production-signed, or covered by published build-provenance/SBOM attestations.
+The `1.0.0` release is published as a risk-accepted release. P4 is not closed.
 P4-1, P4-3, and P4-4 are `external-pending`; P4-2 and P4-5 are `blocked`;
-P4-6 is `local-ready`. Publication requires the
-[signed risk acceptance](docs/releases/1.0.0-risk-acceptance.md) or closure of
-P4-1 through P4-6. See the
+P4-6 is `local-ready`. The
+[recorded risk acceptance](docs/releases/1.0.0-risk-acceptance.md) authorizes
+risk-accepted publication within its scope and expiry. See the
 [P4 closure checklist](docs/p4-closure-checklist.md) and the
 [1.0.0 attestation record](docs/releases/1.0.0-attestation.md).
 
 Known 1.0.0 limitations:
 
-- No production-approved GPG/cosign signature or published build-provenance/SBOM
-  attestations exist for this candidate. Any local release-key signature is not
-  custody-approved.
+- The release uses dedicated release key
+  `C68AF24B462F0B2F067D462E27E35C516A186541` and the tag-triggered workflow is
+  designed to publish GPG-signed checksums plus GitHub OIDC provenance/SBOM
+  attestations. These are not independent custody approval or P4 closure; verify
+  the published fingerprint, hashes, and attestations.
 - Windows Npcap raw-SYN runtime is unverified or requires an explicit waiver.
 - Full-range raw SYN parity on PingPong is not established. A 1-65535 scan at
   `--rate 500` found only `49669` of the 15 known-open ports; target state also
@@ -38,6 +39,8 @@ Known 1.0.0 limitations:
 - P4 external evidence is absent. Local checks do not establish key custody,
   registry ownership, clean-runner isolation, independent OT/ICS assessment, or
   formal sign-off.
+- GitHub Releases is the only authorized publication channel. No ownership is
+  claimed for Chocolatey, AUR, Docker Hub, or any other unconfirmed registry.
 
 ---
 

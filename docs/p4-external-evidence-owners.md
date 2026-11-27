@@ -12,8 +12,9 @@ or change any requirement status.
 
 Final `1.0.0` local finalization is documented in the
 [1.0.0 attestation record](releases/1.0.0-attestation.md). Its
-[risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft and
-does not assign an owner or change any requirement status.
+[risk acceptance](releases/1.0.0-risk-acceptance.md) is approved within its
+recorded scope and expiry, but it does not assign external evidence owners or
+change any requirement status.
 
 No private signing keys, registry passwords, API tokens, recovery codes, VPN
 credentials, or other secrets may be submitted as evidence. Redact account

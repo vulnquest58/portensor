@@ -6,9 +6,10 @@ Report date: 2026-11-21
 
 **NOT ACCEPTED. P4-1 remains `external-pending`.** The local documentation and
 automated checks are present, but production signing evidence has not been
-supplied. No project-owner authorization, production signing identity, key
-custody attestation, public fingerprint, production-signed release, clean-host
-transcript, or formal approval is recorded.
+supplied. The project owner has authorized a risk-accepted release, but no P4-1
+production signing identity, key custody attestation, public fingerprint,
+production-signed release, clean-host transcript, or formal P4-1 approval is
+recorded.
 
 No external party was contacted, no production credential was created, and no
 status was promoted. P4-2 external evidence was not started; local package
@@ -22,9 +23,10 @@ verdict below is unchanged.
 
 Final `1.0.0` context: local artifacts and the final SBOM were prepared on
 2026-11-27. The [1.0.0 attestation record](../releases/1.0.0-attestation.md)
-records that they are unsigned and unpublished. The
-[risk acceptance](../releases/1.0.0-risk-acceptance.md) is an unapproved draft.
-The verdict below is unchanged.
+records the local and publication status. The
+[risk acceptance](../releases/1.0.0-risk-acceptance.md) is approved within its
+recorded scope and expiry, but it does not satisfy P4-1. The verdict below is
+unchanged.
 
 ## Acceptance criteria
 

@@ -117,9 +117,10 @@ Local `1.0.0` artifacts were built from commit `180b93d` with Rust `1.99.1` and
 `--locked` for Linux glibc, Linux static-musl, and Windows GNU. The final CycloneDX 1.5 SBOM contains
 280 components and is covered by `dist/SHA256SUMS`. The
 [1.0.0 attestation record](releases/1.0.0-attestation.md) records the artifact
-digests and explicitly states that no tag, publication, production signature, or
-GitHub OIDC attestation exists. The
-[risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft.
+digests and the publication status. The
+[risk acceptance](releases/1.0.0-risk-acceptance.md) is approved within its
+recorded scope and expiry; the signed workflow evidence remains pending
+verification.
 
 Final validation results:
 
@@ -135,9 +136,9 @@ Final validation results:
 | Production signatures | None |
 | GitHub OIDC attestations | None |
 
-This addendum does not close P4 or approve the risk acceptance. P4-1, P4-3, and
-P4-4 remain `external-pending`; P4-2 and P4-5 remain `blocked`; P4-6 remains
-`local-ready`.
+This addendum does not close P4. P4-1, P4-3, and P4-4 remain `external-pending`;
+P4-2 and P4-5 remain `blocked`; P4-6 remains `local-ready`. The risk acceptance
+authorizes publication but does not satisfy any external requirement.
 
 ## Findings
 

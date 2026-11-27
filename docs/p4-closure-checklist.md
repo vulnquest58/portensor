@@ -21,18 +21,17 @@ attestations. The local record is
 Open status: P4-1 `external-pending`, P4-2 `blocked`, P4-3 `external-pending`,
 P4-4 `external-pending`, P4-5 `blocked`, P4-6 `local-ready`. Final `1.0.0`
 promotion is conditional on closing these items and recording formal approval,
-or on a signed risk acceptance naming the owner, scope, affected artifacts, and
-expiry.
+or on a recorded risk acceptance naming the owner, scope, affected artifacts,
+and expiry.
 
 ## Final 1.0.0 finalization context
 
 `1.0.0` local artifacts, the final CycloneDX SBOM, and checksums were prepared on
-2026-11-27. They are not tagged, published, production-signed, or covered by
-GitHub OIDC attestations. The local record is
-[1.0.0-attestation.md](releases/1.0.0-attestation.md). The
-[risk acceptance](releases/1.0.0-risk-acceptance.md) is an unapproved draft and
-does not authorize publication. This finalization does not close P4 or change any
-requirement status.
+2026-11-27. The [risk acceptance](releases/1.0.0-risk-acceptance.md) is recorded
+and authorizes risk-accepted publication within its scope and expiry. The local
+record is [1.0.0-attestation.md](releases/1.0.0-attestation.md). Publication
+does not close P4 or change any requirement status; the signed workflow evidence
+must still be verified before P4-1, P4-3, or P4-4 is described as satisfied.
 
 ## Status legend
 

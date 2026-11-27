@@ -4,20 +4,39 @@ All notable changes to portensor are documented here.
 
 ## [1.0.0] - 2026-11-27
 
-### Portensor 1.0.0
+### Portensor 1.0.0 - risk-accepted release
+
+**Risk-accepted release. P4 is not closed. Not independently assessed for
+OT/ICS environments.**
 
 - Finalizes the raw IPv4 SYN support for point-to-point interfaces, RST cleanup,
   and SYN-ACK-backed verification fix validated in `1.0.0-rc.1`.
-- Prepares local Linux glibc, Linux static-musl, and Windows GNU artifacts with
-  a CycloneDX SBOM and SHA-256 checksums.
-- This entry records local finalization only. The artifacts are not tagged,
-  published, production-signed, or covered by published build-provenance/SBOM
-  attestations.
+- Publishes Linux glibc, Linux static-musl, and Windows GNU artifacts with a
+  CycloneDX SBOM and SHA-256 checksums through the tag-triggered signed release
+  workflow.
+- The release workflow signs `SHA256SUMS` with the project release GPG key and
+  publishes GitHub OIDC build-provenance and SBOM attestations. Verify the
+  published fingerprint, hashes, and attestations; workflow evidence is not P4
+  closure or independent key-custody approval.
 - P4-1, P4-3, and P4-4 remain `external-pending`; P4-2 and P4-5 remain
-  `blocked`; P4-6 remains `local-ready`. Publication requires closure of
-  P4-1 through P4-6 or the signed risk acceptance. This entry does not claim P4
-  closure or publication. See `docs/releases/1.0.0-attestation.md` and
-  `docs/releases/1.0.0-risk-acceptance.md`.
+  `blocked`; P4-6 remains `local-ready`. P4-2, P4-5, P4-6, and Windows Npcap
+  raw-SYN are accepted risks. P4-1/P4-3/P4-4 remain accepted unless the
+  published workflow evidence is verified and recorded.
+- Windows Npcap raw-SYN is unverified or covered by the recorded waiver.
+  Full-range PingPong parity is not established.
+- GitHub Releases is the only authorized channel. No ownership is claimed for
+  Chocolatey, AUR, Docker Hub, or any other unconfirmed registry.
+- Risk acceptance: `docs/releases/1.0.0-risk-acceptance.md`. Attestation:
+  `docs/releases/1.0.0-attestation.md`.
+
+## [1.0.0-rc.2] - 2026-11-27
+
+### Release workflow verification pre-release
+
+- Verifies the signed tag-triggered release workflow, GPG checksum signing, and
+  GitHub OIDC build-provenance/SBOM attestations before the final `1.0.0` tag.
+- This is not the final release. P4 remains open; see the recorded `1.0.0` risk
+  acceptance.
 
 ## [1.0.0-rc.1] - 2026-11-26
 
