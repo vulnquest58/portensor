@@ -12,11 +12,11 @@ is not tagged, published, production-signed, or attested. The
 P4-1 through P4-6 remain open; final `1.0.0` publication proceeds under the
 recorded risk acceptance, not P4 closure.
 
-Final `1.0.0` local artifacts and the final CycloneDX SBOM were prepared on
-2026-11-27. The [risk acceptance](releases/1.0.0-risk-acceptance.md) is approved
-within its recorded scope and expiry, and the
-[1.0.0 attestation record](releases/1.0.0-attestation.md) records the local and
-publication status. This finalization does not change any P4 status.
+Final `1.0.0` was published on 2026-11-27 under the recorded
+[risk acceptance](releases/1.0.0-risk-acceptance.md). The signed workflow,
+checksums, GPG signature, SBOM, and OIDC provenance/SBOM attestations were
+verified; the [1.0.0 attestation record](releases/1.0.0-attestation.md) records
+the local and published evidence. This does not change any P4 status.
 
 No private keys, registry tokens, VPN credentials, or account secrets are stored
 in the repository.

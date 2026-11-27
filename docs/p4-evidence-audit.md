@@ -109,18 +109,19 @@ RC validation results:
 
 This addendum does not close P4. P4-1, P4-3, and P4-4 remain
 `external-pending`; P4-2 and P4-5 remain `blocked`; P4-6 remains `local-ready`
-pending review and sign-off. Final `1.0.0` promotion remains blocked.
+pending review and sign-off. Final `1.0.0` promotion was subsequently authorized
+under the recorded risk acceptance; see the finalization addendum below.
 
 ## Finalization addendum (2026-11-27)
 
 Local `1.0.0` artifacts were built from commit `180b93d` with Rust `1.99.1` and
 `--locked` for Linux glibc, Linux static-musl, and Windows GNU. The final CycloneDX 1.5 SBOM contains
 280 components and is covered by `dist/SHA256SUMS`. The
-[1.0.0 attestation record](releases/1.0.0-attestation.md) records the artifact
-digests and the publication status. The
+[1.0.0 attestation record](releases/1.0.0-attestation.md) records the local and
+published artifact digests and verification results. The
 [risk acceptance](releases/1.0.0-risk-acceptance.md) is approved within its
-recorded scope and expiry; the signed workflow evidence remains pending
-verification.
+recorded scope and expiry. The signed `v1.0.0` workflow evidence was verified
+from downloaded release assets; clean-host verification remains pending.
 
 Final validation results:
 
@@ -128,17 +129,22 @@ Final validation results:
 |---|---|
 | `python3 scripts/p4_evidence_check.py` | Pass: 0 errors, 0 warnings, 9 notes; P4 NOT CLOSED |
 | P4 evidence and packaging tests | Pass: 24 tests |
-| Final SBOM | CycloneDX 1.5, 280 components, covered by `dist/SHA256SUMS` |
-| Final archives | Linux and Windows archives present; digests recorded in the attestation record |
+| Final local SBOM | CycloneDX 1.5, 280 components, covered by `dist/SHA256SUMS` |
+| Published SBOM | CycloneDX 1.5, 321 components, digest `af3667f3e9150fc0fb4d7ec923efaca6b7b76f589182c97b9cf44c7e0fcf4a7b` |
+| Final archives | Published Linux and Windows archives present; digests recorded in the attestation record |
 | Rust tests | Pass: 444 lib, 43 CLI, 3 official |
 | Python tests | Pass: 63 |
-| `make release-check` | Pass from clean `180b93d` |
-| Production signatures | None |
-| GitHub OIDC attestations | None |
+| `make release-check` | Pass from clean `180b93d` and clean `067ee5e` |
+| Production signatures | Published GPG signature verified from downloaded assets |
+| GitHub OIDC attestations | Published provenance and SBOM attestations verified via GitHub API |
 
 This addendum does not close P4. P4-1, P4-3, and P4-4 remain `external-pending`;
-P4-2 and P4-5 remain `blocked`; P4-6 remains `local-ready`. The risk acceptance
-authorizes publication but does not satisfy any external requirement.
+P4-2 and P4-5 remain `blocked`; P4-6 remains `local-ready`. The release was
+published at [v1.0.0](https://github.com/vulnquest58/portensor/releases/tag/v1.0.0)
+from workflow [46033605325](https://github.com/vulnquest58/portensor/actions/runs/46033605325).
+The risk acceptance and signed workflow do not satisfy the remaining external
+requirements, including P4-1 custody approval and independent clean-host
+verification.
 
 ## Findings
 

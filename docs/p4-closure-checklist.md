@@ -26,12 +26,14 @@ and expiry.
 
 ## Final 1.0.0 finalization context
 
-`1.0.0` local artifacts, the final CycloneDX SBOM, and checksums were prepared on
-2026-11-27. The [risk acceptance](releases/1.0.0-risk-acceptance.md) is recorded
-and authorizes risk-accepted publication within its scope and expiry. The local
-record is [1.0.0-attestation.md](releases/1.0.0-attestation.md). Publication
-does not close P4 or change any requirement status; the signed workflow evidence
-must still be verified before P4-1, P4-3, or P4-4 is described as satisfied.
+`1.0.0` was published on 2026-11-27 under the recorded
+[risk acceptance](releases/1.0.0-risk-acceptance.md). The signed release
+workflow completed successfully, and its checksums, GPG signature, SBOM, and
+OIDC provenance/SBOM attestations were verified from the downloaded release
+assets. The record is [1.0.0-attestation.md](releases/1.0.0-attestation.md).
+Publication does not close P4 or change any requirement status; P4-1 still
+requires approved custody, and P4-3/P4-4 still require the remaining independent
+verification.
 
 ## Status legend
 

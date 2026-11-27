@@ -1,8 +1,10 @@
 # P4 external blocker report
 
-Status: **P4 remains NOT CLOSED.** No external evidence has been obtained in
-this environment. The local evidence audit passes with zero errors and zero
-warnings, but that does not satisfy any external requirement.
+Status: **P4 remains NOT CLOSED.** The signed `v1.0.0` workflow produced
+checksums, a GPG signature, SBOM, and OIDC provenance/SBOM attestations that were
+verified from downloaded release assets. P4-1 custody approval, P4-2 registry
+evidence, P4-5 OT/ICS assessment, and P4-6 formal sign-off remain absent;
+P4-3/P4-4 still require the remaining independent clean-host verification.
 
 Release candidate context: `1.0.0-rc.1` at commit
 `b543303da8923d0ba259a919c038a6bb2880380b` is a local validation artifact. It
@@ -10,12 +12,11 @@ is not tagged, published, production-signed, or covered by GitHub OIDC
 attestations. The [RC attestation record](releases/1.0.0-rc.1-attestation.md)
 documents that status; it does not change any requirement below.
 
-Final `1.0.0` context: local artifacts and the final SBOM were prepared on
-2026-11-27. The [risk acceptance](releases/1.0.0-risk-acceptance.md) is approved
-within its recorded scope and expiry and authorizes risk-accepted publication.
-The [1.0.0 attestation record](releases/1.0.0-attestation.md) documents the
-local and publication status. The risk acceptance does not change any
-requirement below.
+Final `1.0.0` context: the release was published on 2026-11-27 under the
+recorded [risk acceptance](releases/1.0.0-risk-acceptance.md). The
+[1.0.0 attestation record](releases/1.0.0-attestation.md) documents the
+published assets, signed workflow, and verification results. The risk
+acceptance and signed workflow do not change any requirement status below.
 
 ## Summary
 

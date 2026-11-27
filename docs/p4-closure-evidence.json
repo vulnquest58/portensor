@@ -23,15 +23,17 @@
     "version": "1.0.0",
     "source_commit": "180b93dc9b9052e3e4d2643eaac37fc7a75316a7",
     "date": "2026-11-27",
-    "tag": null,
-    "published": false,
+    "tag": "v1.0.0",
+    "published": true,
+    "release_url": "https://github.com/vulnquest58/portensor/releases/tag/v1.0.0",
+    "workflow_run": "https://github.com/vulnquest58/portensor/actions/runs/46033605325",
     "attestation_record": "docs/releases/1.0.0-attestation.md",
     "risk_acceptance": "docs/releases/1.0.0-risk-acceptance.md",
     "risk_acceptance_status": "approved-risk-accepted-p4-open",
     "preflight": "pass",
-    "status": "risk-accepted-rc-workflow-verified-final-pending-p4-open",
-    "production_signatures": "not-created",
-    "github_oidc_attestations": "not-created"
+    "status": "published-risk-accepted-p4-open",
+    "production_signatures": "published-gpg-signed-verified",
+    "github_oidc_attestations": "published-provenance-and-sbom-verified"
   },
   "requirements": [
     {

@@ -132,11 +132,11 @@ Local release records live under `docs/releases/`. The
 commit `b543303da8923d0ba259a919c038a6bb2880380b`, local artifact digests, and
 the absence of a tag, publication, production signature, or GitHub OIDC
 attestation. The [`1.0.0` record](releases/1.0.0-attestation.md) documents the
-local finalization artifacts and the publication status. The
+published artifacts, signed workflow, and verification results. The
 [`1.0.0` risk acceptance](releases/1.0.0-risk-acceptance.md) is approved within
-its recorded scope and expiry and authorizes risk-accepted publication. These
-records do not close P4, replace independent custody approval, or satisfy the
-P4-1/P4-3/P4-4 external evidence requirements.
+its recorded scope and expiry and authorized the risk-accepted publication.
+These records do not close P4, replace independent custody approval, or satisfy
+the remaining P4-1/P4-3/P4-4 external evidence requirements.
 
 ## v0.7.0 workflow incident
 

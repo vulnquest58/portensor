@@ -53,17 +53,17 @@ formal approval. P4-1 remains `external-pending`.
 |---|---|
 | Requirement ID | P4-1 |
 | Evidence identifier | P4-1-FINAL |
-| Description | `1.0.0` local artifact, checksum, SBOM, and attestation record; no production signature |
-| Issuing organization or responsible owner | Local project validation |
+| Description | `1.0.0` published release, checksums, SBOM, GPG signature, and OIDC attestations; release key not custody-approved |
+| Issuing organization or responsible owner | Local project validation and GitHub Actions release workflow |
 | Date obtained | 2026-11-27 |
-| Verification method | Final release preflight; `sha256sum -c dist/SHA256SUMS`; review of the 1.0.0 attestation record |
-| Verification result | Local artifacts verified; no production GPG/cosign signature and no clean-host verification |
-| Evidence storage reference | `docs/releases/1.0.0-attestation.md`; `dist/SHA256SUMS` |
+| Verification method | Final release preflight; downloaded release assets; `sha256sum -c SHA256SUMS`; isolated-keyring GPG verification; attestation API checks |
+| Verification result | Published artifacts and signature verified on this host; no approved custody and no clean-host verification |
+| Evidence storage reference | `docs/releases/1.0.0-attestation.md`; `https://github.com/vulnquest58/portensor/releases/tag/v1.0.0` |
 | Reviewer and approval status | Not applicable to production custody; no approval |
 
-The final record is local validation evidence only. It does not establish a
-production signer, key custody, public fingerprint, clean-host verification, or
-formal approval. P4-1 remains `external-pending`.
+The final record is release evidence only. It does not establish an approved
+production signer, key custody, clean-host verification, or formal approval.
+P4-1 remains `external-pending`.
 
 ## Required external evidence
 

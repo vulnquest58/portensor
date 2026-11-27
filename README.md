@@ -16,21 +16,23 @@ Includes guided interactive setup, diagnostic `doctor`, multiple UI themes (incl
 
 ## Release status and limitations
 
-The `1.0.0` release is published as a risk-accepted release. P4 is not closed.
-P4-1, P4-3, and P4-4 are `external-pending`; P4-2 and P4-5 are `blocked`;
-P4-6 is `local-ready`. The
+The [`1.0.0` release](https://github.com/vulnquest58/portensor/releases/tag/v1.0.0)
+is published as a risk-accepted release. P4 is not closed. P4-1, P4-3, and P4-4
+are `external-pending`; P4-2 and P4-5 are `blocked`; P4-6 is `local-ready`. The
 [recorded risk acceptance](docs/releases/1.0.0-risk-acceptance.md) authorizes
-risk-accepted publication within its scope and expiry. See the
+risk-accepted publication within its scope and expiry. The signed release
+workflow completed successfully and its checksums, GPG signature, and OIDC
+attestations were verified. See the
 [P4 closure checklist](docs/p4-closure-checklist.md) and the
 [1.0.0 attestation record](docs/releases/1.0.0-attestation.md).
 
 Known 1.0.0 limitations:
 
 - The release uses dedicated release key
-  `C68AF24B462F0B2F067D462E27E35C516A186541` and the tag-triggered workflow is
-  designed to publish GPG-signed checksums plus GitHub OIDC provenance/SBOM
-  attestations. These are not independent custody approval or P4 closure; verify
-  the published fingerprint, hashes, and attestations.
+  `C68AF24B462F0B2F067D462E27E35C516A186541`. The tag-triggered workflow
+  published GPG-signed checksums plus GitHub OIDC provenance/SBOM attestations.
+  These are not independent custody approval or P4 closure; verify the published
+  fingerprint, hashes, and attestations.
 - Windows Npcap raw-SYN runtime is unverified or requires an explicit waiver.
 - Full-range raw SYN parity on PingPong is not established. A 1-65535 scan at
   `--rate 500` found only `49669` of the 15 known-open ports; target state also

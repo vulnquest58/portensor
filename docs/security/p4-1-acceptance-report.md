@@ -5,11 +5,11 @@ Report date: 2026-11-21
 ## Verdict
 
 **NOT ACCEPTED. P4-1 remains `external-pending`.** The local documentation and
-automated checks are present, but production signing evidence has not been
-supplied. The project owner has authorized a risk-accepted release, but no P4-1
-production signing identity, key custody attestation, public fingerprint,
-production-signed release, clean-host transcript, or formal P4-1 approval is
-recorded.
+automated checks are present. A release GPG signature and public fingerprint are
+published with `v1.0.0`, but the key is not custody-approved and no P4-1
+production signing identity approval, custody attestation, clean-host
+transcript, or formal P4-1 approval is recorded. The project owner authorized a
+risk-accepted release, not P4-1 acceptance.
 
 No external party was contacted, no production credential was created, and no
 status was promoted. P4-2 external evidence was not started; local package
@@ -21,12 +21,12 @@ Release candidate context: `1.0.0-rc.1` at commit
 published, production-signed, or covered by GitHub OIDC attestations. The
 verdict below is unchanged.
 
-Final `1.0.0` context: local artifacts and the final SBOM were prepared on
-2026-11-27. The [1.0.0 attestation record](../releases/1.0.0-attestation.md)
-records the local and publication status. The
-[risk acceptance](../releases/1.0.0-risk-acceptance.md) is approved within its
-recorded scope and expiry, but it does not satisfy P4-1. The verdict below is
-unchanged.
+Final `1.0.0` context: the release was published on 2026-11-27 under the
+[risk acceptance](../releases/1.0.0-risk-acceptance.md). The
+[1.0.0 attestation record](../releases/1.0.0-attestation.md) records the
+published signature, fingerprint, checksums, and OIDC attestations. The key is
+not custody-approved and clean-host verification is pending, so P4-1 is not
+satisfied. The verdict below is unchanged.
 
 ## Acceptance criteria
 
@@ -35,8 +35,8 @@ unchanged.
 | Production signing identity selected and documented | Not met | No authorized signer or identity supplied |
 | Private key generated and held in approved custody | Not verified | No custody attestation or access-control evidence supplied |
 | Owner, access control, backup, rotation, revocation, and emergency replacement documented | Draft only | Policy and procedure are drafts; owner approval and exercised evidence absent |
-| Public fingerprint and verification commands published | Not met | No approved production public key or fingerprint supplied |
-| Signed artifact verified from a separate clean host | Not met | No production-signed release or clean-host transcript supplied |
+| Public fingerprint and verification commands published | Partially met | Public key and fingerprint published with `v1.0.0`; not an approved production identity |
+| Signed artifact verified from a separate clean host | Not met | Signature verified on this host; no clean-host transcript supplied |
 | Independent review and formal approval | Not met | No reviewer acceptance or project-owner/security-lead decision recorded |
 
 ## Actual verification results
@@ -46,9 +46,9 @@ unchanged.
 | `make p4-evidence-check` | Pass: 0 errors, 0 warnings; P4 NOT_CLOSED | `docs/p4-evidence-audit.md`; command output |
 | P4 evidence unit tests | Pass: 7 tests | `bench/tests/test_p4_evidence.py` |
 | Local ephemeral signing check | Pass for tooling only; not production | `bench/p4/p4-local-check.txt` |
-| Public-key fingerprint verification | Not executed: no production public key or approved fingerprint | Not available |
-| Production signature verification | Not executed: no production-signed release | Not available |
-| Clean-host verification | Not executed: no production-signed release, approved fingerprint, or authorized clean host | `docs/security/p4-1-clean-host-verification.md` |
+| Public-key fingerprint verification | Published with `v1.0.0`; not approved | Release assets `SHA256SUMS.gpg.pub`, `SHA256SUMS.asc` |
+| Production signature verification | Pass on this host; not independent | `SHA256SUMS.asc` verified against `SHA256SUMS.gpg.pub` |
+| Clean-host verification | Not executed: no approved fingerprint or authorized clean host | `docs/security/p4-1-clean-host-verification.md` |
 | Formal approval | Not recorded | Not available |
 
 The local checksum manifest and ephemeral signatures demonstrate workflow
